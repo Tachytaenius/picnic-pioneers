@@ -6,7 +6,9 @@ love.filesystem.setCRequirePath(requirePath .. ";" .. newPath)
 local mapm = require("mapm")
 love.filesystem.setCRequirePath(requirePath)
 
-mapm.digits(32)
+local consts = require("consts")
+
+mapm.digits(consts.mapmDigits)
 
 -- Some of the code below is based on my Mathsies library
 
@@ -149,7 +151,7 @@ do -- vec3
 		end,
 		__len = length,
 		__tostring = function(v)
-			return string.format("vec3(%s, %s, %s)", mapmTostring(v.x), mapmTostring(v.y), mapmTostring(v.z))
+			return string.format("mapmVec3(%s, %s, %s)", mapmTostring(v.x), mapmTostring(v.y), mapmTostring(v.z))
 		end
 	}
 

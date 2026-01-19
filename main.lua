@@ -1,9 +1,5 @@
-local util = require("util")
-util.load()
-
-local game = require("game")
-
 local consts = require("consts")
+local game = require("game")
 
 local state
 

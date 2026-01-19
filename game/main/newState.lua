@@ -1,6 +1,3 @@
-local bm = require("bigmaths")
-local mapm = bm.mapm
-
 local game = {}
 
 function game:newState()
@@ -14,9 +11,8 @@ function game:newState()
 end
 
 function game:initState()
-	self.time = mapm.number(0) -- Will be used for celestial simulation, so it's arbitrary precision
-	self.seed = love.math.random(0, 2 ^ 32 - 1)
-	self.rng = love.math.newRandomGenerator(self.seed)
+	self:initShip()
+	self:initCelestial()
 end
 
 return game
