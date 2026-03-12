@@ -6,9 +6,7 @@ love.filesystem.setCRequirePath(requirePath .. ";" .. newPath)
 local mapm = require("mapm")
 love.filesystem.setCRequirePath(requirePath)
 
-local consts = require("consts")
-
-mapm.digits(consts.mapmDigits)
+local mathsies = require("lib.mathsies")
 
 -- Some of the code below is based on my Mathsies library
 
@@ -96,6 +94,14 @@ do -- vec3
 		return new(v.x, v.y, v.z)
 	end
 
+	local function toMathsiesVec3(v)
+		return mathsies.vec3(
+			mapm.tonumber(v.x),
+			mapm.tonumber(v.y),
+			mapm.tonumber(v.z)
+		)
+	end
+
 	vec3Metatable = {
 		__add = function(a, b)
 			if isNumber(a) then
@@ -170,7 +176,8 @@ do -- vec3
 		rotate = rotate,
 		fromAngles = fromAngles,
 		components = components,
-		clone = clone
+		clone = clone,
+		toMathsiesVec3 = toMathsiesVec3
 	}, {
 		__call = function(_, x, y, z)
 			return new(x, y, z)

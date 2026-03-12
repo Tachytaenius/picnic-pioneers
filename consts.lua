@@ -1,28 +1,96 @@
-local mathsies = require("lib.mathsies")
-
-local util = require("util")
-
 local consts = {}
 
-consts.identity = "picnic-pioneers"
-consts.loveVersion = "12.0"
-consts.windowTitle = "Picnic Pioneers"
+function consts.load()
+	local util = require("util")
+	local bm = require("bigmaths")
+	local mathsies = require("lib.mathsies")
 
-consts.tau = math.pi * 2
+	consts.identity = "picnic-pioneers"
+	consts.loveVersion = "12.0"
+	consts.windowTitle = "Picnic Pioneers"
 
-consts.maxDeltaTime = 0.1
+	consts.tau = math.pi * 2
 
-consts.rightVector = mathsies.vec3(1, 0, 0)
-consts.upVector = mathsies.vec3(0, 1, 0)
-consts.forwardVector = mathsies.vec3(0, 0, 1)
+	consts.maxDeltaTime = 0.1
 
-consts.mapmDigits = 32
+	consts.rightVector = mathsies.vec3(1, 0, 0)
+	consts.upVector = mathsies.vec3(0, 1, 0)
+	consts.forwardVector = mathsies.vec3(0, 0, 1)
 
-consts.idObjectTypes = util.makeBidirectional({
-	[0] = "universe",
-	"starChunk",
-	"starSystem",
-	"celestialBody"
-})
+	consts.mapmDigits = 4
+
+	consts.bytesPerFloat = 4
+
+	consts.pointMinDistanceInChunk = 0.25 -- Use of this during generation is TODO!!!!
+
+	consts.idObjectTypes = util.makeBidirectional({
+		[0] = "galaxyChunk",
+		"galaxy",
+		"starChunk",
+		"starSystem",
+		"celestialBody"
+	})
+
+	-- TEMP/TODO
+	consts.controls = {
+		moveRight = "d",
+		moveLeft = "a",
+		moveUp = "e",
+		moveDown = "q",
+		moveForwards = "w",
+		moveBackwards = "s",
+
+		pitchDown = "k",
+		pitchUp = "i",
+		yawRight = "l",
+		yawLeft = "j",
+		rollAnticlockwise = "u",
+		rollClockwise = "o"
+	}
+
+	-- Buffer formats
+
+	consts.intBufferFormat = {
+		{name = "value", format = "int32"}
+	}
+
+	consts.uintBufferFormat = {
+		{name = "value", format = "uint32"}
+	}
+
+	consts.indirectDrawBufferFormat = {
+		{name = "vertexCount", format = "uint32"},
+		{name = "instanceCount", format = "uint32"},
+		{name = "baseVertex", format = "uint32"},
+		{name = "baseInstance", format = "uint32"}
+	}
+
+	consts.pointDrawableBufferFormat = {
+		{name = "direction", format = "floatvec3"},
+		{name = "luminance", format = "floatvec3"}
+	}
+
+	-- Vertex formats
+
+	consts.pointDiskVertexFormat = {
+		{name = "VertexPosition", location = 0, format = "floatvec2"},
+		{name = "VertexFade", location = 1, format = "float"}
+	}
+
+	-- Simulation/graphics parameters
+
+	consts.starLayerChunkSize = 4e17
+	consts.maxStellarDensity = 4.72e-51 -- Stellar density near the sun
+	consts.galaxyLayerChunkSize = 4e23
+	consts.maxGalacticDensity = 3e-69 -- Universe mass density divided by milky way mass
+	consts.galaxyGroupPosition = bm.vec3(0, 0, 0)
+	consts.galaxyGroupRadii = mathsies.vec3(1e26) -- Radius does not need to be precise like position does
+
+	consts.diskMeshVertices = 5
+	consts.pointAngularRadius = 0.005
+	consts.pointFadeStart = 0.9
+
+	consts.pointPreparationThreadgroupSize = 256
+end
 
 return consts

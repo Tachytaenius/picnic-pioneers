@@ -1,54 +1,59 @@
+-- TODO: Find suitable RNG
+
 local mathsies = require("lib.mathsies")
 local consts = require("consts")
 
 local game = {}
 
--- We don't want seeds for anything to collide across universes or galaxies or anything
+-- We don't want seeds for anything to collide across the universe
 -- We essentially assign a unique 128-bit id to every object in the game and use it as a seed when generating the object
--- The id is constructed from ids in a hierarchy. Universe id, galaxy id within universe, star chunk id within galaxy, etc
+-- The id is constructed from ids in a hierarchy. Galaxy chunk id, galaxy id within galaxy chunk, star chunk id within galaxy, etc
 
--- universe seed bits: 32
--- object type bits: 8
--- galaxy id bits: 16
+-- object type bits: 4
+-- galaxy chunk id bits: 36
+-- galaxy id bits: 12
 -- star chunk id bits: 36
 -- star id bits: 12
 -- celestial body bits: 16
 
 -- Some bits remain unused
 
-local function getObjectCelestialIdNumbers(universeSeed, objectType, galaxyId, starChunkId, starId, celestialBodyId)
+local function getObjectCelestialIdNumbers(objectType, galaxyChunkId, galaxyId, starChunkId, starId, celestialBodyId)
+	galaxyChunkId = galaxyChunkId or 0
 	galaxyId = galaxyId or 0
 	starChunkId = starChunkId or 0
 	starId = starId or 0
 	celestialBodyId = celestialBodyId or 0
 
-	-- Arrange to have fewer operations than if we did it in order
-	local a = universeSeed
-	local b = galaxyId + celestialBodyId * 2 ^ 16
-	local c = starChunkId % 2 ^ 32
-	local d = math.floor(starChunkId / 2 ^ 32) + starId * 2 ^ 4 + objectType * 2 ^ 16 -- 8 bits free. Time? Interpolate between objects at different times (cyclically)?
+	local a = galaxyChunkId % 2 ^ 32
+	local b = starChunkId % 2 ^ 32
+	local c =
+		math.floor(galaxyChunkId / 2 ^ 32) * 2 ^ 28 +
+		math.floor(starChunkId / 2 ^ 32) * 2 ^ 24 +
+		galaxyId * 2 ^ 12 +
+		starId
+	local d =
+		-- 20 bits free
+		objectType * 2 ^ 16 +
+		celestialBodyId
 
 	return a, b, c, d
 end
 
 function game:initCelestialRNG()
-	self.universeSeed = love.math.random(0, 2 ^ 32 - 1) -- For modifying overall RNG results
-	-- The RandomGenerators get reseeded based on position, universe seed, etc before calls
-	-- Two because each one can only have a 64-bit seed
-	self.celestialRNG1 = love.math.newRandomGenerator()
-	self.celestialRNG2 = love.math.newRandomGenerator()
+	-- TODO
 
 	-- Debug...
-	-- self.isClestialRNGSeeded = false
+	-- self.isCelestialRNGSeeded = false
 end
 
-function game:seedCelestialRNGWithObject(...) -- Doesn't need universe seed to be specified
-	local a, b, c, d = getObjectCelestialIdNumbers(self.universeSeed, ...)
-	self.celestialRNG1:setSeed(a, b)
-	self.celestialRNG2:setSeed(c, d)
+function game:seedCelestialRNGWithObject(...)
+	local a, b, c, d = getObjectCelestialIdNumbers(...)
+
+	-- TODO
 
 	-- Debug...
-	-- self.isClestialRNGSeeded = true
+	-- self.isCelestialRNGSeeded = true
 	-- self.celestialRNGSeedA = a
 	-- self.celestialRNGSeedB = b
 	-- self.celestialRNGSeedC = c
@@ -58,10 +63,11 @@ end
 
 function game:celestialRandom()
 	-- Debug...
-	-- assert(self.isClestialRNGSeeded, "Celestial RNG cannot be called without initialising seed")
+	-- assert(self.isCelestialRNGSeeded, "Celestial RNG cannot be called without initialising seed")
 	-- self.celestialRNGCallNumber = self.celestialRNGCallNumber + 1
 
-	return (self.celestialRNG1:random() + self.celestialRNG2:random()) % 1
+	-- TODO
+	return love.math.random() -- TEMP
 end
 
 function game:celestialRandomRange(lower, upper)
