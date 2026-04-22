@@ -6,8 +6,15 @@ readonly buffer ChunkPointCounts {
 uniform int maxPointsPerChunk;
 
 struct Point {
+#ifdef FEATURE_POSITION
 	vec3 position;
+#endif
+#ifdef FEATURE_LUMINOUS_FLUX
 	vec3 luminousFlux;
+#endif
+#ifdef FEATURE_SHAPE_TYPE
+	uint shapeTypeId;
+#endif
 };
 readonly buffer Points {
 	Point points[];
@@ -30,8 +37,6 @@ struct IndirectDrawArgs {
 buffer IndirectDrawBuffer {
 	IndirectDrawArgs indirectDrawBuffer[];
 };
-
-uniform uint pointCount; // Could be consts since this shader will be per-layer
 
 uniform uint skipIndex;
 uniform vec3 cameraPosition;
@@ -62,7 +67,7 @@ ivec3 bvecToIvec(bvec3 v) {
 layout(local_size_x = THREADGROUP_SIZE, local_size_y = 1, local_size_z = 1) in;
 void computemain() {
 	uint i = love_GlobalThreadID.x;
-	if (i >= pointCount) {
+	if (i >= POINT_COUNT) {
 		return;
 	}
 

@@ -22,6 +22,7 @@ function love.draw()
 		love.timer.getFPS() .. "\n" ..
 		"x: " .. tostring(state.ship.position.x) .. "\n" ..
 		"y: " .. tostring(state.ship.position.y) .. "\n" ..
-		"z: " .. tostring(state.ship.position.z)
+		"z: " .. tostring(state.ship.position.z) .. "\n" ..
+		"slow: " .. state:getGravityWellSlowdownFactor()
 	)
 end

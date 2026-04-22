@@ -24,9 +24,14 @@ function game:initCelestial()
 	self.pointDiskMesh = util.generatePointDiskMesh(consts.diskMeshVertices)
 	self.pointDrawablesShader = love.graphics.newShader("shaders/drawing/pointDrawables.glsl", {defines = {INSTANCED = true}})
 
+	self.brightnessMultiplyShader = love.graphics.newShader("shaders/drawing/brightnessMultiply.glsl")
+
 	local width, height = love.graphics.getDimensions()
-	self.screenCanvasses.celestialOutputCanvas = love.graphics.newCanvas(width, height, {
+	self.screenCanvasses.celestialLuminanceCanvas = love.graphics.newCanvas(width, height, {
 		format = "rgba16f",
+		debugname = "Celestial Luminance Canvas"
+	})
+	self.screenCanvasses.celestialOutputCanvas = love.graphics.newCanvas(width, height, {
 		debugname = "Celestial Output Canvas"
 	})
 
@@ -34,8 +39,12 @@ function game:initCelestial()
 	self.ship = {
 		position = bm.vec3(0, 0, 0), -- Arbitrary precision, used to define position with enough information at each size scale
 		orientation = mathsies.quat(),
-		verticalFOV = math.rad(80)
+		verticalFOV = math.rad(80),
+		gravityMovementRate = consts.gravityMovementRate
 	}
+
+	-- Initial handlePointLayers call to get everything consistent, including pointLayerGravityWellSlowdownFactor for first handleShipMovement call
+	self:handlePointLayers()
 end
 
 return game

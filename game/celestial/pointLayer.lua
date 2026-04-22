@@ -5,83 +5,148 @@ local ffi = require("ffi")
 local bm = require("bigmaths")
 local mathsies = require("lib.mathsies")
 
+local util = require("util")
 local consts = require("consts")
+local pointLayerShapeTypes = require("pointLayerShapeTypes")
 
 local game = {}
-
-local galaxyPointLayerFunctions = {}
 
 local function randomTODO()
 	-- TODO: Not this!
 	return love.math.random()
 end
 
-function galaxyPointLayerFunctions:getDensity(realX, realY, realZ) -- The position is in units where 1 is the side length of a chunk. Returned density is in proper units
-	return 1 -- TODO
+local galaxyPointLayerInfo = {}
+
+galaxyPointLayerInfo.features = {
+	-- "sent" means present on both CPU and GPU, "unsent" means only present on CPU, nil means not present
+	shapeTypeId = "sent",
+	radii = "unsent",
+	mass = "unsent",
+
+	shapeTypeSet = {
+		{
+			name = "ellipticalGalaxy",
+			weight = 1,
+			scaleMin = 2e19,
+			scaleMax = 8e21
+		}
+		-- We also add spiral galaxies with arms
+	}
+}
+for n = 2, 4 do
+	local weight = 5
+	table.insert(galaxyPointLayerInfo.features.shapeTypeSet, {
+		name = "spiralGalaxy" .. n .. "Arms",
+		weight = weight,
+		scaleMin = 8e19,
+		scaleMax = 2e22
+	})
 end
 
-function galaxyPointLayerFunctions:generateChunk(realX, realY, realZ, chunkId, chunkBufferIndex)
-	local density = self:getDensity(realX, realY, realZ)
-	local amount = density * self.maxPointDensity * self.chunkVolume -- TODO: Rename properly.
-	local count = math.floor(amount)
-	if randomTODO() < amount % 1 then -- Use fractional part of amount as a probability
-		count = count + 1
-	end
-	count = math.min(self.maxPointsPerChunk, count) -- Just in case
-
+function galaxyPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, chunkBufferIndex, count)
+	local randomChoice = util.weightedRandomChoice
+	local shapeTypeSet = self.features.shapeTypeSet
+	local extraInfo = self.chunkExtraInfo[chunkBufferIndex]
+	local radii = extraInfo.radii
+	local mass = extraInfo.mass
+	local nextLayerChunkSize = self.childPointLayer.chunkSize
+	local nextLayerMaxDensity = self.childPointLayer.maxPointDensity
+	-- TODO: Calculate all the way from base layer (stars) using shape types and weights etc to get these values
+	local averageMassPerContainedPoint = 1.989e30 -- TEMP
+	local averageLuminousFluxPerContainedPointR = 3.562e28 -- TEMP -- Proper units
+	local averageLuminousFluxPerContainedPointG = 3.562e28
+	local averageLuminousFluxPerContainedPointB = 3.562e28
+	local luminousFluxScale = self.chunkSize ^ -2
 	for i = 0, count - 1 do
 		local x = randomTODO()
 		local y = randomTODO()
 		local z = randomTODO()
 
-		local r = 0.0001
-		local g = 0.0001
-		local b = 0.0001
+		-- local choice = randomChoice(shapeTypeSet, randomGeneratorTODO)
+		-- local shapeTypeId = pointLayerShapeTypes[choice.name].id
+		-- local scale = randomTODO() * (choice.scaleMax - choice.scaleMin) + choice.scaleMin
+		-- local shapeTypeId = pointLayerShapeTypes.testDisk.id -- TEMP
+		local shapeTypeId = pointLayerShapeTypes.galaxyCluster.id
+		local scale = 8e20 -- TEMP
 
-		self:setPoint(chunkBufferIndex, i, x, y, z, r, g, b)
+		-- NOTE/TEMP/TODO? changes made that may be wrong: scale is no longer divided by nextLayerChunkSize, amountWIthin is now multiplied by nextLayerMaxDensity, and there is no multiplication by nextLayerChunkSize when creating a currentObject
+
+		local xRadius = scale
+		local yRadius = scale
+		local zRadius = scale / 100 -- TEMP, etc etc etc
+		radii[i * 3] = xRadius
+		radii[i * 3 + 1] = yRadius
+		radii[i * 3 + 2] = zRadius
+
+		local amountWithin = pointLayerShapeTypes[shapeTypeId].baseObjectAmount * xRadius * yRadius * zRadius * nextLayerMaxDensity -- Estimate
+		mass[i] = amountWithin * averageMassPerContainedPoint
+		-- print(mass[i])
+		GM = mass[i] -- TEMP!!!!!
+
+		local r = amountWithin * averageLuminousFluxPerContainedPointR * luminousFluxScale
+		local g = amountWithin * averageLuminousFluxPerContainedPointG * luminousFluxScale
+		local b = amountWithin * averageLuminousFluxPerContainedPointB * luminousFluxScale
+
+		self:setPoint(chunkBufferIndex, i, x, y, z, r, g, b, shapeTypeId)
 	end
-
-	return count
 end
 
-local starPointLayerFunctions = {}
-
-function starPointLayerFunctions:getDensity(realX, realY, realZ)
-	return 1 -- TODO
+function galaxyPointLayerInfo:generateRemainingCurrentObjectInfo()
+	local currentObject = self.currentObject
 end
 
-function starPointLayerFunctions:generateChunk(realX, realY, realZ, chunkId, chunkBufferIndex)
-	local density = self:getDensity(realX, realY, realZ)
-	local amount = density * self.maxPointDensity * self.chunkVolume
-	local count = math.floor(amount)
-	if randomTODO() < amount % 1 then
-		count = count + 1
-	end
-	count = math.min(self.maxPointsPerChunk, count)
+local starPointLayerInfo = {}
 
+starPointLayerInfo.features = {
+	mass = "unsent",
+	properScaleRadius = "unsent",
+	bodies = true -- Final layer, treated differently
+}
+
+function starPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, chunkBufferIndex, count)
+	local extraInfo = self.chunkExtraInfo[chunkBufferIndex]
+	local properScaleRadius = extraInfo.properScaleRadius
+	local mass = extraInfo.mass
+	local luminousFluxScale = self.chunkSize ^ -2
 	for i = 0, count - 1 do
 		local x = randomTODO()
 		local y = randomTODO()
 		local z = randomTODO()
 
-		local r = randomTODO() * 0.001
-		local g = randomTODO() * 0.001
-		local b = randomTODO() * 0.001
+		local r = (randomTODO() * 0.5 + 0.75) * 3.562e28 * luminousFluxScale
+		local g = (randomTODO() * 0.5 + 0.75) * 3.562e28 * luminousFluxScale
+		local b = (randomTODO() * 0.5 + 0.75) * 3.562e28 * luminousFluxScale
+
+		local radius = 6.957e8 -- TEMP/TODO
+		properScaleRadius[i] = radius
+		local starMass = 1.989e30 * 10 ^ (randomTODO() * 2 - 1)
+		mass[i] = starMass
 
 		self:setPoint(chunkBufferIndex, i, x, y, z, r, g, b)
 	end
+end
 
-	return count
+function starPointLayerInfo:generateRemainingCurrentObjectInfo()
+	local currentObject = self.currentObject
 end
 
 function game:initPointLayers()
+	pointLayerShapeTypes.load()
+
 	self.pointLayers = {}
 
 	-- Topmost layer is treated specially
-	local galaxyLayer = self:newPointLayer("galaxies", "Galaxies", consts.galaxyLayerChunkSize, consts.maxGalacticDensity, 4, galaxyPointLayerFunctions)
-	galaxyLayer.fixedParentObjectPosition = consts.galaxyGroupPosition
-	galaxyLayer.fixedParentObjectRadii = consts.galaxyGroupRadii
-	self:newPointLayer("stars", "Stars", consts.starLayerChunkSize, consts.maxStellarDensity, 9, starPointLayerFunctions)
+	-- TODO: Allow it to collapse to a point when sufficiently far away. Since that's just one point there's no need for optimisations like chunks etc.
+	local topLayer = self:newPointLayer("galaxies", "Galaxies", consts.galaxyLayerChunkSize, consts.maxGalacticDensity, 4, galaxyPointLayerInfo)
+	topLayer.fixedParentObjectPosition = consts.galaxyGroupPosition
+	topLayer.fixedParentObjectRadii = consts.galaxyGroupRadii
+	topLayer.fixedParentObjectShapeTypeName = consts.galaxyGroupShapeTypeName
+	self:newPointLayer("stars", "Stars", consts.starLayerChunkSize, consts.maxStellarDensity, 9, starPointLayerInfo)
+
+	-- Find distance at which top layer shape has the same angular radius as points
+	local topRadius = math.max(topLayer.fixedParentObjectRadii.x, topLayer.fixedParentObjectRadii.y, topLayer.fixedParentObjectRadii.z)
+	topLayer.fixedParentObjectPointDistance = topRadius / math.sqrt(1 - math.cos(consts.pointAngularRadius) ^ 2)
 
 	local highestMaxPoints
 	for _, pointLayer in ipairs(self.pointLayers) do
@@ -94,9 +159,34 @@ function game:initPointLayers()
 			debugname = "Point Drawable Buffer"
 		})
 	end
+
+	-- Check
+	for i, pointLayer in ipairs(self.pointLayers) do
+		local assertMessage = "All point layers must have shape types and not bodies except the last one"
+		if i < #self.pointLayers then
+			assert(pointLayer.features.shapeTypeSet and not pointLayer.features.bodies, assertMessage)
+		elseif i == #self.pointLayers then
+			assert(not pointLayer.features.shapeTypeSet and pointLayer.features.bodies, assertMessage)
+		end
+	end
 end
 
 local pointLayerFunctions = {}
+
+function pointLayerFunctions:getDensity(realX, realY, realZ) -- The position is in units where 1 is the side length of a chunk. Returned density is a proportion from 0 to point layer max density
+	local shapeTypeName, size
+	if self.parentPointLayer then
+		local currentObject = self.parentPointLayer.currentObject
+		assert(currentObject, "Should not be calling getDensity on a point layer if its parent doesn't have a current object")
+		shapeTypeName = currentObject.shapeTypeName
+		size = currentObject.radii
+	else
+		shapeTypeName = self.fixedParentObjectShapeTypeName
+		size = self.fixedParentObjectRadii
+	end
+	local densityFunction = pointLayerShapeTypes[shapeTypeName].getDensity
+	return densityFunction(realX / size.x * self.chunkSize, realY / size.y * self.chunkSize, realZ / size.z * self.chunkSize)
+end
 
 function pointLayerFunctions:getBoundingBoxChunks()
 	local size
@@ -107,6 +197,7 @@ function pointLayerFunctions:getBoundingBoxChunks()
 	else
 		size = self.fixedParentObjectRadii
 	end
+	-- TODO: I think this and the code using it breaks (slightly) when size[x/y/z] / chunkSize is an integer
 	local minX, maxX = math.floor(-size.x / self.chunkSize), math.floor(size.x / self.chunkSize)
 	local minY, maxY = math.floor(-size.y / self.chunkSize), math.floor(size.y / self.chunkSize)
 	local minZ, maxZ = math.floor(-size.z / self.chunkSize), math.floor(size.z / self.chunkSize)
@@ -125,47 +216,57 @@ function pointLayerFunctions:setPoint(chunkBufferIndex, pointId, ...) -- First t
 	local index = chunkBufferIndex * self.maxPointsPerChunk + pointId
 	assert(index >= 0 and index < self.maxPoints, "chunkBufferIndex and pointId given to setPoint exceed point buffer capacity")
 	assert(select("#", ...) == self.pointFormatVarCount, "Incorrect number of point variables given to setPoint")
-	local curAddr = index * self.pointBuffer:getElementStride() / consts.bytesPerFloat
+	local curAddr = index * self.pointBuffer:getElementStride() / consts.bytesPerGPUVar
 	for i = 1, self.pointFormatVarCount do
 		local property = select(i, ...)
-		self.pointDataFFI[curAddr + self.pointDataIndexMap[i - 1]] = property -- Casts from double to float
+		self.ffiDataTypeFromPointVarIndex[i - 1][curAddr + self.pointDataIndexMap[i - 1]] = property -- Casts from double to float
 	end
 end
 
-function pointLayerFunctions:getPointPosition(chunkBufferIndex, pointId) -- Position within chunk, where 1 is chunk size
+function pointLayerFunctions:getPointVars(chunkBufferIndex, pointId, name, type, count)
 	local index = chunkBufferIndex * self.maxPointsPerChunk + pointId
 	assert(index >= 0 and index < self.maxPoints, "chunkBufferIndex and pointId given to setPoint exceed point buffer capacity")
-	local curAddr = index * self.pointBuffer:getElementStride() / consts.bytesPerFloat
+	local index = index * self.pointBuffer:getElementStride() / consts.bytesPerGPUVar
+	local index = index + self.pointFormatOffsets[name]
 
-	local x = self.pointDataFFI[curAddr + self.pointFormatOffsets.x / consts.bytesPerFloat]
-	local y = self.pointDataFFI[curAddr + self.pointFormatOffsets.y / consts.bytesPerFloat]
-	local z = self.pointDataFFI[curAddr + self.pointFormatOffsets.z / consts.bytesPerFloat]
-	return x, y, z
-end
+	local ffiData =
+		type == "float" and self.pointDataFFIFloat or
+		type == "int32" and self.pointDataFFIInt or
+		type == "uint32" and self.pointDataFFIUint
 
-function pointLayerFunctions:getPointLuminousFlux(chunkBufferIndex, pointId) -- Is also scaled down to match same distance units as its position
-	local index = chunkBufferIndex * self.maxPointsPerChunk + pointId
-	assert(index >= 0 and index < self.maxPoints, "chunkBufferIndex and pointId given to setPoint exceed point buffer capacity")
-	local curAddr = index * self.pointBuffer:getElementStride() / consts.bytesPerFloat
-
-	local r = self.pointDataFFI[curAddr + self.pointFormatOffsets.r / consts.bytesPerFloat]
-	local g = self.pointDataFFI[curAddr + self.pointFormatOffsets.g / consts.bytesPerFloat]
-	local b = self.pointDataFFI[curAddr + self.pointFormatOffsets.b / consts.bytesPerFloat]
-	return r, g, b
+	if count == 1 or not count then
+		return ffiData[index]
+	elseif count == 2 then
+		return ffiData[index], ffiData[index + 1]
+	elseif count == 3 then
+		return ffiData[index], ffiData[index + 1], ffiData[index + 2]
+	elseif count == 4 then
+		return ffiData[index], ffiData[index + 1], ffiData[index + 2], ffiData[index + 3]
+	else
+		error("Invalid count " .. count .. " to getPointVars")
+	end
 end
 
 function pointLayerFunctions:generateChunkCommon(realX, realY, realZ, chunkId, chunkBufferIndex)
-	local chunkPointCount = self:generateChunk(realX, realY, realZ, chunkId, chunkBufferIndex) -- Specified per layer
+	local density = self:getDensity(realX, realY, realZ)
+	local amount = density * self.maxPointDensity * self.chunkVolume -- TODO: Rename properly.
+	local count = math.floor(amount)
+	if randomTODO() < amount % 1 then -- Use fractional part of amount as a probability
+		count = count + 1
+	end
+	count = math.min(self.maxPointsPerChunk, count) -- Just in case
 
-	self:setChunkPointCount(chunkBufferIndex, chunkPointCount)
-	if chunkPointCount > 0 then
+	self:generateChunk(realX, realY, realZ, chunkId, chunkBufferIndex, count) -- Specified per layer
+
+	self:setChunkPointCount(chunkBufferIndex, count)
+	if count > 0 then
 		local pointIdStart = chunkBufferIndex * self.maxPointsPerChunk
-		self.pointBuffer:setArrayData(self.pointData, pointIdStart + 1, pointIdStart + 1, chunkPointCount)
+		self.pointBuffer:setArrayData(self.pointData, pointIdStart + 1, pointIdStart + 1, count)
 	end
 end
 
-function pointLayerFunctions:setChunkEmpty(x, y, z, chunkBufferIndex)
-	local chunk = self.chunkExtraInfo[x][y][z]
+function pointLayerFunctions:setChunkEmpty(chunkBufferIndex)
+	local chunk = self.chunkExtraInfo[chunkBufferIndex]
 	chunk.x = nil
 	chunk.y = nil
 	chunk.z = nil
@@ -191,6 +292,7 @@ function pointLayerFunctions:getClosestPoint(referencePosition)
 	local closestDistance = math.huge
 
 	local temp = mathsies.vec3() -- No need to generate tons of new vec3s
+	-- TODO: Fix assumption that there are points in the 2x2x2 chunk cube around the ship. Maybe spiral outwards when searching? Or just have a distance limit?
 	for x = math.floor(positionRelative.x - 0.5), math.floor(positionRelative.x + 0.5) do
 		for y = math.floor(positionRelative.y - 0.5), math.floor(positionRelative.y + 0.5) do
 			for z = math.floor(positionRelative.z - 0.5), math.floor(positionRelative.z + 0.5) do
@@ -198,8 +300,16 @@ function pointLayerFunctions:getClosestPoint(referencePosition)
 				local yInChunkBuffer = y % self.chunkBufferSideLength
 				local zInChunkBuffer = z % self.chunkBufferSideLength
 				local chunkBufferIndex = xInChunkBuffer + yInChunkBuffer * self.chunkBufferSideLength + zInChunkBuffer * self.chunkBufferSideLength * self.chunkBufferSideLength
+				local chunkExtraInfo = self.chunkExtraInfo[chunkBufferIndex]
+				if not (
+					chunkExtraInfo.x == x and
+					chunkExtraInfo.y == y and
+					chunkExtraInfo.z == z
+				) then
+					goto continue
+				end
 				for pointId = 0, self:getChunkPointCount(chunkBufferIndex) - 1 do
-					temp.x, temp.y, temp.z = self:getPointPosition(chunkBufferIndex, pointId)
+					temp.x, temp.y, temp.z = self:getPointVars(chunkBufferIndex, pointId, "position", "float", 3)
 					temp.x = temp.x + x
 					temp.y = temp.y + y
 					temp.z = temp.z + z
@@ -212,6 +322,7 @@ function pointLayerFunctions:getClosestPoint(referencePosition)
 						closestDistance = distance
 					end
 				end
+				::continue::
 			end
 		end
 	end
@@ -226,13 +337,13 @@ function game:clearPointLayers(startIndex)
 	end
 end
 
-function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBufferSideLength, layerSpecificFunctions)
+function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBufferSideLength, layerInfo)
 	local new = {}
 
 	for k, v in pairs(pointLayerFunctions) do
 		new[k] = v
 	end
-	for k, v in pairs(layerSpecificFunctions) do
+	for k, v in pairs(layerInfo) do -- Should include features
 		new[k] = v
 	end
 
@@ -247,15 +358,78 @@ function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBu
 	new.maxPointsPerChunk = math.ceil(new.chunkVolume * new.maxPointDensity)
 	new.maxPoints = new.chunkBufferTotalSize * new.maxPointsPerChunk
 
-	-- TODO: Dynamically construct depending on what the layer needs
-	new.pointBufferFormat = {
-		{name = "position", format = "floatvec3"},
-		{name = "luminousFlux", format = "floatvec3"}
+	-- TODO: Don't waste VRAM on unsent features
+	-- Add features to the following two tables
+	new.pointBufferFormat = {}
+	local defines = {
+		THREADGROUP_SIZE = consts.pointPreparationThreadgroupSize,
+		POINT_COUNT = new.maxPoints
 	}
-	new.pointPreparationShader = love.graphics.newComputeShader("shaders/drawing/pointPreparation.glsl", {defines = {
-		-- TODO: Dynamically define features like blinking stars, brightness based on rotation, etc
-		THREADGROUP_SIZE = consts.pointPreparationThreadgroupSize
-	}})
+	local unsentFeatureNames = {}
+	local function tryFeature(name, format, defineName, forcePresence)
+		local presence = forcePresence or layerInfo.features[name]
+		if not presence then
+			return
+		end
+
+		assert(presence == "sent" or presence == "unsent", "\"" .. name .. "\" feature must be either \"sent\" to GPU or \"unsent\", \"" .. presence .. "\" is invalid")
+
+		if presence == "sent" then
+			table.insert(new.pointBufferFormat, {name = name, format = format})
+			if defineName then
+				defines["FEATURE_" .. defineName] = true
+			end
+		elseif presence == "unsent" then
+			unsentFeatureNames[name] = true -- For use in chunk extra data
+		end
+	end
+	tryFeature("position", "floatvec3", "POSITION", "sent")
+	tryFeature("luminousFlux", "floatvec3", "LUMINOUS_FLUX", "sent")
+	tryFeature("shapeTypeId", "uint32", "SHAPE_TYPE")
+	tryFeature("radii", "floatvec3", "RADII")
+	tryFeature("mass", "float", "MASS") -- For final layer (stars)
+	tryFeature("properScaleRadius", "float", nil) -- For final layer (stars)
+
+	new.pointBuffer = love.graphics.newBuffer(new.pointBufferFormat, new.maxPoints, {
+		shaderstorage = true,
+		debugname = debugName .. " Points"
+	})
+
+	assert((new.pointBuffer:getElementStride() / consts.bytesPerGPUVar) % 1 == 0, "Something has gone terribly wrong!")
+
+	new.pointData = love.data.newByteData(new.pointBuffer:getElementStride() * new.maxPoints)
+	new.pointDataFFIFloat = ffi.cast("float*", new.pointData:getFFIPointer())
+	new.pointDataFFIInt = ffi.cast("int32_t*", new.pointData:getFFIPointer())
+	new.pointDataFFIUint = ffi.cast("uint32_t*", new.pointData:getFFIPointer())
+
+	new.pointFormatVarCount = 0 -- Considers vec3 as 3 variables etc
+	new.ffiDataTypeFromPointVarIndex = {} -- Determines how to interpret each number
+	new.pointFormatOffsets = {} -- Maps the start of a variable (float, vec3, etc) to its offset in the FFI data array(s)
+	new.pointDataIndexMap = {}
+	local dataTypeMap = {
+		float = new.pointDataFFIFloat,
+		int32 = new.pointDataFFIInt,
+		uint32 = new.pointDataFFIUint
+	}
+	for _, variable in ipairs(new.pointBuffer:getFormat()) do
+		local num, type
+		if variable.format == "float" or variable.format == "int" or variable.format == "uint32" then
+			num = 1
+			type = variable.format
+		else
+			local _, _, typeString, numString = variable.format:find("^(.*)vec([0-9]*)$")
+			type = typeString
+			num = numString and tonumber(numString) or 1
+		end
+		new.pointFormatOffsets[variable.name] = variable.offset / consts.bytesPerGPUVar
+		for i = 0, num - 1 do
+			new.pointDataIndexMap[new.pointFormatVarCount] = variable.offset / consts.bytesPerGPUVar + i
+			new.ffiDataTypeFromPointVarIndex[new.pointFormatVarCount] = dataTypeMap[type]
+			new.pointFormatVarCount = new.pointFormatVarCount + 1
+		end
+	end
+
+	new.pointPreparationShader = love.graphics.newComputeShader("shaders/drawing/pointPreparation.glsl", {defines = defines})
 
 	new.chunkPointCountBuffer = love.graphics.newBuffer(consts.intBufferFormat, new.chunkBufferTotalSize, {
 		shaderstorage = true,
@@ -264,52 +438,28 @@ function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBu
 	new.chunkPointCountData = love.data.newByteData(new.chunkPointCountBuffer:getElementStride() * new.chunkBufferTotalSize)
 	new.chunkPointCountDataFFI = ffi.cast("int32_t*", new.chunkPointCountData:getFFIPointer())
 
-	new.pointBuffer = love.graphics.newBuffer(new.pointBufferFormat, new.maxPoints, {
-		shaderstorage = true,
-		debugname = debugName .. " Points"
-	})
-	new.pointData = love.data.newByteData(new.pointBuffer:getElementStride() * new.maxPoints)
-	new.pointDataFFI = ffi.cast("float*", new.pointData:getFFIPointer())
-	local pointFormatVarCount = 0
-	local pointFormatOffsets = {}
-	local pointDataIndexMap = {}
-	local function registerPointFormatVar(name, byteOffset)
-		pointFormatOffsets[name] = byteOffset
-		pointDataIndexMap[pointFormatVarCount] = byteOffset / consts.bytesPerFloat
-		pointFormatVarCount = pointFormatVarCount + 1
-	end
-	for _, variable in ipairs(new.pointBuffer:getFormat()) do
-		if variable.name == "position" then
-			registerPointFormatVar("x", variable.offset)
-			registerPointFormatVar("y", variable.offset + consts.bytesPerFloat)
-			registerPointFormatVar("z", variable.offset + consts.bytesPerFloat * 2)
-		elseif variable.name == "luminousFlux" then
-			registerPointFormatVar("r", variable.offset)
-			registerPointFormatVar("g", variable.offset + consts.bytesPerFloat)
-			registerPointFormatVar("b", variable.offset + consts.bytesPerFloat * 2)
-		end
-	end
-	new.pointFormatVarCount = pointFormatVarCount
-	new.pointFormatOffsets = pointFormatOffsets
-	new.pointDataIndexMap = pointDataIndexMap
-
 	new.chunkExtraInfo = {}
 	for x = 0, new.chunkBufferSideLength - 1 do
-		new.chunkExtraInfo[x] = {}
 		for y = 0, new.chunkBufferSideLength - 1 do
-			new.chunkExtraInfo[x][y] = {}
 			for z = 0, new.chunkBufferSideLength - 1 do
-				new.chunkExtraInfo[x][y][z] = {
+				local extraInfo = {
 					x = nil,
 					y = nil,
-					z = nil,
-					masses = {} -- Starts at 0
+					z = nil
 				}
+				for name in pairs(unsentFeatureNames) do
+					extraInfo[name] = {}
+				end
+				local chunkBufferIndex = x + y * new.chunkBufferSideLength + z * new.chunkBufferSideLength * new.chunkBufferSideLength
+				new.chunkExtraInfo[chunkBufferIndex] = extraInfo
 			end
 		end
 	end
 
 	new.parentPointLayer = self.pointLayers[#self.pointLayers]
+	if new.parentPointLayer then
+		new.parentPointLayer.childPointLayer = new
+	end
 	table.insert(self.pointLayers, new)
 	new.index = #self.pointLayers
 	return new
@@ -317,7 +467,7 @@ end
 
 function game:handlePointLayers()
 	local remakeAll = false
-	for i, pointLayer in ipairs(self.pointLayers) do
+	for pointLayerIndex, pointLayer in ipairs(self.pointLayers) do
 		local updateChunkCountBuffer = false
 
 		local parentOrigin
@@ -353,7 +503,7 @@ function game:handlePointLayers()
 
 					local chunkBufferIndex = x + y * pointLayer.chunkBufferSideLength + z * pointLayer.chunkBufferSideLength * pointLayer.chunkBufferSideLength
 
-					local currentChunk = pointLayer.chunkExtraInfo[x][y][z]
+					local currentChunk = pointLayer.chunkExtraInfo[chunkBufferIndex]
 					if
 						remakeAll or
 						currentChunk.x ~= realX or
@@ -375,7 +525,7 @@ function game:handlePointLayers()
 
 							pointLayer:generateChunkCommon(realX, realY, realZ, chunkId, chunkBufferIndex, x, y, z)
 						else
-							pointLayer:setChunkEmpty(x, y, z, chunkBufferIndex)
+							pointLayer:setChunkEmpty(chunkBufferIndex)
 						end
 					end
 				end
@@ -386,13 +536,29 @@ function game:handlePointLayers()
 			pointLayer.chunkPointCountBuffer:setArrayData(pointLayer.chunkPointCountData, 1, 1, pointLayer.chunkBufferTotalSize)
 		end
 
-		if love.keyboard.isDown("c") and not pointLayer.parentPointLayer then -- TEMP
-			local x, y, z = pointLayer:getPointPosition(0, 0)
+		-- Reveals bug, will fix. move out of galaxy render range and start holding c and suddenly galaxy is broken
+		if love.keyboard.isDown("c") --[[and not pointLayer.parentPointLayer]] then -- TEMP
+			local x, y, z = pointLayer:getPointVars(0, 0, "position", "float", 3)
 			self.ship.position = parentOrigin + pointLayer.chunkSize * bm.vec3(0+x, 0+y, 0+z)
 		end
 
+		if not pointLayer.parentPointLayer then
+			if
+				math.abs(positionRelative.x) > widthChunks + pointLayer.chunkBufferSideLength / 2 or
+				math.abs(positionRelative.y) > heightChunks + pointLayer.chunkBufferSideLength / 2 or
+				math.abs(positionRelative.z) > depthChunks + pointLayer.chunkBufferSideLength / 2
+			then
+				pointLayer.topLayerOutOfRange = true
+				pointLayer.currentObject = nil
+				self:clearPointLayers(pointLayerIndex + 1)
+				break
+			else
+				pointLayer.topLayerOutOfRange = false
+			end
+		end
 		local closestChunkX, closestChunkY, closestChunkZ, closestIdInChunk, closestDistance = pointLayer:getClosestPoint(self.ship.position)
 		if closestIdInChunk and closestDistance < consts.pointMinDistanceInChunk / 2 then
+			-- TODO: Also check that its angular radius isn't smaller than that of the points
 			local x2, y2, z2 = closestChunkX - minX, closestChunkY - minY, closestChunkZ - minZ
 			local chunkId = x2 + y2 * widthChunks + z2 * heightChunks * depthChunks
 
@@ -406,30 +572,287 @@ function game:handlePointLayers()
 				local chunkBufferZ = closestChunkZ % pointLayer.chunkBufferSideLength
 				local chunkBufferIndex = chunkBufferX + chunkBufferY * pointLayer.chunkBufferSideLength + chunkBufferZ * pointLayer.chunkBufferSideLength * pointLayer.chunkBufferSideLength
 
-				local x, y, z = pointLayer:getPointPosition(chunkBufferIndex, closestIdInChunk)
-				local r, g, b = pointLayer:getPointLuminousFlux(chunkBufferIndex, closestIdInChunk)
+				local x, y, z = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "position", "float", 3)
+				local r, g, b = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "luminousFlux", "float", 3)
 
-				pointLayer.currentObject = {
+				pointLayer.currentObject = { -- TODO: Make this be layer-specific and dynamic on features
 					chunkId = chunkId,
-					chunkBufferIndex = chunkBufferIndex, -- Won't change
+					chunkBufferIndex = chunkBufferIndex, -- Won't change for the same object
 					pointId = closestIdInChunk,
+
 					-- chunkX = closestChunkX,
 					-- chunkY = closestChunkY,
-					-- chunkZ = closestChunkZ,
-					position = parentOrigin + pointLayer.chunkSize * bm.vec3(closestChunkX + x, closestChunkY + y, closestChunkZ + z),
-					luminousFlux = mathsies.vec3(r, g, b) * pointLayer.chunkSize ^ 2, -- Bring back to proper units
-					-- TODO: Generate remaining info, including radii
-					radii = mathsies.vec3(100, 4, 100) * consts.starLayerChunkSize -- TEMP
+					-- chunkZ = closestChunkZ
 				}
+				local currentObject = pointLayer.currentObject
+				local chunkExtraInfo = pointLayer.chunkExtraInfo[chunkBufferIndex]
+				-- Features with consistent ways of calculating
+				currentObject.position =
+					parentOrigin + pointLayer.chunkSize *
+					bm.vec3(closestChunkX + x, closestChunkY + y, closestChunkZ + z)
+				currentObject.luminousFlux = mathsies.vec3(r, g, b) * pointLayer.chunkSize ^ 2 -- Bring back to proper units
+				if pointLayer.features.shapeTypeId then
+					local shapeTypeId
+					if pointLayer.features.shapeTypeId == "sent" then
+						shapeTypeId = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "shapeTypeId", "uint32", 1)
+					elseif pointLayer.features.shapeTypeId == "unsent" then
+						shapeTypeId = chunkExtraInfo.shapeTypeId[closestIdInChunk]
+					end
+					currentObject.shapeTypeName = pointLayerShapeTypes[shapeTypeId].name
+				end
+				if pointLayer.features.radii then
+					local nextLayerChunkSize = pointLayer.childPointLayer.chunkSize
+					local xRadius, yRadius, zRadius
+					if pointLayer.features.radii == "sent" then
+						xRadius, yRadius, zRadius = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "radii", "float", 3)
+					elseif pointLayer.features.radii == "unsent" then
+						xRadius = chunkExtraInfo.radii[closestIdInChunk * 3]
+						yRadius = chunkExtraInfo.radii[closestIdInChunk * 3 + 1]
+						zRadius = chunkExtraInfo.radii[closestIdInChunk * 3 + 2]
+					end
+					assert(xRadius and yRadius and zRadius, "Missing radii")
+					currentObject.radii = mathsies.vec3(xRadius, yRadius, zRadius) -- TODO: Make sure it never goes over separation between points (/2)
+				end
+				-- Remaining features are generated (or fetched from extra info) in possibly layer-specific ways
+				pointLayer:generateRemainingCurrentObjectInfo()
 
 				remakeAll = true
 			end
 		else
 			pointLayer.currentObject = nil
-			self:clearPointLayers(i + 1)
+			self:clearPointLayers(pointLayerIndex + 1)
 			break
 		end
 	end
+
+	-- Calculate once per tick, while we know that everything is consistent with the position of the ship when this function was called
+	self.pointLayerGravityWellSlowdownFactor = self:getPointLayerGravityWellSlowdownFactor()
+end
+
+function game:getPointLayerGravityWellSlowdownFactor()
+	local total = 0
+	local referencePosition = self.ship.position
+
+	local exponent = consts.slowdownDistanceExponent
+
+	local topLayer = self.pointLayers[1]
+	if topLayer.topLayerOutOfRange then
+		-- TODO: Calculate
+		return 1
+	end
+
+	for pointLayerIndex, pointLayer in ipairs(self.pointLayers) do
+		local massSent
+		if pointLayer.features.mass == "sent" then
+			massSent = true
+		elseif pointLayer.features.mass == "unsent" then
+			massSent = false
+		else
+			goto continue
+		end
+
+		local parentOrigin, parentRadii, parentShapeTypeName
+		if not pointLayer.parentPointLayer then
+			parentOrigin = pointLayer.fixedParentObjectPosition
+			parentRadii = pointLayer.fixedParentObjectRadii
+			parentShapeTypeName = pointLayer.fixedParentObjectShapeTypeName
+		elseif pointLayer.parentPointLayer.currentObject then
+			parentOrigin = pointLayer.parentPointLayer.currentObject.position
+			parentRadii = pointLayer.parentPointLayer.currentObject.radii
+			parentShapeTypeName = pointLayer.parentPointLayer.currentObject.shapeTypeName
+		else
+			break
+		end
+		local positionRelativeFull = bm.vec3.toMathsiesVec3(referencePosition - parentOrigin)
+		local positionRelative = bm.vec3.toMathsiesVec3( -- Chunk sides have a length of 1
+			(referencePosition - parentOrigin) / pointLayer.chunkSize
+		)
+
+		local totalThisLayer = 0
+
+		local temp = mathsies.vec3() -- No need to generate tons of new vec3s
+		local xLower, xUpper = math.floor(positionRelative.x - 0.5), math.floor(positionRelative.x + 0.5)
+		local yLower, yUpper = math.floor(positionRelative.y - 0.5), math.floor(positionRelative.y + 0.5)
+		local zLower, zUpper = math.floor(positionRelative.z - 0.5), math.floor(positionRelative.z + 0.5)
+		local sampledChunksWidth = xUpper - xLower + 1
+		local sampledChunksHeight = yUpper - yLower + 1
+		local sampledChunksDepth = zUpper - zLower + 1
+		for x = xLower, xUpper do
+			for y = yLower, yUpper do
+				for z = zLower, zUpper do
+					local xInChunkBuffer = x % pointLayer.chunkBufferSideLength
+					local yInChunkBuffer = y % pointLayer.chunkBufferSideLength
+					local zInChunkBuffer = z % pointLayer.chunkBufferSideLength
+					local chunkBufferIndex = xInChunkBuffer + yInChunkBuffer * pointLayer.chunkBufferSideLength + zInChunkBuffer * pointLayer.chunkBufferSideLength * pointLayer.chunkBufferSideLength
+					local chunkExtraInfo = pointLayer.chunkExtraInfo[chunkBufferIndex]
+					if not (
+						chunkExtraInfo.x == x and
+						chunkExtraInfo.y == y and
+						chunkExtraInfo.z == z
+					) then
+						goto continue
+					end
+					for pointId = 0, pointLayer:getChunkPointCount(chunkBufferIndex) - 1 do
+						if not (
+							pointLayer.currentObject and
+							pointLayer.currentObject.chunkBufferIndex == chunkBufferIndex and
+							pointLayer.currentObject.pointId == pointId
+						) then
+							temp.x, temp.y, temp.z = pointLayer:getPointVars(chunkBufferIndex, pointId, "position", "float", 3)
+							temp.x = temp.x + x
+							temp.y = temp.y + y
+							temp.z = temp.z + z
+							local distance = mathsies.vec3.distance(positionRelative, temp)
+
+							local mass
+							if massSent then
+								mass = pointLayer:getPointVars(chunkBufferIndex, pointId, "mass", "float", 1)
+							else
+								mass = chunkExtraInfo.mass[pointId]
+							end
+
+							if distance * pointLayer.chunkSize > 0 then
+								-- if pointLayerIndex==2 then print(pointLayerIndex, "out", mass, distance * pointLayer.chunkSize, mass * (distance * pointLayer.chunkSize) ^ exponent) end
+								totalThisLayer = totalThisLayer + mass * (distance * pointLayer.chunkSize) ^ exponent
+							end
+						end
+					end
+					::continue::
+				end
+			end
+		end
+
+		local radiusChunks = parentRadii / pointLayer.chunkSize
+		local detail = 12
+		local sampleCount, sampledVolume = 0, 0 -- TEMP
+		local densityFunction = pointLayerShapeTypes[parentShapeTypeName].getDensity
+		local function sample(x, y, z, w, h, d)
+			sampleCount = sampleCount + 1
+			sampledVolume = sampledVolume + w * h * d
+
+			local averageMassPerPoint = pointLayerIndex == 1 and GM or 1.989e30 -- TEMP
+			local density = densityFunction(x, y, z) * pointLayer.maxPointDensity * averageMassPerPoint
+			local trueDeltaX = x * parentRadii.x - positionRelativeFull.x
+			local trueDeltaY = y * parentRadii.y - positionRelativeFull.y
+			local trueDeltaZ = z * parentRadii.z - positionRelativeFull.z
+			local trueW = w * parentRadii.x
+			local trueH = h * parentRadii.y
+			local trueD = d * parentRadii.z
+			local dist = math.sqrt(trueDeltaX ^ 2 + trueDeltaY ^ 2 + trueDeltaZ ^ 2)
+			if dist > 0 then
+				totalThisLayer = totalThisLayer + density * dist ^ exponent * trueW * trueH * trueD
+			end
+		end
+		-- Sample boxes in a grid that (TODO) decreases in detail the further out you go (TODO end), missing the cell containing the chunks that we have already checked the points of
+		local lerp, sign = util.lerp, util.sign
+		for xi = -detail, detail do
+			for yi = -detail, detail do
+				for zi = -detail, detail do
+					-- I got tired at this point. This code can probably be improved
+
+					local xi, xSide = math.abs(xi), sign(xi)
+					local yi, ySide = math.abs(yi), sign(yi)
+					local zi, zSide = math.abs(zi), sign(zi)
+
+					-- TODO: Make this work when outside chunk range
+
+					local sampleX, xCellSize
+					if xSide == -1 then
+						local xa = math.min(1, xLower / radiusChunks.x)
+						-- xLower / radiusChunks.x is approximately equal to (positionRelative.x / pointLayer.chunkSize - sampledChunksWidth / 2) / radiusChunks.x
+						local xb = -1
+						if xa <= xb then
+							goto continue
+						end
+						xCellSize = (xa - xb) / detail
+						sampleX = lerp(xa, xb, (xi + 0.5) / detail)
+					elseif xSide == 1 then
+						local xa = math.max(-1, (xUpper + 1) / radiusChunks.x)
+						local xb = 1
+						if xa >= xb then
+							goto continue
+						end
+						xCellSize = (xb - xa) / detail
+						sampleX = lerp(xa, xb, (xi + 0.5) / detail)
+					elseif math.abs(positionRelative.x / radiusChunks.x) < 1 then
+						xCellSize = (xUpper + 1 - xLower) / radiusChunks.x
+						sampleX = positionRelative.x / radiusChunks.x
+					else
+						goto continue
+					end
+
+					local sampleY, yCellSize
+					if ySide == -1 then
+						local ya = math.min(1, yLower / radiusChunks.y)
+						local yb = -1
+						if ya < yb then
+							goto continue
+						end
+						yCellSize = (ya - yb) / detail
+						sampleY = lerp(ya, yb, (yi + 0.5) / detail)
+					elseif ySide == 1 then
+						local ya = math.max(-1, (yUpper + 1) / radiusChunks.y)
+						local yb = 1
+						if ya > yb then
+							goto continue
+						end
+						yCellSize = (yb - ya) / detail
+						sampleY = lerp(ya, yb, (yi + 0.5) / detail)
+					elseif math.abs(positionRelative.y / radiusChunks.y) < 1 then
+						yCellSize = (yUpper + 1 - yLower) / radiusChunks.y
+						sampleY = positionRelative.y / radiusChunks.y
+					else
+						goto continue
+					end
+
+					local sampleZ, zCellSize
+					if zSide == -1 then
+						local za = math.min(1, zLower / radiusChunks.z)
+						local zb = -1
+						if za < zb then
+							goto continue
+						end
+						zCellSize = (za - zb) / detail
+						sampleZ = lerp(za, zb, (zi + 0.5) / detail)
+					elseif zSide == 1 then
+						local za = math.max(-1, (zUpper + 1) / radiusChunks.z)
+						local zb = 1
+						if za > zb then
+							goto continue
+						end
+						zCellSize = (zb - za) / detail
+						sampleZ = lerp(za, zb, (zi + 0.5) / detail)
+					elseif math.abs(positionRelative.z / radiusChunks.z) < 1 then
+						zCellSize = (zUpper + 1 - zLower) / radiusChunks.z
+						sampleZ = positionRelative.z / radiusChunks.z
+					else
+						goto continue
+					end
+
+					if xi == 0 and yi == 0 and zi == 0 then
+						goto continue
+					end
+
+					sample(sampleX, sampleY, sampleZ, xCellSize, yCellSize, zCellSize)
+
+					::continue::
+				end
+			end
+		end
+
+		-- TEMP
+		local chunkCheckedVolume = sampledChunksWidth * sampledChunksHeight * sampledChunksDepth / (radiusChunks.x * radiusChunks.y * radiusChunks.z)
+		-- is 2 ^ 3 - sampledVolume approximately equal to chunkCheckedVolume when the size of everything is small enough to avoid huge rounding error? (it should be!!!!!!!)
+		-- print(pointLayerIndex, sampleCount, chunkCheckedVolume, 2 ^ 3 - sampledVolume, totalThisLayer) -- -1 to 1 on each axis
+
+		total = total + totalThisLayer
+
+		::continue::
+	end
+
+	-- print(total, 1 / (total / consts.gravitySlowdownResultDivisor) ^ consts.gravitySlowdownResultExponent)
+
+	return total
 end
 
 function game:drawPointLayers()
@@ -517,7 +940,6 @@ function game:drawPointLayers()
 		-- preparationShader:send("skyToClip", {mathsies.mat4.components(skyToClip)}) -- TODO
 		preparationShader:send("skipIndex", skipIndex)
 		preparationShader:send("maxPointsPerChunk", pointLayer.maxPointsPerChunk)
-		preparationShader:send("pointCount", pointLayer.maxPoints)
 		preparationShader:send("IndirectDrawBuffer", self.pointIndirectDrawArgsBuffer)
 		preparationShader:send("Points", pointLayer.pointBuffer)
 		preparationShader:send("PointDrawables", self.pointDrawableBuffer)

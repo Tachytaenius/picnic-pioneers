@@ -19,9 +19,9 @@ function consts.load()
 
 	consts.mapmDigits = 4
 
-	consts.bytesPerFloat = 4
+	consts.bytesPerGPUVar = 4
 
-	consts.pointMinDistanceInChunk = 0.25 -- Use of this during generation is TODO!!!!
+	consts.pointMinDistanceInChunk = 0.03125 -- Use of this during generation is TODO!!!!
 
 	consts.idObjectTypes = util.makeBidirectional({
 		[0] = "galaxyChunk",
@@ -79,18 +79,26 @@ function consts.load()
 
 	-- Simulation/graphics parameters
 
+	consts.gravitationalConstant = 6.674e-11
+
 	consts.starLayerChunkSize = 4e17
 	consts.maxStellarDensity = 4.72e-51 -- Stellar density near the sun
 	consts.galaxyLayerChunkSize = 4e23
-	consts.maxGalacticDensity = 3e-69 -- Universe mass density divided by milky way mass
+	-- consts.maxGalacticDensity = 3e-69 -- Universe mass density divided by milky way mass
+	consts.maxGalacticDensity = 1e-70
 	consts.galaxyGroupPosition = bm.vec3(0, 0, 0)
-	consts.galaxyGroupRadii = mathsies.vec3(1e26) -- Radius does not need to be precise like position does
+	consts.galaxyGroupRadii = mathsies.vec3(1e27) -- Radius does not need to be precise like position does
+	consts.galaxyGroupShapeTypeName = "galaxyCluster"
+
+	consts.slowdownDistanceExponent = -3
 
 	consts.diskMeshVertices = 5
 	consts.pointAngularRadius = 0.005
 	consts.pointFadeStart = 0.9
 
+	consts.celestialLuminanceMultiplier = 1 / 5e-4
 	consts.pointPreparationThreadgroupSize = 256
+	consts.pointLayerShapeTypeAmountIntegralSteps = 32
 end
 
 return consts
