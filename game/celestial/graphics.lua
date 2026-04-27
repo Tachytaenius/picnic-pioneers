@@ -8,6 +8,7 @@ function game:drawCelestial()
 	love.graphics.clear(0, 0, 0, 1)
 
 	self:drawPointLayers()
+	self:drawStarSystem()
 
 	love.graphics.setCanvas(self.screenCanvasses.celestialOutputCanvas)
 	self.brightnessMultiplyShader:send("multiplier", consts.celestialLuminanceMultiplier)

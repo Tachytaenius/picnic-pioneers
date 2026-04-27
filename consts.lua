@@ -79,7 +79,10 @@ function consts.load()
 
 	-- Simulation/graphics parameters
 
-	consts.gravitationalConstant = 6.674e-11
+	consts.gravitationalConstant = 6.6743e-11
+	consts.planckConstant = 6.6261e-34
+	consts.speedOfLight = 299792458
+	consts.stefanBoltzmannConstant = 5.67037442e-8
 
 	consts.starLayerChunkSize = 4e17
 	consts.maxStellarDensity = 4.72e-51 -- Stellar density near the sun
@@ -90,15 +93,21 @@ function consts.load()
 	consts.galaxyGroupRadii = mathsies.vec3(1e27) -- Radius does not need to be precise like position does
 	consts.galaxyGroupShapeTypeName = "galaxyCluster"
 
-	consts.slowdownDistanceExponent = -3
+	consts.slowdownDistanceExponent = -6
+	consts.gravityFactorExponent = 1/6
+	consts.gravityMovementRate = 4e3
 
 	consts.diskMeshVertices = 5
-	consts.pointAngularRadius = 0.005
+	consts.pointAngularRadius = 0.006
 	consts.pointFadeStart = 0.9
 
-	consts.celestialLuminanceMultiplier = 1 / 5e-4
+	consts.celestialLuminanceMultiplier = 1 / 1e-5
 	consts.pointPreparationThreadgroupSize = 256
 	consts.pointLayerShapeTypeAmountIntegralSteps = 32
+
+	-- TEMP
+	consts.starDensity = 1408
+	consts.starEffectiveTemperature = 5772
 end
 
 return consts

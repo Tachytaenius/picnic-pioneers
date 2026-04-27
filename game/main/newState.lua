@@ -13,6 +13,7 @@ end
 function game:initState()
 	-- Common graphics init
 	self.screenCanvasses = {} -- Canvasses for which the size is supposed to match the game output size
+	self.dummyTexture = love.graphics.newImage(love.image.newImageData(1, 1))
 
 	self:initShip()
 	self:initCelestial()

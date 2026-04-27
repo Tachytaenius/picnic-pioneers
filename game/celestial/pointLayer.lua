@@ -15,6 +15,9 @@ local function randomTODO()
 	-- TODO: Not this!
 	return love.math.random()
 end
+local function randomRangeTODO(lower, upper)
+	return lower + love.math.random() * (upper - lower)
+end
 
 local galaxyPointLayerInfo = {}
 
@@ -29,20 +32,24 @@ galaxyPointLayerInfo.features = {
 			name = "ellipticalGalaxy",
 			weight = 1,
 			scaleMin = 2e19,
-			scaleMax = 8e21
+			scaleMax = 8e21,
+			-- NOTE: If a factor is added to make the distribution of scales non-uniform, ensure that the per-layer average mass estimates are changed accordingly
+			zScaleRatioMin = 0.01, -- Less than 1 is flatter
+			zScaleRatioMax = 0.01
 		}
 		-- We also add spiral galaxies with arms
 	}
 }
-for n = 2, 4 do
-	local weight = 5
-	table.insert(galaxyPointLayerInfo.features.shapeTypeSet, {
-		name = "spiralGalaxy" .. n .. "Arms",
-		weight = weight,
-		scaleMin = 8e19,
-		scaleMax = 2e22
-	})
-end
+-- 
+-- for n = 2, 4 do
+-- 	local weight = 5
+-- 	table.insert(galaxyPointLayerInfo.features.shapeTypeSet, {
+-- 		name = "spiralGalaxy" .. n .. "Arms",
+-- 		weight = weight,
+-- 		scaleMin = 8e19,
+-- 		scaleMax = 2e22
+-- 	})
+-- end
 
 function galaxyPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, chunkBufferIndex, count)
 	local randomChoice = util.weightedRandomChoice
@@ -50,43 +57,38 @@ function galaxyPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, chunkB
 	local extraInfo = self.chunkExtraInfo[chunkBufferIndex]
 	local radii = extraInfo.radii
 	local mass = extraInfo.mass
-	local nextLayerChunkSize = self.childPointLayer.chunkSize
 	local nextLayerMaxDensity = self.childPointLayer.maxPointDensity
-	-- TODO: Calculate all the way from base layer (stars) using shape types and weights etc to get these values
-	local averageMassPerContainedPoint = 1.989e30 -- TEMP
-	local averageLuminousFluxPerContainedPointR = 3.562e28 -- TEMP -- Proper units
-	local averageLuminousFluxPerContainedPointG = 3.562e28
-	local averageLuminousFluxPerContainedPointB = 3.562e28
+	local nextLayerAverageMassPerPoint = self.childPointLayer.averageMassPerPoint
+	local nextLayerAverageLuminousFluxRPerPoint = self.childPointLayer.averageLuminousFluxRPerPoint
+	local nextLayerAverageLuminousFluxGPerPoint = self.childPointLayer.averageLuminousFluxGPerPoint
+	local nextLayerAverageLuminousFluxBPerPoint = self.childPointLayer.averageLuminousFluxBPerPoint
 	local luminousFluxScale = self.chunkSize ^ -2
 	for i = 0, count - 1 do
 		local x = randomTODO()
 		local y = randomTODO()
 		local z = randomTODO()
 
-		-- local choice = randomChoice(shapeTypeSet, randomGeneratorTODO)
-		-- local shapeTypeId = pointLayerShapeTypes[choice.name].id
-		-- local scale = randomTODO() * (choice.scaleMax - choice.scaleMin) + choice.scaleMin
-		-- local shapeTypeId = pointLayerShapeTypes.testDisk.id -- TEMP
-		local shapeTypeId = pointLayerShapeTypes.galaxyCluster.id
-		local scale = 8e20 -- TEMP
+		local choice = randomChoice(shapeTypeSet, randomGeneratorTODO)
+		local shapeTypeId = pointLayerShapeTypes[choice.name].id
 
 		-- NOTE/TEMP/TODO? changes made that may be wrong: scale is no longer divided by nextLayerChunkSize, amountWIthin is now multiplied by nextLayerMaxDensity, and there is no multiplication by nextLayerChunkSize when creating a currentObject
 
+		local scale = randomRangeTODO(choice.scaleMin, choice.scaleMax)
+		local zScaleRatio = randomRangeTODO(choice.zScaleRatioMin, choice.zScaleRatioMax)
+
 		local xRadius = scale
 		local yRadius = scale
-		local zRadius = scale / 100 -- TEMP, etc etc etc
+		local zRadius = scale * zScaleRatio
 		radii[i * 3] = xRadius
 		radii[i * 3 + 1] = yRadius
 		radii[i * 3 + 2] = zRadius
 
 		local amountWithin = pointLayerShapeTypes[shapeTypeId].baseObjectAmount * xRadius * yRadius * zRadius * nextLayerMaxDensity -- Estimate
-		mass[i] = amountWithin * averageMassPerContainedPoint
-		-- print(mass[i])
-		GM = mass[i] -- TEMP!!!!!
+		mass[i] = amountWithin * nextLayerAverageMassPerPoint
 
-		local r = amountWithin * averageLuminousFluxPerContainedPointR * luminousFluxScale
-		local g = amountWithin * averageLuminousFluxPerContainedPointG * luminousFluxScale
-		local b = amountWithin * averageLuminousFluxPerContainedPointB * luminousFluxScale
+		local r = amountWithin * nextLayerAverageLuminousFluxRPerPoint * luminousFluxScale
+		local g = amountWithin * nextLayerAverageLuminousFluxGPerPoint * luminousFluxScale
+		local b = amountWithin * nextLayerAverageLuminousFluxBPerPoint * luminousFluxScale
 
 		self:setPoint(chunkBufferIndex, i, x, y, z, r, g, b, shapeTypeId)
 	end
@@ -96,17 +98,15 @@ function galaxyPointLayerInfo:generateRemainingCurrentObjectInfo()
 	local currentObject = self.currentObject
 end
 
-local starPointLayerInfo = {}
+local starSystemPointLayerInfo = {}
 
-starPointLayerInfo.features = {
+starSystemPointLayerInfo.features = {
 	mass = "unsent",
-	properScaleRadius = "unsent",
 	bodies = true -- Final layer, treated differently
 }
 
-function starPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, chunkBufferIndex, count)
+function starSystemPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, chunkBufferIndex, count)
 	local extraInfo = self.chunkExtraInfo[chunkBufferIndex]
-	local properScaleRadius = extraInfo.properScaleRadius
 	local mass = extraInfo.mass
 	local luminousFluxScale = self.chunkSize ^ -2
 	for i = 0, count - 1 do
@@ -114,21 +114,26 @@ function starPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, chunkBuf
 		local y = randomTODO()
 		local z = randomTODO()
 
-		local r = (randomTODO() * 0.5 + 0.75) * 3.562e28 * luminousFluxScale
-		local g = (randomTODO() * 0.5 + 0.75) * 3.562e28 * luminousFluxScale
-		local b = (randomTODO() * 0.5 + 0.75) * 3.562e28 * luminousFluxScale
-
-		local radius = 6.957e8 -- TEMP/TODO
-		properScaleRadius[i] = radius
-		local starMass = 1.989e30 * 10 ^ (randomTODO() * 2 - 1)
+		local starMass = randomRangeTODO(1.989e30 * 0.5, 1.989e30 * 1.5) -- TEMP, define elsewhere
 		mass[i] = starMass
+		local density = consts.starDensity
+		local temperature = consts.starEffectiveTemperature
+		local volume = starMass / density
+		local radius = (volume / (2 / 3 * consts.tau)) ^ (1 / 3)
+		local area = 2 * consts.tau * radius ^ 2
+		local luminousExitance = consts.stefanBoltzmannConstant * temperature ^ 4
+		local luminousFlux = luminousExitance * area -- TEMP, replace all the incorrect photometry terms with correct (spectral!) radiometric ones. and MAKE SURE that the vec3 spectral flux --> RGB is correct!!!!
+		local r = luminousFlux * luminousFluxScale * randomRangeTODO(0.5, 1.5)
+		local g = luminousFlux * luminousFluxScale * randomRangeTODO(0.5, 1.5)
+		local b = luminousFlux * luminousFluxScale * randomRangeTODO(0.5, 1.5)
 
 		self:setPoint(chunkBufferIndex, i, x, y, z, r, g, b)
 	end
 end
 
-function starPointLayerInfo:generateRemainingCurrentObjectInfo()
+function starSystemPointLayerInfo:generateRemainingCurrentObjectInfo()
 	local currentObject = self.currentObject
+	self.gameObject:generateStarSystem(currentObject)
 end
 
 function game:initPointLayers()
@@ -142,11 +147,11 @@ function game:initPointLayers()
 	topLayer.fixedParentObjectPosition = consts.galaxyGroupPosition
 	topLayer.fixedParentObjectRadii = consts.galaxyGroupRadii
 	topLayer.fixedParentObjectShapeTypeName = consts.galaxyGroupShapeTypeName
-	self:newPointLayer("stars", "Stars", consts.starLayerChunkSize, consts.maxStellarDensity, 9, starPointLayerInfo)
+	self:newPointLayer("starSystems", "Star Systems", consts.starLayerChunkSize, consts.maxStellarDensity, 9, starSystemPointLayerInfo)
 
 	-- Find distance at which top layer shape has the same angular radius as points
 	local topRadius = math.max(topLayer.fixedParentObjectRadii.x, topLayer.fixedParentObjectRadii.y, topLayer.fixedParentObjectRadii.z)
-	topLayer.fixedParentObjectPointDistance = topRadius / math.sqrt(1 - math.cos(consts.pointAngularRadius) ^ 2)
+	topLayer.fixedParentObjectPointDistance = self:getSphereResolvableDistance(topRadius)
 
 	local highestMaxPoints
 	for _, pointLayer in ipairs(self.pointLayers) do
@@ -167,6 +172,50 @@ function game:initPointLayers()
 			assert(pointLayer.features.shapeTypeSet and not pointLayer.features.bodies, assertMessage)
 		elseif i == #self.pointLayers then
 			assert(not pointLayer.features.shapeTypeSet and pointLayer.features.bodies, assertMessage)
+		end
+	end
+
+	-- TEMP/TODO
+	-- TODO: Verify
+	local starAverageMass = 1.989e30
+	local starAverageLuminousFluxR = 3.828e26 -- Not even exactly calculated from the range used in generateChunk
+	local starAverageLuminousFluxG = 3.828e26
+	local starAverageLuminousFluxB = 3.828e26
+	for i = #self.pointLayers, 1, -1 do
+		local pointLayer = self.pointLayers[i]
+		if i == #self.pointLayers then
+			pointLayer.averageMassPerPoint = starAverageMass
+			pointLayer.averageLuminousFluxRPerPoint = starAverageLuminousFluxR
+			pointLayer.averageLuminousFluxGPerPoint = starAverageLuminousFluxG
+			pointLayer.averageLuminousFluxBPerPoint = starAverageLuminousFluxB
+		else
+			local childPointLayer = pointLayer.childPointLayer
+			local totalWeight = 0
+			local averageAmountPreDivide = 0
+			for _, shapeTypeInfo in ipairs(pointLayer.features.shapeTypeSet) do
+				-- TODO: When adding attenuation, consider the average luminous flux seen from all directions. Wait, shouldn't that be luminous intensity? (TODO: Investigate any potential errors around that)
+
+				local minS, maxS = shapeTypeInfo.scaleMin, shapeTypeInfo.scaleMax
+				local minZR, maxZR = shapeTypeInfo.zScaleRatioMin, shapeTypeInfo.zScaleRatioMax
+				local averageBaseObjectAmountMultiplier =
+					1 / 8 *
+					(minS + maxS) *
+					(minS ^ 2 + maxS ^ 2) *
+					(minZR + maxZR)
+
+				local averageAmountThisShapeTypeInfo =
+					pointLayerShapeTypes[shapeTypeInfo.name].baseObjectAmount *
+					averageBaseObjectAmountMultiplier *
+					childPointLayer.maxPointDensity
+
+				averageAmountPreDivide = averageAmountPreDivide + averageAmountThisShapeTypeInfo
+				totalWeight = totalWeight + shapeTypeInfo.weight
+			end
+			local averageAmount = averageAmountPreDivide / totalWeight
+			pointLayer.averageMassPerPoint = averageAmount * childPointLayer.averageMassPerPoint
+			pointLayer.averageLuminousFluxRPerPoint = averageAmount * childPointLayer.averageLuminousFluxRPerPoint
+			pointLayer.averageLuminousFluxGPerPoint = averageAmount * childPointLayer.averageLuminousFluxGPerPoint
+			pointLayer.averageLuminousFluxBPerPoint = averageAmount * childPointLayer.averageLuminousFluxBPerPoint
 		end
 	end
 end
@@ -387,8 +436,7 @@ function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBu
 	tryFeature("luminousFlux", "floatvec3", "LUMINOUS_FLUX", "sent")
 	tryFeature("shapeTypeId", "uint32", "SHAPE_TYPE")
 	tryFeature("radii", "floatvec3", "RADII")
-	tryFeature("mass", "float", "MASS") -- For final layer (stars)
-	tryFeature("properScaleRadius", "float", nil) -- For final layer (stars)
+	tryFeature("mass", "float", "MASS") -- For final layer (star systems)
 
 	new.pointBuffer = love.graphics.newBuffer(new.pointBufferFormat, new.maxPoints, {
 		shaderstorage = true,
@@ -462,6 +510,9 @@ function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBu
 	end
 	table.insert(self.pointLayers, new)
 	new.index = #self.pointLayers
+
+	new.gameObject = self -- HACK...
+
 	return new
 end
 
@@ -537,9 +588,16 @@ function game:handlePointLayers()
 		end
 
 		-- Reveals bug, will fix. move out of galaxy render range and start holding c and suddenly galaxy is broken
-		if love.keyboard.isDown("c") --[[and not pointLayer.parentPointLayer]] then -- TEMP
+		-- if love.keyboard.isDown("c") --[[and not pointLayer.parentPointLayer]] then -- TEMP
+		-- 	local x, y, z = pointLayer:getPointVars(0, 0, "position", "float", 3)
+		-- 	self.ship.position = parentOrigin + pointLayer.chunkSize * bm.vec3(0+x, 0+y, 0+z)
+		-- 	if not pointLayer.childPointLayer and pointLayer.currentObject then
+		-- 		self.ship.position = self.ship.position - bm.vec3(0, 0, self:getSphereResolvableDistance(pointLayer.currentObject.bodies[1].radius))
+		-- 	end
+		-- end
+		if love.keyboard.isDown("c") and not pointLayer.parentPointLayer then -- Even more TEMP
 			local x, y, z = pointLayer:getPointVars(0, 0, "position", "float", 3)
-			self.ship.position = parentOrigin + pointLayer.chunkSize * bm.vec3(0+x, 0+y, 0+z)
+			self.ship.position = parentOrigin + pointLayer.chunkSize * bm.vec3(0+x, 0+y, 0+z) - bm.vec3(0, 0, 5e22)
 		end
 
 		if not pointLayer.parentPointLayer then
@@ -601,7 +659,6 @@ function game:handlePointLayers()
 					currentObject.shapeTypeName = pointLayerShapeTypes[shapeTypeId].name
 				end
 				if pointLayer.features.radii then
-					local nextLayerChunkSize = pointLayer.childPointLayer.chunkSize
 					local xRadius, yRadius, zRadius
 					if pointLayer.features.radii == "sent" then
 						xRadius, yRadius, zRadius = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "radii", "float", 3)
@@ -612,6 +669,15 @@ function game:handlePointLayers()
 					end
 					assert(xRadius and yRadius and zRadius, "Missing radii")
 					currentObject.radii = mathsies.vec3(xRadius, yRadius, zRadius) -- TODO: Make sure it never goes over separation between points (/2)
+				end
+				if pointLayer.features.mass then
+					local mass
+					if pointLayer.features.mass == "sent" then
+						mass = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "mass", "float", 1)
+					elseif pointLayer.features.mass == "unsent" then
+						mass = chunkExtraInfo.mass[closestIdInChunk]
+					end
+					currentObject.mass = mass
 				end
 				-- Remaining features are generated (or fetched from extra info) in possibly layer-specific ways
 				pointLayer:generateRemainingCurrentObjectInfo()
@@ -712,7 +778,6 @@ function game:getPointLayerGravityWellSlowdownFactor()
 							end
 
 							if distance * pointLayer.chunkSize > 0 then
-								-- if pointLayerIndex==2 then print(pointLayerIndex, "out", mass, distance * pointLayer.chunkSize, mass * (distance * pointLayer.chunkSize) ^ exponent) end
 								totalThisLayer = totalThisLayer + mass * (distance * pointLayer.chunkSize) ^ exponent
 							end
 						end
@@ -730,7 +795,7 @@ function game:getPointLayerGravityWellSlowdownFactor()
 			sampleCount = sampleCount + 1
 			sampledVolume = sampledVolume + w * h * d
 
-			local averageMassPerPoint = pointLayerIndex == 1 and GM or 1.989e30 -- TEMP
+			local averageMassPerPoint = pointLayer.averageMassPerPoint
 			local density = densityFunction(x, y, z) * pointLayer.maxPointDensity * averageMassPerPoint
 			local trueDeltaX = x * parentRadii.x - positionRelativeFull.x
 			local trueDeltaY = y * parentRadii.y - positionRelativeFull.y
@@ -840,17 +905,14 @@ function game:getPointLayerGravityWellSlowdownFactor()
 			end
 		end
 
-		-- TEMP
-		local chunkCheckedVolume = sampledChunksWidth * sampledChunksHeight * sampledChunksDepth / (radiusChunks.x * radiusChunks.y * radiusChunks.z)
-		-- is 2 ^ 3 - sampledVolume approximately equal to chunkCheckedVolume when the size of everything is small enough to avoid huge rounding error? (it should be!!!!!!!)
-		-- print(pointLayerIndex, sampleCount, chunkCheckedVolume, 2 ^ 3 - sampledVolume, totalThisLayer) -- -1 to 1 on each axis
+		-- TODO: Verify the maths. Is 2 ^ 3 - sampledVolume approximately equal to chunkCheckedVolume when the size of everything is small enough to avoid huge rounding error? It should be!
+		-- local chunkCheckedVolume = sampledChunksWidth * sampledChunksHeight * sampledChunksDepth / (radiusChunks.x * radiusChunks.y * radiusChunks.z)
+		-- print(2 ^ 3 - sampledVolume, chunkCheckedVolume, (2 ^ 3 - sampledVolume) / chunkCheckedVolume)
 
 		total = total + totalThisLayer
 
 		::continue::
 	end
-
-	-- print(total, 1 / (total / consts.gravitySlowdownResultDivisor) ^ consts.gravitySlowdownResultExponent)
 
 	return total
 end
@@ -910,6 +972,7 @@ function game:drawPointLayers()
 		local diskSolidAngle = consts.tau * diskDistanceToSphere
 		local scaleToGetAngularRadius = math.tan(consts.pointAngularRadius)
 		local luminanceCalcConst = 1 / (diskSolidAngle * 2 * consts.tau)
+
 		local diagonalFOV = cameraVerticalFOV * math.sqrt(1 ^ 2 + aspectRatio ^ 2) -- Angular distance from camera forwards at corners of screen
 		local maxAngleFromCentre = diagonalFOV / 2 + consts.pointAngularRadius
 		local minDot = math.cos(maxAngleFromCentre)

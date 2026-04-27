@@ -23,12 +23,19 @@ function game:initCelestial()
 	})
 	self.pointDiskMesh = util.generatePointDiskMesh(consts.diskMeshVertices)
 	self.pointDrawablesShader = love.graphics.newShader("shaders/drawing/pointDrawables.glsl", {defines = {INSTANCED = true}})
+	self.individualPointShader = love.graphics.newShader("shaders/drawing/pointDrawables.glsl")
 
 	self.brightnessMultiplyShader = love.graphics.newShader("shaders/drawing/brightnessMultiply.glsl")
 
+	self.starShader = love.graphics.newShader(
+		"#line 1\n" .. love.filesystem.read("shaders/include/raycasts.glsl") ..
+		"#line 1\n" .. love.filesystem.read("shaders/include/skyDirection.glsl") ..
+		"#line 1\n" .. love.filesystem.read("shaders/drawing/star.glsl")
+	)
+
 	local width, height = love.graphics.getDimensions()
 	self.screenCanvasses.celestialLuminanceCanvas = love.graphics.newCanvas(width, height, {
-		format = "rgba16f",
+		format = "rgba32f",
 		debugname = "Celestial Luminance Canvas"
 	})
 	self.screenCanvasses.celestialOutputCanvas = love.graphics.newCanvas(width, height, {
@@ -39,8 +46,7 @@ function game:initCelestial()
 	self.ship = {
 		position = bm.vec3(0, 0, 0), -- Arbitrary precision, used to define position with enough information at each size scale
 		orientation = mathsies.quat(),
-		verticalFOV = math.rad(80),
-		gravityMovementRate = consts.gravityMovementRate
+		verticalFOV = math.rad(80)
 	}
 
 	-- Initial handlePointLayers call to get everything consistent, including pointLayerGravityWellSlowdownFactor for first handleShipMovement call
