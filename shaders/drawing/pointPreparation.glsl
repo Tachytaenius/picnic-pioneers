@@ -12,8 +12,8 @@ struct Point {
 #ifdef FEATURE_LUMINOUS_FLUX
 	vec3 luminousFlux;
 #endif
-#ifdef FEATURE_SHAPE_TYPE
-	uint shapeTypeId;
+#ifdef FEATURE_SHAPE_TYPE_SUBTYPE
+	uvec2 shapeTypeSubtypeIds;
 #endif
 };
 readonly buffer Points {

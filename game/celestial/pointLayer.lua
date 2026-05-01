@@ -7,13 +7,12 @@ local mathsies = require("lib.mathsies")
 
 local util = require("util")
 local consts = require("consts")
-local pointLayerShapeTypes = require("pointLayerShapeTypes")
 
 local game = {}
 
-local function randomTODO()
+local function randomTODO(...)
 	-- TODO: Not this!
-	return love.math.random()
+	return love.math.random(...)
 end
 local function randomRangeTODO(lower, upper)
 	return lower + love.math.random() * (upper - lower)
@@ -23,7 +22,7 @@ local galaxyPointLayerInfo = {}
 
 galaxyPointLayerInfo.features = {
 	-- "sent" means present on both CPU and GPU, "unsent" means only present on CPU, nil means not present
-	shapeTypeId = "sent",
+	shapeTypeSubtypeIds = "sent",
 	radii = "unsent",
 	mass = "unsent",
 
@@ -31,25 +30,24 @@ galaxyPointLayerInfo.features = {
 		{
 			name = "ellipticalGalaxy",
 			weight = 1,
-			scaleMin = 2e19,
-			scaleMax = 8e21,
+			scaleMin = 5e19,
+			scaleMax = 1e21,
 			-- NOTE: If a factor is added to make the distribution of scales non-uniform, ensure that the per-layer average mass estimates are changed accordingly
-			zScaleRatioMin = 0.01, -- Less than 1 is flatter
-			zScaleRatioMax = 0.01
+			zScaleRatioMin = 1.5, -- Less than 1 is flatter
+			zScaleRatioMax = 4
 		}
 		-- We also add spiral galaxies with arms
 	}
 }
--- 
--- for n = 2, 4 do
--- 	local weight = 5
--- 	table.insert(galaxyPointLayerInfo.features.shapeTypeSet, {
--- 		name = "spiralGalaxy" .. n .. "Arms",
--- 		weight = weight,
--- 		scaleMin = 8e19,
--- 		scaleMax = 2e22
--- 	})
--- end
+
+table.insert(galaxyPointLayerInfo.features.shapeTypeSet, {
+	name = "spiralGalaxy",
+	weight = 4,
+	scaleMin = 8e19,
+	scaleMax = 4e21,
+	zScaleRatioMin = 0.075,
+	zScaleRatioMax = 0.2,
+})
 
 function galaxyPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, chunkBufferIndex, count)
 	local randomChoice = util.weightedRandomChoice
@@ -69,9 +67,11 @@ function galaxyPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, chunkB
 		local z = randomTODO()
 
 		local choice = randomChoice(shapeTypeSet, randomGeneratorTODO)
-		local shapeTypeId = pointLayerShapeTypes[choice.name].id
+		local shapeType = self.gameObject.pointLayerShapeTypes[choice.name]
+		local shapeTypeId = shapeType.id
+		local shapeSubtypeId = randomTODO(0, shapeType.subtypeCount - 1)
 
-		-- NOTE/TEMP/TODO? changes made that may be wrong: scale is no longer divided by nextLayerChunkSize, amountWIthin is now multiplied by nextLayerMaxDensity, and there is no multiplication by nextLayerChunkSize when creating a currentObject
+		-- NOTE/TEMP/TODO? changes made that may be wrong: scale is no longer divided by nextLayerChunkSize, amountWithin is now multiplied by nextLayerMaxDensity, and there is no multiplication by nextLayerChunkSize when creating a currentObject
 
 		local scale = randomRangeTODO(choice.scaleMin, choice.scaleMax)
 		local zScaleRatio = randomRangeTODO(choice.zScaleRatioMin, choice.zScaleRatioMax)
@@ -83,14 +83,14 @@ function galaxyPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, chunkB
 		radii[i * 3 + 1] = yRadius
 		radii[i * 3 + 2] = zRadius
 
-		local amountWithin = pointLayerShapeTypes[shapeTypeId].baseObjectAmount * xRadius * yRadius * zRadius * nextLayerMaxDensity -- Estimate
+		local amountWithin = shapeType.subtypeBaseObjectAmounts[shapeSubtypeId] * xRadius * yRadius * zRadius * nextLayerMaxDensity -- Estimate
 		mass[i] = amountWithin * nextLayerAverageMassPerPoint
 
 		local r = amountWithin * nextLayerAverageLuminousFluxRPerPoint * luminousFluxScale
 		local g = amountWithin * nextLayerAverageLuminousFluxGPerPoint * luminousFluxScale
 		local b = amountWithin * nextLayerAverageLuminousFluxBPerPoint * luminousFluxScale
 
-		self:setPoint(chunkBufferIndex, i, x, y, z, r, g, b, shapeTypeId)
+		self:setPoint(chunkBufferIndex, i, x, y, z, r, g, b, shapeTypeId, shapeSubtypeId)
 	end
 end
 
@@ -137,7 +137,7 @@ function starSystemPointLayerInfo:generateRemainingCurrentObjectInfo()
 end
 
 function game:initPointLayers()
-	pointLayerShapeTypes.load()
+	self:loadShapeTypes()
 
 	self.pointLayers = {}
 
@@ -147,6 +147,7 @@ function game:initPointLayers()
 	topLayer.fixedParentObjectPosition = consts.galaxyGroupPosition
 	topLayer.fixedParentObjectRadii = consts.galaxyGroupRadii
 	topLayer.fixedParentObjectShapeTypeName = consts.galaxyGroupShapeTypeName
+	topLayer.fixedParentObjectShapeSubtypeId = 0 -- TODO: Allow selecting from closest subtype to given parameters...?
 	self:newPointLayer("starSystems", "Star Systems", consts.starLayerChunkSize, consts.maxStellarDensity, 9, starSystemPointLayerInfo)
 
 	-- Find distance at which top layer shape has the same angular radius as points
@@ -203,10 +204,16 @@ function game:initPointLayers()
 					(minS ^ 2 + maxS ^ 2) *
 					(minZR + maxZR)
 
-				local averageAmountThisShapeTypeInfo =
-					pointLayerShapeTypes[shapeTypeInfo.name].baseObjectAmount *
-					averageBaseObjectAmountMultiplier *
-					childPointLayer.maxPointDensity
+				local total = 0
+				local shapeType = self.pointLayerShapeTypes[shapeTypeInfo.name]
+				-- shapeTypeInfo is the point layer's usage of the shape, shapeType is the shape type itself
+				for subtypeId = 0, shapeType.subtypeCount - 1 do
+					total = total +
+						shapeType.subtypeBaseObjectAmounts[subtypeId] *
+						averageBaseObjectAmountMultiplier *
+						childPointLayer.maxPointDensity
+				end
+				local averageAmountThisShapeTypeInfo = total / shapeType.subtypeCount
 
 				averageAmountPreDivide = averageAmountPreDivide + averageAmountThisShapeTypeInfo
 				totalWeight = totalWeight + shapeTypeInfo.weight
@@ -223,18 +230,27 @@ end
 local pointLayerFunctions = {}
 
 function pointLayerFunctions:getDensity(realX, realY, realZ) -- The position is in units where 1 is the side length of a chunk. Returned density is a proportion from 0 to point layer max density
-	local shapeTypeName, size
+	local shapeTypeName, shapeSubtypeId, size
 	if self.parentPointLayer then
 		local currentObject = self.parentPointLayer.currentObject
 		assert(currentObject, "Should not be calling getDensity on a point layer if its parent doesn't have a current object")
 		shapeTypeName = currentObject.shapeTypeName
+		shapeSubtypeId = currentObject.shapeSubtypeId
 		size = currentObject.radii
 	else
 		shapeTypeName = self.fixedParentObjectShapeTypeName
+		shapeSubtypeId = self.fixedParentObjectShapeSubtypeId
 		size = self.fixedParentObjectRadii
 	end
-	local densityFunction = pointLayerShapeTypes[shapeTypeName].getDensity
-	return densityFunction(realX / size.x * self.chunkSize, realY / size.y * self.chunkSize, realZ / size.z * self.chunkSize)
+	local shapeType = self.gameObject.pointLayerShapeTypes[shapeTypeName]
+	local densityFunction = shapeType.getDensity
+	local densityParametersScratchTable = self.gameObject:decodeShapeSubtypeIntoScratchTable(shapeType, shapeSubtypeId)
+	return densityFunction(
+		realX / size.x * self.chunkSize,
+		realY / size.y * self.chunkSize,
+		realZ / size.z * self.chunkSize,
+		unpack(densityParametersScratchTable)
+	)
 end
 
 function pointLayerFunctions:getBoundingBoxChunks()
@@ -297,7 +313,12 @@ function pointLayerFunctions:getPointVars(chunkBufferIndex, pointId, name, type,
 end
 
 function pointLayerFunctions:generateChunkCommon(realX, realY, realZ, chunkId, chunkBufferIndex)
-	local density = self:getDensity(realX, realY, realZ)
+	local density = self:getDensity(
+		-- Density is sampled in middle of chunk
+		realX + 0.5,
+		realY + 0.5,
+		realZ + 0.5
+	)
 	local amount = density * self.maxPointDensity * self.chunkVolume -- TODO: Rename properly.
 	local count = math.floor(amount)
 	if randomTODO() < amount % 1 then -- Use fractional part of amount as a probability
@@ -407,7 +428,6 @@ function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBu
 	new.maxPointsPerChunk = math.ceil(new.chunkVolume * new.maxPointDensity)
 	new.maxPoints = new.chunkBufferTotalSize * new.maxPointsPerChunk
 
-	-- TODO: Don't waste VRAM on unsent features
 	-- Add features to the following two tables
 	new.pointBufferFormat = {}
 	local defines = {
@@ -434,7 +454,7 @@ function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBu
 	end
 	tryFeature("position", "floatvec3", "POSITION", "sent")
 	tryFeature("luminousFlux", "floatvec3", "LUMINOUS_FLUX", "sent")
-	tryFeature("shapeTypeId", "uint32", "SHAPE_TYPE")
+	tryFeature("shapeTypeSubtypeIds", "uint32vec2", "SHAPE_TYPE_SUBTYPE")
 	tryFeature("radii", "floatvec3", "RADII")
 	tryFeature("mass", "float", "MASS") -- For final layer (star systems)
 
@@ -461,7 +481,7 @@ function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBu
 	}
 	for _, variable in ipairs(new.pointBuffer:getFormat()) do
 		local num, type
-		if variable.format == "float" or variable.format == "int" or variable.format == "uint32" then
+		if variable.format == "float" or variable.format == "int32" or variable.format == "uint32" then
 			num = 1
 			type = variable.format
 		else
@@ -514,6 +534,11 @@ function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBu
 	new.gameObject = self -- HACK...
 
 	return new
+end
+
+function game:finishHandlingPointLayers(pointLayer)
+	pointLayer.currentObject = nil
+	self:clearPointLayers(pointLayer.index + 1)
 end
 
 function game:handlePointLayers()
@@ -595,9 +620,21 @@ function game:handlePointLayers()
 		-- 		self.ship.position = self.ship.position - bm.vec3(0, 0, self:getSphereResolvableDistance(pointLayer.currentObject.bodies[1].radius))
 		-- 	end
 		-- end
-		if love.keyboard.isDown("c") and not pointLayer.parentPointLayer then -- Even more TEMP
-			local x, y, z = pointLayer:getPointVars(0, 0, "position", "float", 3)
-			self.ship.position = parentOrigin + pointLayer.chunkSize * bm.vec3(0+x, 0+y, 0+z) - bm.vec3(0, 0, 5e22)
+		-- if love.keyboard.isDown("c") and not pointLayer.parentPointLayer then -- Even more TEMP
+		-- 	local x, y, z = pointLayer:getPointVars(0, 0, "position", "float", 3)
+		-- 	self.ship.position = parentOrigin + pointLayer.chunkSize * bm.vec3(0+x, 0+y, 0+z) - bm.vec3(0, 0, 5e22)
+		-- end
+		if love.keyboard.isDown("c") and not pointLayer.parentPointLayer then
+			if pointLayer:getChunkPointCount(0) == 0 then
+				self.ship.position = bm.vec3.clone(parentOrigin)
+			else
+				local x, y, z = pointLayer:getPointVars(0, 0, "position", "float", 3)
+				self.ship.position = parentOrigin + pointLayer.chunkSize * bm.vec3(0+x, 0+y, 0+z) - bm.vec3(0, 0, self:getSphereResolvableDistance(math.max(
+					pointLayer.chunkExtraInfo[0].radii[0],
+					pointLayer.chunkExtraInfo[0].radii[1],
+					pointLayer.chunkExtraInfo[0].radii[2]
+				)))
+			end
 		end
 
 		if not pointLayer.parentPointLayer then
@@ -616,24 +653,48 @@ function game:handlePointLayers()
 		end
 		local closestChunkX, closestChunkY, closestChunkZ, closestIdInChunk, closestDistance = pointLayer:getClosestPoint(self.ship.position)
 		if closestIdInChunk and closestDistance < consts.pointMinDistanceInChunk / 2 then
-			-- TODO: Also check that its angular radius isn't smaller than that of the points
 			local x2, y2, z2 = closestChunkX - minX, closestChunkY - minY, closestChunkZ - minZ
 			local chunkId = x2 + y2 * widthChunks + z2 * heightChunks * depthChunks
+
+			local chunkBufferX = closestChunkX % pointLayer.chunkBufferSideLength
+			local chunkBufferY = closestChunkY % pointLayer.chunkBufferSideLength
+			local chunkBufferZ = closestChunkZ % pointLayer.chunkBufferSideLength
+			local chunkBufferIndex = chunkBufferX + chunkBufferY * pointLayer.chunkBufferSideLength + chunkBufferZ * pointLayer.chunkBufferSideLength * pointLayer.chunkBufferSideLength
+
+			local chunkExtraInfo = pointLayer.chunkExtraInfo[chunkBufferIndex]
+
+			local resolvable
+			local xRadius, yRadius, zRadius
+			if not pointLayer.features.radii then
+				resolvable = true
+			else
+				if pointLayer.features.radii == "sent" then
+					xRadius, yRadius, zRadius = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "radii", "float", 3)
+				elseif pointLayer.features.radii == "unsent" then
+					xRadius = chunkExtraInfo.radii[closestIdInChunk * 3]
+					yRadius = chunkExtraInfo.radii[closestIdInChunk * 3 + 1]
+					zRadius = chunkExtraInfo.radii[closestIdInChunk * 3 + 2]
+				end
+				assert(xRadius and yRadius and zRadius, "Missing radii")
+				local maxRadius = math.max(xRadius, yRadius, zRadius)
+				-- local trueDistance = bm.mapm.tonumber(bm.vec3.distance(self.ship.position, objectPosition))
+				local trueDistance = pointLayer.chunkSize * closestDistance
+				resolvable = trueDistance <= self:getSphereResolvableDistance(maxRadius)
+			end
+
+			if not resolvable then
+				self:finishHandlingPointLayers(pointLayer)
+				break
+			end
 
 			if not (
 				pointLayer.currentObject and
 				pointLayer.currentObject.chunkId == chunkId and
 				pointLayer.currentObject.pointId == closestIdInChunk
 			) then
-				local chunkBufferX = closestChunkX % pointLayer.chunkBufferSideLength
-				local chunkBufferY = closestChunkY % pointLayer.chunkBufferSideLength
-				local chunkBufferZ = closestChunkZ % pointLayer.chunkBufferSideLength
-				local chunkBufferIndex = chunkBufferX + chunkBufferY * pointLayer.chunkBufferSideLength + chunkBufferZ * pointLayer.chunkBufferSideLength * pointLayer.chunkBufferSideLength
-
-				local x, y, z = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "position", "float", 3)
 				local r, g, b = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "luminousFlux", "float", 3)
 
-				pointLayer.currentObject = { -- TODO: Make this be layer-specific and dynamic on features
+				pointLayer.currentObject = {
 					chunkId = chunkId,
 					chunkBufferIndex = chunkBufferIndex, -- Won't change for the same object
 					pointId = closestIdInChunk,
@@ -643,31 +704,22 @@ function game:handlePointLayers()
 					-- chunkZ = closestChunkZ
 				}
 				local currentObject = pointLayer.currentObject
-				local chunkExtraInfo = pointLayer.chunkExtraInfo[chunkBufferIndex]
 				-- Features with consistent ways of calculating
-				currentObject.position =
-					parentOrigin + pointLayer.chunkSize *
-					bm.vec3(closestChunkX + x, closestChunkY + y, closestChunkZ + z)
+				local x, y, z = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "position", "float", 3)
+				local objectPosition = parentOrigin + pointLayer.chunkSize * bm.vec3(closestChunkX + x, closestChunkY + y, closestChunkZ + z)
+				currentObject.position = objectPosition
 				currentObject.luminousFlux = mathsies.vec3(r, g, b) * pointLayer.chunkSize ^ 2 -- Bring back to proper units
-				if pointLayer.features.shapeTypeId then
-					local shapeTypeId
-					if pointLayer.features.shapeTypeId == "sent" then
-						shapeTypeId = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "shapeTypeId", "uint32", 1)
+				if pointLayer.features.shapeTypeSubtypeIds then
+					local shapeTypeId, shapeSubtypeId
+					if pointLayer.features.shapeTypeSubtypeIds == "sent" then
+						shapeTypeId, shapeSubtypeId = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "shapeTypeSubtypeIds", "uint32", 2)
 					elseif pointLayer.features.shapeTypeId == "unsent" then
-						shapeTypeId = chunkExtraInfo.shapeTypeId[closestIdInChunk]
+						shapeTypeId, shapeSubtypeId = chunkExtraInfo.shapeTypeId[closestIdInChunk * 2], chunkExtraInfo.shapeTypeId[closestIdInChunk * 2 + 1]
 					end
-					currentObject.shapeTypeName = pointLayerShapeTypes[shapeTypeId].name
+					currentObject.shapeTypeName = self.pointLayerShapeTypes[shapeTypeId].name
+					currentObject.shapeSubtypeId = shapeSubtypeId
 				end
 				if pointLayer.features.radii then
-					local xRadius, yRadius, zRadius
-					if pointLayer.features.radii == "sent" then
-						xRadius, yRadius, zRadius = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "radii", "float", 3)
-					elseif pointLayer.features.radii == "unsent" then
-						xRadius = chunkExtraInfo.radii[closestIdInChunk * 3]
-						yRadius = chunkExtraInfo.radii[closestIdInChunk * 3 + 1]
-						zRadius = chunkExtraInfo.radii[closestIdInChunk * 3 + 2]
-					end
-					assert(xRadius and yRadius and zRadius, "Missing radii")
 					currentObject.radii = mathsies.vec3(xRadius, yRadius, zRadius) -- TODO: Make sure it never goes over separation between points (/2)
 				end
 				if pointLayer.features.mass then
@@ -685,8 +737,7 @@ function game:handlePointLayers()
 				remakeAll = true
 			end
 		else
-			pointLayer.currentObject = nil
-			self:clearPointLayers(pointLayerIndex + 1)
+			self:finishHandlingPointLayers(pointLayer)
 			break
 		end
 	end
@@ -717,15 +768,17 @@ function game:getPointLayerGravityWellSlowdownFactor()
 			goto continue
 		end
 
-		local parentOrigin, parentRadii, parentShapeTypeName
+		local parentOrigin, parentRadii, parentShapeTypeName, parentShapeSubtypeId
 		if not pointLayer.parentPointLayer then
 			parentOrigin = pointLayer.fixedParentObjectPosition
 			parentRadii = pointLayer.fixedParentObjectRadii
 			parentShapeTypeName = pointLayer.fixedParentObjectShapeTypeName
+			parentShapeSubtypeId = pointLayer.fixedParentObjectShapeSubtypeId
 		elseif pointLayer.parentPointLayer.currentObject then
 			parentOrigin = pointLayer.parentPointLayer.currentObject.position
 			parentRadii = pointLayer.parentPointLayer.currentObject.radii
 			parentShapeTypeName = pointLayer.parentPointLayer.currentObject.shapeTypeName
+			parentShapeSubtypeId = pointLayer.parentPointLayer.currentObject.shapeSubtypeId
 		else
 			break
 		end
@@ -788,15 +841,17 @@ function game:getPointLayerGravityWellSlowdownFactor()
 		end
 
 		local radiusChunks = parentRadii / pointLayer.chunkSize
-		local detail = 12
+		local detail = 10 -- TODO: Find optimisations to allow greater detail without such time cost (multithreading?)
 		local sampleCount, sampledVolume = 0, 0 -- TEMP
-		local densityFunction = pointLayerShapeTypes[parentShapeTypeName].getDensity
+		local shapeType = self.pointLayerShapeTypes[parentShapeTypeName]
+		local densityFunction = shapeType.getDensity
+		local densityParametersScratchTable = self:decodeShapeSubtypeIntoScratchTable(shapeType, parentShapeSubtypeId)
 		local function sample(x, y, z, w, h, d)
 			sampleCount = sampleCount + 1
 			sampledVolume = sampledVolume + w * h * d
 
 			local averageMassPerPoint = pointLayer.averageMassPerPoint
-			local density = densityFunction(x, y, z) * pointLayer.maxPointDensity * averageMassPerPoint
+			local density = densityFunction(x, y, z, unpack(densityParametersScratchTable)) * pointLayer.maxPointDensity * averageMassPerPoint
 			local trueDeltaX = x * parentRadii.x - positionRelativeFull.x
 			local trueDeltaY = y * parentRadii.y - positionRelativeFull.y
 			local trueDeltaZ = z * parentRadii.z - positionRelativeFull.z
@@ -938,28 +993,71 @@ function game:drawPointLayers()
 	local skyToClip = cameraToClip * worldToCameraStationary
 	local clipToSky = mathsies.mat4.inverse(skyToClip)
 
-	love.graphics.setShader(self.pointDrawablesShader)
 	love.graphics.setBlendMode("add")
 
 	for _, pointLayer in ipairs(self.pointLayers) do
-		local parentOrigin
+		local parentOrigin, parentObjectShapeTypeName, parentObjectShapeSubtypeId, parentObjectRadii
 		if not pointLayer.parentPointLayer then
 			parentOrigin = pointLayer.fixedParentObjectPosition
+			parentObjectShapeTypeName = pointLayer.fixedParentObjectShapeTypeName
+			parentObjectShapeSubtypeId = pointLayer.fixedParentObjectShapeSubtypeId
+			parentObjectRadii = pointLayer.fixedParentObjectRadii
 		else
 			if not pointLayer.parentPointLayer.currentObject then
 				break -- Outside of any objects below this scale
 			end
 			parentOrigin = pointLayer.parentPointLayer.currentObject.position
+			parentObjectShapeTypeName = pointLayer.parentPointLayer.currentObject.shapeTypeName
+			parentObjectShapeSubtypeId = pointLayer.parentPointLayer.currentObject.shapeSubtypeId
+			parentObjectRadii = pointLayer.parentPointLayer.currentObject.radii
 		end
+		local cameraPositionFullRelative = cameraPositionFull - parentOrigin
 		local cameraPosition = bm.vec3.toMathsiesVec3( -- Chunk sides have a length of 1
-			(cameraPositionFull - parentOrigin) / pointLayer.chunkSize
+			cameraPositionFullRelative / pointLayer.chunkSize
 		)
 
-		-- TODO: Volumetrics
+		-- Fade in/out roles are swapped between volumetric and point
+		local fullyPointRadius = (pointLayer.chunkBufferSideLength / 2 - 0.5) * consts.pointFadeStart
+		local fullyVolumetricRadius = pointLayer.chunkBufferSideLength / 2 - 0.5
+		-- In terms of proper units and not chunks
+		-- TODO: Is this right???????
+		local fullyPointRadiusProperUnits = fullyPointRadius * pointLayer.chunkSize
+		local fullyVolumetricRadiusProperUnits = fullyVolumetricRadius * pointLayer.chunkSize
+
+		-- Volumetrics
+
+		local distanceUnitScale = 1 / math.max(parentObjectRadii.x, parentObjectRadii.y, parentObjectRadii.z)
+		local shapeType = self.pointLayerShapeTypes[parentObjectShapeTypeName]
+		local volumetricShader = shapeType.volumetricShader
+
+		-- Send shape params
+		local densityParametersScratchTable = self:decodeShapeSubtypeIntoScratchTable(shapeType, parentObjectShapeSubtypeId)
+		for i, parameter in ipairs(shapeType.parameters) do
+			volumetricShader:send("shape_" .. parameter.name, densityParametersScratchTable[i])
+		end
+
+		volumetricShader:send("fadeInRadius", fullyVolumetricRadiusProperUnits * distanceUnitScale)
+		volumetricShader:send("fadeOutRadius", fullyPointRadiusProperUnits * distanceUnitScale)
+		volumetricShader:send("clipToSky", {mathsies.mat4.components(clipToSky)})
+		volumetricShader:send("cameraPosition", {mathsies.vec3.components(bm.vec3.toMathsiesVec3(cameraPositionFullRelative * distanceUnitScale))})
+		volumetricShader:send("rayStepCount", consts.volumetricRayStepCount)
+		volumetricShader:send("shapeRadii", {mathsies.vec3.components(distanceUnitScale * parentObjectRadii)})
+		volumetricShader:send("baseEmission", {
+			-- TODO: Understand how these distanceUnitScale things work. I thought you multiplied in an amount with an exponent corresponding to the exponent on the distance dimension?
+			distanceUnitScale ^ -1 * pointLayer.maxPointDensity * pointLayer.averageLuminousFluxRPerPoint / (2 * consts.tau), -- TODO: This 4pi is definitely wrong... or something around it is
+			distanceUnitScale ^ -1 * pointLayer.maxPointDensity * pointLayer.averageLuminousFluxGPerPoint / (2 * consts.tau),
+			distanceUnitScale ^ -1 * pointLayer.maxPointDensity * pointLayer.averageLuminousFluxBPerPoint / (2 * consts.tau)
+		})
+		-- volumetricShader:send("luminousIntensityPerPoint", {1, 1, 1})
+		-- volumetricShader:send("maxDensity", 1)
+		love.graphics.setShader(volumetricShader)
+		love.graphics.draw(self.dummyTexture, 0, 0, 0, outputCanvas:getDimensions())
 
 		-- TODO: Point attenuation
 
 		-- Points
+
+		love.graphics.setShader(self.pointDrawablesShader)
 
 		self.pointIndirectDrawArgsBuffer:setArrayData({
 			self.pointDiskMesh:getVertexCount(),
@@ -976,8 +1074,6 @@ function game:drawPointLayers()
 		local diagonalFOV = cameraVerticalFOV * math.sqrt(1 ^ 2 + aspectRatio ^ 2) -- Angular distance from camera forwards at corners of screen
 		local maxAngleFromCentre = diagonalFOV / 2 + consts.pointAngularRadius
 		local minDot = math.cos(maxAngleFromCentre)
-		local fadeInRadius = (pointLayer.chunkBufferSideLength / 2 - 0.5) * consts.pointFadeStart
-		local fadeOutRadius = pointLayer.chunkBufferSideLength / 2 - 0.5
 		local skipIndex =
 			pointLayer.currentObject and (
 				pointLayer.currentObject.chunkBufferIndex * pointLayer.maxPointsPerChunk + pointLayer.currentObject.pointId
@@ -998,9 +1094,9 @@ function game:drawPointLayers()
 		})
 		preparationShader:send("minDot", minDot)
 		preparationShader:send("cameraForwards", {mathsies.vec3.components(cameraForwards)})
-		preparationShader:send("fadeInRadius", fadeInRadius)
-		preparationShader:send("fadeOutRadius", fadeOutRadius)
-		-- preparationShader:send("skyToClip", {mathsies.mat4.components(skyToClip)}) -- TODO
+		preparationShader:send("fadeInRadius", fullyPointRadius)
+		preparationShader:send("fadeOutRadius", fullyVolumetricRadius)
+		-- preparationShader:send("skyToClip", {mathsies.mat4.components(skyToClip)}) -- TODO (this is for attenuation)
 		preparationShader:send("skipIndex", skipIndex)
 		preparationShader:send("maxPointsPerChunk", pointLayer.maxPointsPerChunk)
 		preparationShader:send("IndirectDrawBuffer", self.pointIndirectDrawArgsBuffer)

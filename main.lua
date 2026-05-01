@@ -14,6 +14,15 @@ end
 function love.update(dt)
 	local dtLimited = math.min(dt, consts.maxDeltaTime)
 	state:update(dtLimited)
+
+	-- TEMP
+	local rate = 5
+	if love.keyboard.isDown("-") then
+		consts.celestialLuminanceMultiplier = consts.celestialLuminanceMultiplier * math.exp(-rate * dt)
+	end
+	if love.keyboard.isDown("=") then
+		consts.celestialLuminanceMultiplier = consts.celestialLuminanceMultiplier * math.exp(rate * dt)
+	end
 end
 
 function love.draw()
@@ -27,13 +36,15 @@ function love.draw()
 		end
 	end
 	love.graphics.print( -- TEMP
-		love.timer.getFPS() .. "\n" ..
+		"fps: " .. love.timer.getFPS() .. "\n" ..
 		"x: " .. tostring(state.ship.position.x) .. "\n" ..
 		"y: " .. tostring(state.ship.position.y) .. "\n" ..
 		"z: " .. tostring(state.ship.position.z) .. "\n" ..
 		"factor: " .. state:getGravityWellSlowdownFactor() .. "\n" ..
-		"speed: " .. state:getMaxMovementSpeed() .. (love.keyboard.isDown("lshift") and " * 100" or "") .. "\n" ..
+		"base max speed: " .. state:getMaxMovementSpeed() .. "\n" ..
 		"max \"luminance\" order: " .. math.floor(math.log10(maxLuminance)) .. "\n" ..
-		"max \"luminance\": " .. maxLuminance
+		"max \"luminance\": " .. maxLuminance .. "\n" ..
+		"\"luminance\" multiplier order: " .. math.floor(math.log10(consts.celestialLuminanceMultiplier)) .. "\n" ..
+		"\"luminance\" multiplier: " .. consts.celestialLuminanceMultiplier
 	)
 end

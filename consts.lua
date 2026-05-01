@@ -86,12 +86,11 @@ function consts.load()
 
 	consts.starLayerChunkSize = 4e17
 	consts.maxStellarDensity = 4.72e-51 -- Stellar density near the sun
-	consts.galaxyLayerChunkSize = 4e23
-	-- consts.maxGalacticDensity = 3e-69 -- Universe mass density divided by milky way mass
-	consts.maxGalacticDensity = 1e-70
+	consts.galaxyLayerChunkSize = 1e25
+	consts.maxGalacticDensity = 1e-73
 	consts.galaxyGroupPosition = bm.vec3(0, 0, 0)
-	consts.galaxyGroupRadii = mathsies.vec3(1e27) -- Radius does not need to be precise like position does
-	consts.galaxyGroupShapeTypeName = "galaxyCluster"
+	consts.galaxyGroupRadii = mathsies.vec3(5e26, 5e26, 5e26) -- Radius does not need to be precise like position does
+	consts.galaxyGroupShapeTypeName = "universeFilaments"
 
 	consts.slowdownDistanceExponent = -6
 	consts.gravityFactorExponent = 1/6
@@ -101,9 +100,11 @@ function consts.load()
 	consts.pointAngularRadius = 0.006
 	consts.pointFadeStart = 0.9
 
-	consts.celestialLuminanceMultiplier = 1 / 1e-5
+	consts.celestialLuminanceMultiplier = 1 / 2e-11
+
 	consts.pointPreparationThreadgroupSize = 256
-	consts.pointLayerShapeTypeAmountIntegralSteps = 32
+	consts.pointLayerShapeTypeAmountIntegralSteps = 64 -- TODO: Use threads for this and bump number up
+	consts.volumetricRayStepCount = 64
 
 	-- TEMP
 	consts.starDensity = 1408
