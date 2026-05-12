@@ -24,6 +24,17 @@ function game:getShapeTypeBaseObjectAmount(densityFunction, ...)
 	return total
 end
 
+local function averageValueNoise(noiseLayerIndex, x, y, z)
+	return 0.5
+end
+
+function game:setValueNoiseForShapeTypeDensityFunc(shapeType, valueNoise)
+	valueNoise = valueNoise or function() error("valueNoise function not set for shape type " .. shapeType.name) end
+	local environment = {valueNoise = valueNoise}
+	setmetatable(environment, {__index = _G})
+	setfenv(shapeType.getDensity, environment)
+end
+
 local decodeShapeSubtypeScratchTable = {}
 function game:decodeShapeSubtypeIntoScratchTable(type, subtypeId)
 	assert(subtypeId < type.subtypeCount, "Shape subtype id is too large")
@@ -57,6 +68,7 @@ function game:loadShapeTypes()
 
 			local info = require(itemPath:gsub("/", ".") .. ".info")
 			shapeType.parameters = info.parameters or {}
+			shapeType.getDensity = info.getDensity
 
 			local subtypeCount = 1
 			for _, parameter in ipairs(shapeType.parameters) do
@@ -66,13 +78,14 @@ function game:loadShapeTypes()
 			shapeType.subtypeCount = subtypeCount
 
 			local subtypeBaseObjectAmounts = {}
+			self:setValueNoiseForShapeTypeDensityFunc(shapeType, averageValueNoise)
 			for subtypeId = 0, subtypeCount - 1 do
 				local scratchTable = self:decodeShapeSubtypeIntoScratchTable(shapeType, subtypeId)
 				subtypeBaseObjectAmounts[subtypeId] = self:getShapeTypeBaseObjectAmount(info.getDensity, unpack(scratchTable))
 			end
+			self:setValueNoiseForShapeTypeDensityFunc(shapeType, nil)
 			shapeType.subtypeBaseObjectAmounts = subtypeBaseObjectAmounts
 
-			shapeType.getDensity = info.getDensity
 			local includeStrings = {}
 			if info.shaderIncludes then
 				for _, includePath in ipairs(info.shaderIncludes) do
@@ -84,14 +97,60 @@ function game:loadShapeTypes()
 					table.insert(includeStrings, "#line 1\n" .. fileCode)
 				end
 			end
+
+			if info.valueNoiseInfo then
+				local currentStart = 0
+				shapeType.noiseInfo = {}
+				local layers = {}
+				shapeType.noiseInfo.layers = layers
+				for i, layerInfo in ipairs(info.valueNoiseInfo) do
+					local count = layerInfo.countX * layerInfo.countY * layerInfo.countZ
+					layers[i] = {
+						start = currentStart,
+						count = count,
+						countX = layerInfo.countX,
+						countY = layerInfo.countY,
+						countZ = layerInfo.countZ
+					}
+					currentStart = currentStart + count
+				end
+				shapeType.noiseInfo.requiredValueCount = currentStart -- Sum of all layers' counts
+			end
+
+			local shaderDefines = {}
+			local noiseString
+			if not shapeType.noiseInfo then
+				noiseString = ""
+			else
+				local layerCodeLines = {}
+				for _, layer in ipairs(shapeType.noiseInfo.layers) do
+					table.insert(layerCodeLines,
+						"NoiseLayer (" .. layer.start .. ", ivec3(" .. table.concat({layer.countX, layer.countY, layer.countZ}, ", ") .. "))"
+					)
+				end
+				local constCode = "const int noiseLayerCount = " .. #shapeType.noiseInfo.layers .. ";\n" .. "const NoiseLayer noiseLayers[noiseLayerCount] = {" .. table.concat(layerCodeLines, ", ") .. "};\n"
+				noiseString =
+					"#line 1\n" .. constCode ..
+					"#line 1\n" .. love.filesystem.read("shaders/include/valueNoise.glsl")
+
+				-- Alternatively instead of using constCode use preprocessor defines
+				-- for i, layer in ipairs(shapeType.noiseInfo.layers) do
+				-- 	local defineName = "NOISE_LAYER_" .. i
+				-- 	shaderDefines[defineName] = layer.start .. ", ivec3(" .. table.concat({layer.countX, layer.countY, layer.countZ}, ", ") .. ")"
+				-- end
+			end
 			shapeType.volumetricShader = love.graphics.newShader(
 				"#pragma language glsl4\n" ..
 				"#line 1\n" .. love.filesystem.read("shaders/include/structs.glsl") ..
+				noiseString ..
 				"#line 1\n" .. love.filesystem.read("shaders/include/raycasts.glsl") ..
 				table.concat(includeStrings) ..
 				"#line 1\n" .. love.filesystem.read(itemPath .. "/shaderCode.glsl") ..
 				"#line 1\n" .. love.filesystem.read("shaders/include/skyDirection.glsl") ..
-				"#line 1\n" .. love.filesystem.read("shaders/drawing/layerVolumetrics.glsl")
+				"#line 1\n" .. love.filesystem.read("shaders/drawing/layerVolumetrics.glsl"),
+				{
+					defines = shaderDefines
+				}
 			)
 		end
 	end

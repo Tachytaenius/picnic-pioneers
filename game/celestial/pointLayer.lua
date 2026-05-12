@@ -18,7 +18,12 @@ local function randomRangeTODO(lower, upper)
 	return lower + love.math.random() * (upper - lower)
 end
 
-local galaxyPointLayerInfo = {}
+local galaxyPointLayerInfo = {
+	fixedParentObjectPosition = consts.galaxyGroupPosition,
+	fixedParentObjectRadii = consts.galaxyGroupRadii,
+	fixedParentObjectShapeTypeName = consts.galaxyGroupShapeTypeName,
+	fixedParentObjectShapeSubtypeId = 0 -- TODO: Allow selecting from closest subtype to given parameters...?
+}
 
 galaxyPointLayerInfo.features = {
 	-- "sent" means present on both CPU and GPU, "unsent" means only present on CPU, nil means not present
@@ -98,6 +103,17 @@ function galaxyPointLayerInfo:generateRemainingCurrentObjectInfo()
 	local currentObject = self.currentObject
 end
 
+function galaxyPointLayerInfo:getGlobalCelestialObjectIdParameters() -- Separate from the 128-bit number split into four 32-bit numbers that this produces
+	local currentObject = self.currentObject
+	local objectType = consts.idObjectTypes.galaxy
+	local galaxyChunkId = currentObject.chunkId
+	local galaxyId = currentObject.pointId
+	-- local starChunkId
+	-- local starId
+	-- local systemBodyId
+	return objectType, galaxyChunkId, galaxyId
+end
+
 local starSystemPointLayerInfo = {}
 
 starSystemPointLayerInfo.features = {
@@ -136,23 +152,32 @@ function starSystemPointLayerInfo:generateRemainingCurrentObjectInfo()
 	self.gameObject:generateStarSystem(currentObject)
 end
 
-function game:initPointLayers()
-	self:loadShapeTypes()
+function starSystemPointLayerInfo:getGlobalCelestialObjectIdParameters()
+	local parentObject = self.parentPointLayer.currentObject
+	local currentObject = self.currentObject
+	local objectType = consts.idObjectTypes.starSystem
+	local galaxyChunkId = parentObject.chunkId
+	local galaxyId = parentObject.pointId
+	local starChunkId = currentObject.chunkId
+	local starId = currentObject.pointId
+	-- local systemBodyId
+	return objectType, galaxyChunkId, galaxyId, starChunkId, starId
+end
 
+function game:initPointLayers()
 	self.pointLayers = {}
 
 	-- Topmost layer is treated specially
 	-- TODO: Allow it to collapse to a point when sufficiently far away. Since that's just one point there's no need for optimisations like chunks etc.
 	local topLayer = self:newPointLayer("galaxies", "Galaxies", consts.galaxyLayerChunkSize, consts.maxGalacticDensity, 4, galaxyPointLayerInfo)
-	topLayer.fixedParentObjectPosition = consts.galaxyGroupPosition
-	topLayer.fixedParentObjectRadii = consts.galaxyGroupRadii
-	topLayer.fixedParentObjectShapeTypeName = consts.galaxyGroupShapeTypeName
-	topLayer.fixedParentObjectShapeSubtypeId = 0 -- TODO: Allow selecting from closest subtype to given parameters...?
 	self:newPointLayer("starSystems", "Star Systems", consts.starLayerChunkSize, consts.maxStellarDensity, 9, starSystemPointLayerInfo)
 
 	-- Find distance at which top layer shape has the same angular radius as points
 	local topRadius = math.max(topLayer.fixedParentObjectRadii.x, topLayer.fixedParentObjectRadii.y, topLayer.fixedParentObjectRadii.z)
 	topLayer.fixedParentObjectPointDistance = self:getSphereResolvableDistance(topRadius)
+
+	-- TODO: Seed RNG with consistent seed for the universe
+	topLayer:randomiseValueNoise()
 
 	local highestMaxPoints
 	for _, pointLayer in ipairs(self.pointLayers) do
@@ -229,7 +254,7 @@ end
 
 local pointLayerFunctions = {}
 
-function pointLayerFunctions:getDensity(realX, realY, realZ) -- The position is in units where 1 is the side length of a chunk. Returned density is a proportion from 0 to point layer max density
+function pointLayerFunctions:getDensity(realX, realY, realZ) -- The position is in units where 1 is the side length of a chunk. Returned density is a proportion from 0 to 1, where 1 is the point layer's max density
 	local shapeTypeName, shapeSubtypeId, size
 	if self.parentPointLayer then
 		local currentObject = self.parentPointLayer.currentObject
@@ -245,12 +270,52 @@ function pointLayerFunctions:getDensity(realX, realY, realZ) -- The position is 
 	local shapeType = self.gameObject.pointLayerShapeTypes[shapeTypeName]
 	local densityFunction = shapeType.getDensity
 	local densityParametersScratchTable = self.gameObject:decodeShapeSubtypeIntoScratchTable(shapeType, shapeSubtypeId)
-	return densityFunction(
+	self:setValueNoiseFunction()
+	local returnValue = densityFunction(
 		realX / size.x * self.chunkSize,
 		realY / size.y * self.chunkSize,
 		realZ / size.z * self.chunkSize,
 		unpack(densityParametersScratchTable)
 	)
+	self:setValueNoiseFunction(true)
+	return returnValue
+end
+
+function pointLayerFunctions:randomiseValueNoise()
+	-- Should be called with RNG set
+	local relevantShapeTypeName =
+		self.parentPointLayer and self.parentPointLayer.currentObject.shapeTypeName
+		or self.fixedParentObjectShapeTypeName
+	local shapeType = self.gameObject.pointLayerShapeTypes[relevantShapeTypeName]
+	if not shapeType.noiseInfo then
+		-- Won't be used, can safely leave it as it is
+		return
+	end
+	-- This layer will have a noise buffer/data if it can ever be contained in a shape type that has noise.
+	for i = 0, shapeType.noiseInfo.requiredValueCount - 1 do
+		self.valueNoiseDataFFI[i] = randomTODO()
+	end
+	self.valueNoiseBuffer:setArrayData(self.valueNoiseData, 1, 1, shapeType.noiseInfo.requiredValueCount)
+end
+
+function pointLayerFunctions:setValueNoiseFunction(unset) -- This is per shape type, so in case multiple layers use the same shape type this must be set before every use of the density function
+	local relevantShapeTypeName =
+		self.parentPointLayer and self.parentPointLayer.currentObject.shapeTypeName
+		or self.fixedParentObjectShapeTypeName
+	local shapeType = self.gameObject.pointLayerShapeTypes[relevantShapeTypeName]
+	if not shapeType.noiseInfo then
+		self.gameObject:setValueNoiseForShapeTypeDensityFunc(shapeType, function()
+			error("Should not call valueNoise in a shape type density function if noise info is not present for that shape type")
+		end)
+		return
+	end
+	local layers = shapeType.noiseInfo.layers
+
+	local dataFFI = self.valueNoiseDataFFI
+	self.gameObject:setValueNoiseForShapeTypeDensityFunc(shapeType, function(noiseLayerIndex, x, y, z)
+		local layer = layers[noiseLayerIndex]
+		return 0.5 -- TEMP/TODO
+	end)
 end
 
 function pointLayerFunctions:getBoundingBoxChunks()
@@ -417,6 +482,14 @@ function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBu
 		new[k] = v
 	end
 
+	new.parentPointLayer = self.pointLayers[#self.pointLayers]
+	if new.parentPointLayer then
+		new.parentPointLayer.childPointLayer = new
+	end
+	table.insert(self.pointLayers, new)
+	new.index = #self.pointLayers
+	new.gameObject = self -- HACK...
+
 	new.name = name
 	new.debugName = debugName
 	new.chunkSize = chunkSize
@@ -506,6 +579,37 @@ function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBu
 	new.chunkPointCountData = love.data.newByteData(new.chunkPointCountBuffer:getElementStride() * new.chunkBufferTotalSize)
 	new.chunkPointCountDataFFI = ffi.cast("int32_t*", new.chunkPointCountData:getFFIPointer())
 
+	local maxNoiseValues = 0
+	local hasNoise = false
+	local relevantShapeTypeSet = new.parentPointLayer and new.parentPointLayer.features.shapeTypeSet
+	if not relevantShapeTypeSet then
+		assert(new.index == 1, "Only the top layer should not have a parent layer")
+		local shapeType = self.pointLayerShapeTypes[new.fixedParentObjectShapeTypeName]
+		if shapeType.noiseInfo then
+			hasNoise = true
+			maxNoiseValues = math.max(maxNoiseValues, shapeType.noiseInfo.requiredValueCount)
+		end
+	else
+		for _, shapeTypeInfo in ipairs(relevantShapeTypeSet) do
+			local shapeType = self.pointLayerShapeTypes[shapeTypeInfo.name]
+			if shapeType.noiseInfo then
+				hasNoise = true
+				maxNoiseValues = math.max(maxNoiseValues, shapeType.noiseInfo.requiredValueCount)
+			end
+		end
+	end
+	new.hasNoise = hasNoise
+	if hasNoise then
+		new.maxNoiseValues = maxNoiseValues
+
+		new.valueNoiseBuffer = love.graphics.newBuffer(consts.floatBufferFormat, new.maxNoiseValues, {
+			shaderstorage = true,
+			debugname = debugName .. " Noise Values"
+		})
+		new.valueNoiseData = love.data.newByteData(new.valueNoiseBuffer:getElementStride() * new.maxNoiseValues)
+		new.valueNoiseDataFFI = ffi.cast("float*", new.valueNoiseData:getFFIPointer())
+	end
+
 	new.chunkExtraInfo = {}
 	for x = 0, new.chunkBufferSideLength - 1 do
 		for y = 0, new.chunkBufferSideLength - 1 do
@@ -523,15 +627,6 @@ function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBu
 			end
 		end
 	end
-
-	new.parentPointLayer = self.pointLayers[#self.pointLayers]
-	if new.parentPointLayer then
-		new.parentPointLayer.childPointLayer = new
-	end
-	table.insert(self.pointLayers, new)
-	new.index = #self.pointLayers
-
-	new.gameObject = self -- HACK...
 
 	return new
 end
@@ -597,7 +692,7 @@ function game:handlePointLayers()
 							minZ <= realZ and realZ <= maxZ
 						then
 							local x2, y2, z2 = realX - minX, realY - minY, realZ - minZ
-							local chunkId = x2 + y2 * widthChunks + z2 * heightChunks * depthChunks
+							local chunkId = x2 + y2 * widthChunks + z2 * widthChunks * heightChunks
 
 							pointLayer:generateChunkCommon(realX, realY, realZ, chunkId, chunkBufferIndex, x, y, z)
 						else
@@ -654,7 +749,7 @@ function game:handlePointLayers()
 		local closestChunkX, closestChunkY, closestChunkZ, closestIdInChunk, closestDistance = pointLayer:getClosestPoint(self.ship.position)
 		if closestIdInChunk and closestDistance < consts.pointMinDistanceInChunk / 2 then
 			local x2, y2, z2 = closestChunkX - minX, closestChunkY - minY, closestChunkZ - minZ
-			local chunkId = x2 + y2 * widthChunks + z2 * heightChunks * depthChunks
+			local chunkId = x2 + y2 * widthChunks + z2 * widthChunks * heightChunks
 
 			local chunkBufferX = closestChunkX % pointLayer.chunkBufferSideLength
 			local chunkBufferY = closestChunkY % pointLayer.chunkBufferSideLength
@@ -730,6 +825,10 @@ function game:handlePointLayers()
 						mass = chunkExtraInfo.mass[closestIdInChunk]
 					end
 					currentObject.mass = mass
+				end
+				-- TODO: Seed RNG with pointLayer:getGlobalCelestialObjectIdParameters()
+				if pointLayer.childPointLayer and pointLayer.childPointLayer.hasNoise then
+					pointLayer.childPointLayer:randomiseValueNoise()
 				end
 				-- Remaining features are generated (or fetched from extra info) in possibly layer-specific ways
 				pointLayer:generateRemainingCurrentObjectInfo()
@@ -865,6 +964,7 @@ function game:getPointLayerGravityWellSlowdownFactor()
 		end
 		-- Sample boxes in a grid that (TODO) decreases in detail the further out you go (TODO end), missing the cell containing the chunks that we have already checked the points of
 		local lerp, sign = util.lerp, util.sign
+		pointLayer:setValueNoiseFunction()
 		for xi = -detail, detail do
 			for yi = -detail, detail do
 				for zi = -detail, detail do
@@ -960,6 +1060,8 @@ function game:getPointLayerGravityWellSlowdownFactor()
 			end
 		end
 
+		pointLayer:setValueNoiseFunction(true)
+
 		-- TODO: Verify the maths. Is 2 ^ 3 - sampledVolume approximately equal to chunkCheckedVolume when the size of everything is small enough to avoid huge rounding error? It should be!
 		-- local chunkCheckedVolume = sampledChunksWidth * sampledChunksHeight * sampledChunksDepth / (radiusChunks.x * radiusChunks.y * radiusChunks.z)
 		-- print(2 ^ 3 - sampledVolume, chunkCheckedVolume, (2 ^ 3 - sampledVolume) / chunkCheckedVolume)
@@ -1036,11 +1138,14 @@ function game:drawPointLayers()
 			volumetricShader:send("shape_" .. parameter.name, densityParametersScratchTable[i])
 		end
 
+		if pointLayer.hasNoise and shapeType.noiseInfo then
+			volumetricShader:send("NoiseValues", pointLayer.valueNoiseBuffer)
+		end
 		volumetricShader:send("fadeInRadius", fullyVolumetricRadiusProperUnits * distanceUnitScale)
 		volumetricShader:send("fadeOutRadius", fullyPointRadiusProperUnits * distanceUnitScale)
 		volumetricShader:send("clipToSky", {mathsies.mat4.components(clipToSky)})
 		volumetricShader:send("cameraPosition", {mathsies.vec3.components(bm.vec3.toMathsiesVec3(cameraPositionFullRelative * distanceUnitScale))})
-		volumetricShader:send("rayStepCount", consts.volumetricRayStepCount)
+		volumetricShader:send("maxRaySteps", consts.volumetricMaxRaySteps)
 		volumetricShader:send("shapeRadii", {mathsies.vec3.components(distanceUnitScale * parentObjectRadii)})
 		volumetricShader:send("baseEmission", {
 			-- TODO: Understand how these distanceUnitScale things work. I thought you multiplied in an amount with an exponent corresponding to the exponent on the distance dimension?

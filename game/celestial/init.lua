@@ -12,7 +12,9 @@ function game:initCelestial()
 	self.celestialTime = mapm.number(0) -- Will be used for celestial simulation, so it's arbitrary precision
 	self:initCelestialRNG()
 
-	self:initPointLayers() -- Mix of graphics and non-graphics
+	-- Mix of graphics and non-graphics
+	self:loadShapeTypes()
+	self:initPointLayers()
 
 	-- Graphics init
 

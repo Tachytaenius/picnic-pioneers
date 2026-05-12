@@ -24,11 +24,12 @@ function consts.load()
 	consts.pointMinDistanceInChunk = 0.03125 -- Use of this during generation is TODO!!!!
 
 	consts.idObjectTypes = util.makeBidirectional({
-		[0] = "galaxyChunk",
+		[0] = "universe",
+		"galaxyChunk",
 		"galaxy",
 		"starChunk",
 		"starSystem",
-		"celestialBody"
+		"systemBody"
 	})
 
 	-- TEMP/TODO
@@ -56,6 +57,10 @@ function consts.load()
 
 	consts.uintBufferFormat = {
 		{name = "value", format = "uint32"}
+	}
+
+	consts.floatBufferFormat = {
+		{name = "value", format = "float"}
 	}
 
 	consts.indirectDrawBufferFormat = {
@@ -104,7 +109,7 @@ function consts.load()
 
 	consts.pointPreparationThreadgroupSize = 256
 	consts.pointLayerShapeTypeAmountIntegralSteps = 64 -- TODO: Use threads for this and bump number up
-	consts.volumetricRayStepCount = 64
+	consts.volumetricMaxRaySteps = 64
 
 	-- TEMP
 	consts.starDensity = 1408

@@ -5,7 +5,7 @@ in vec3 directionPreNormalise;
 out vec4 fragmentColour;
 
 uniform vec3 cameraPosition;
-uniform uint rayStepCount;
+uniform uint maxRaySteps;
 
 uniform float fadeInRadius;
 uniform float fadeOutRadius;
@@ -36,6 +36,9 @@ vec3 getRayColour(vec3 rayPosition, vec3 rayDirection) {
 
 	float rayOffset = max(0.0, result.t1);
 	float rayLength = result.t2 - rayOffset;
+
+	float maxRayLength = 2.0 * max(max(shapeRadii.x, shapeRadii.y), shapeRadii.z); // A whole diameter
+	uint rayStepCount = max(maxRaySteps, uint(max(0.0, rayLength / maxRayLength) * (maxRaySteps - 1) + 1.0));
 
 	float segmentStart = result.t2;
 	for (uint rayStep = 0u; rayStep < rayStepCount; rayStep++) {

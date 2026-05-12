@@ -9,37 +9,6 @@ local game = {}
 -- We essentially assign a unique 128-bit id to every object in the game and use it as a seed when generating the object
 -- The id is constructed from ids in a hierarchy. Galaxy chunk id, galaxy id within galaxy chunk, star chunk id within galaxy, etc
 
--- object type bits: 4
--- galaxy chunk id bits: 36
--- galaxy id bits: 12
--- star chunk id bits: 36
--- star id bits: 12
--- celestial body bits: 16
-
--- Some bits remain unused
-
-local function getObjectCelestialIdNumbers(objectType, galaxyChunkId, galaxyId, starChunkId, starId, celestialBodyId)
-	galaxyChunkId = galaxyChunkId or 0
-	galaxyId = galaxyId or 0
-	starChunkId = starChunkId or 0
-	starId = starId or 0
-	celestialBodyId = celestialBodyId or 0
-
-	local a = galaxyChunkId % 2 ^ 32
-	local b = starChunkId % 2 ^ 32
-	local c =
-		math.floor(galaxyChunkId / 2 ^ 32) * 2 ^ 28 +
-		math.floor(starChunkId / 2 ^ 32) * 2 ^ 24 +
-		galaxyId * 2 ^ 12 +
-		starId
-	local d =
-		-- 20 bits free
-		objectType * 2 ^ 16 +
-		celestialBodyId
-
-	return a, b, c, d
-end
-
 function game:initCelestialRNG()
 	-- TODO
 
@@ -48,7 +17,7 @@ function game:initCelestialRNG()
 end
 
 function game:seedCelestialRNGWithObject(...)
-	local a, b, c, d = getObjectCelestialIdNumbers(...)
+	local a, b, c, d = self.getGlobalCelestialObjectIdNumbers(...)
 
 	-- TODO
 
