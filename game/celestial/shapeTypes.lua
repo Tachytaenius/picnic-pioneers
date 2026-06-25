@@ -1,39 +1,11 @@
+local ffi = require("ffi")
+
+local processShapeNoiseLayerInfo = require("threadCode.common.processShapeNoiseLayerInfo")
+local setValueNoiseForShapeTypeDensityFunc = require("threadCode.common.setValueNoiseForShapeTypeDensityFunc")
+
 local consts = require("consts")
 
 local game = {}
-
--- Multiply by object's real radii to estimate object count
--- densityFunction should return 0 when the inputs are further from the origin than 1
--- densityFunction return values should be within [0, 1]
-function game:getShapeTypeBaseObjectAmount(densityFunction, ...)
-	local stepCount = consts.pointLayerShapeTypeAmountIntegralSteps
-	local axisLength = 2
-	local stepSize = axisLength / stepCount
-	local sampleVolume = stepSize ^ 3
-	local total = 0
-	for xi = 0, stepCount - 1 do
-		for yi = 0, stepCount - 1 do
-			for zi = 0, stepCount - 1 do
-				local x = -1 + stepSize * (xi + 0.5)
-				local y = -1 + stepSize * (yi + 0.5)
-				local z = -1 + stepSize * (zi + 0.5)
-				total = total + sampleVolume * densityFunction(x, y, z, ...)
-			end
-		end
-	end
-	return total
-end
-
-local function averageValueNoise(noiseLayerIndex, x, y, z)
-	return 0.5
-end
-
-function game:setValueNoiseForShapeTypeDensityFunc(shapeType, valueNoise)
-	valueNoise = valueNoise or function() error("valueNoise function not set for shape type " .. shapeType.name) end
-	local environment = {valueNoise = valueNoise}
-	setmetatable(environment, {__index = _G})
-	setfenv(shapeType.getDensity, environment)
-end
 
 local decodeShapeSubtypeScratchTable = {}
 function game:decodeShapeSubtypeIntoScratchTable(type, subtypeId)
@@ -54,7 +26,44 @@ function game:decodeShapeSubtypeIntoScratchTable(type, subtypeId)
 	return decodeShapeSubtypeScratchTable
 end
 
+-- Multiply by object's real radii to estimate object count
+-- densityFunction should return 0 when the inputs are further from the origin than 1
+-- densityFunction return values should be within [0, 1]
+function game:getShapeTypeBaseObjectAmount(integralThreads, shapeTypeId, valueNoiseData)
+	local infoTable = {shapeTypeId = shapeTypeId, params = decodeShapeSubtypeScratchTable, valueNoiseData = valueNoiseData}
+
+	-- Set threads going
+	for i, thread in ipairs(integralThreads) do
+		local err = thread:getError()
+		assert(not err, err)
+		love.thread.getChannel("shapeAmountIntegralInfo"):push(infoTable)
+	end
+
+	-- Gather up results
+	local results = {}
+	for i, thread in ipairs(integralThreads) do
+		local err = thread:getError()
+		assert(not err, err)
+		-- The sum is sorted by thread id. This makes it [a little closer to being] deterministic.
+		-- It's floats, so order can matter. Also, the thread count could make a difference, though I'm sure there are ways to make it a setting that does not affect a single bit of the final float by distributing the additions in a particular way.
+		table.insert(results, love.thread.getChannel("shapeAmountIntegralResult"):demand())
+	end
+
+	table.sort(results, function(a, b)
+		return a.firstSample < b.firstSample
+	end)
+
+	local total = 0
+	for _, v in ipairs(results) do
+		total = total + v.rangeTotal
+	end
+
+	return total
+end
+
 function game:loadShapeTypes()
+	local maxRequiredNoiseValues = 0
+
 	local pointLayerShapeTypes = {} -- Passing name gives id, passing id gives name
 
 	local path = "pointLayerShapeTypes/"
@@ -69,6 +78,7 @@ function game:loadShapeTypes()
 			local info = require(itemPath:gsub("/", ".") .. ".info")
 			shapeType.parameters = info.parameters or {}
 			shapeType.getDensity = info.getDensity
+			setValueNoiseForShapeTypeDensityFunc(shapeType)
 
 			local subtypeCount = 1
 			for _, parameter in ipairs(shapeType.parameters) do
@@ -76,15 +86,6 @@ function game:loadShapeTypes()
 				subtypeCount = subtypeCount * parameter.steps
 			end
 			shapeType.subtypeCount = subtypeCount
-
-			local subtypeBaseObjectAmounts = {}
-			self:setValueNoiseForShapeTypeDensityFunc(shapeType, averageValueNoise)
-			for subtypeId = 0, subtypeCount - 1 do
-				local scratchTable = self:decodeShapeSubtypeIntoScratchTable(shapeType, subtypeId)
-				subtypeBaseObjectAmounts[subtypeId] = self:getShapeTypeBaseObjectAmount(info.getDensity, unpack(scratchTable))
-			end
-			self:setValueNoiseForShapeTypeDensityFunc(shapeType, nil)
-			shapeType.subtypeBaseObjectAmounts = subtypeBaseObjectAmounts
 
 			local includeStrings = {}
 			if info.shaderIncludes then
@@ -98,24 +99,8 @@ function game:loadShapeTypes()
 				end
 			end
 
-			if info.valueNoiseInfo then
-				local currentStart = 0
-				shapeType.noiseInfo = {}
-				local layers = {}
-				shapeType.noiseInfo.layers = layers
-				for i, layerInfo in ipairs(info.valueNoiseInfo) do
-					local count = layerInfo.countX * layerInfo.countY * layerInfo.countZ
-					layers[i] = {
-						start = currentStart,
-						count = count,
-						countX = layerInfo.countX,
-						countY = layerInfo.countY,
-						countZ = layerInfo.countZ
-					}
-					currentStart = currentStart + count
-				end
-				shapeType.noiseInfo.requiredValueCount = currentStart -- Sum of all layers' counts
-			end
+			local amount = processShapeNoiseLayerInfo(shapeType, info) -- Adds info to shapeType
+			maxRequiredNoiseValues = math.max(amount, maxRequiredNoiseValues) -- Amount might be 0
 
 			local shaderDefines = {}
 			local noiseString
@@ -154,14 +139,62 @@ function game:loadShapeTypes()
 			)
 		end
 	end
+	-- Must match sorting in shapeAmountIntegral.lua
 	table.sort(pointLayerShapeTypes, function (a, b)
 		return a.name < b.name
 	end)
 	for i, v in ipairs(pointLayerShapeTypes) do
 		v.id = i - 1
 	end
-	for i = 0, #pointLayerShapeTypes do
+	local count = #pointLayerShapeTypes
+	for i = 1, count do
 		pointLayerShapeTypes[i - 1], pointLayerShapeTypes[i] = pointLayerShapeTypes[i], nil
+	end
+
+	-- Init noise for the integrals. They are allowed to use the same value data
+	local bytesPerFloat = 4
+	local valueNoiseData = love.data.newByteData(bytesPerFloat * maxRequiredNoiseValues)
+	local valueNoiseDataFFI = ffi.cast("float*", valueNoiseData:getFFIPointer())
+	self:seedCelestialRNG(self:getShapeIntegralNoiseSeed()) -- The code in there is TOOD
+	for i = 0, maxRequiredNoiseValues - 1 do
+		valueNoiseDataFFI[i] = self:celestialRandom()
+	end
+
+	-- Start threads
+	local integralThreads = {}
+	local threadCount = consts.pointLayerShapeTypeAmountIntegralMaxThreads
+	local stepCount = consts.pointLayerShapeTypeAmountIntegralSteps
+	local totalSamples = stepCount ^ 3
+	local samplesPerThread = math.floor(totalSamples / threadCount)
+	local firstSample = 0
+	for i = 1, threadCount do
+		-- Should have a thread for every sample, can also drop threads if there aren't enough samples to go around
+		local lastSample = math.min(totalSamples - 1, firstSample + samplesPerThread - 1)
+		if i == threadCount then
+			lastSample = totalSamples - 1
+		end
+
+		integralThreads[i] = love.thread.newThread("threadCode/shapeAmountIntegral.lua")
+		integralThreads[i]:start(firstSample, lastSample, stepCount)
+		local err = integralThreads[i]:getError()
+		assert(not err, err)
+
+		if lastSample >= totalSamples - 1 then
+			break
+		end
+
+		firstSample = lastSample + 1
+	end
+
+	for id = 0, count - 1 do
+		local shapeType = pointLayerShapeTypes[id]
+
+		local subtypeBaseObjectAmounts = {}
+		for subtypeId = 0, shapeType.subtypeCount - 1 do
+			self:decodeShapeSubtypeIntoScratchTable(shapeType, subtypeId)
+			subtypeBaseObjectAmounts[subtypeId] = self:getShapeTypeBaseObjectAmount(integralThreads, shapeType.id, valueNoiseData)
+		end
+		shapeType.subtypeBaseObjectAmounts = subtypeBaseObjectAmounts
 	end
 
 	self.pointLayerShapeTypes = pointLayerShapeTypes

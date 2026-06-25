@@ -5,6 +5,8 @@ local ffi = require("ffi")
 local bm = require("bigmaths")
 local mathsies = require("lib.mathsies")
 
+local setValueNoiseFunctionVars = require("threadCode.common.setValueNoiseFunctionVars")
+
 local util = require("util")
 local consts = require("consts")
 
@@ -35,24 +37,22 @@ galaxyPointLayerInfo.features = {
 		{
 			name = "ellipticalGalaxy",
 			weight = 1,
-			scaleMin = 5e19,
-			scaleMax = 1e21,
+			scaleMin = 7.5e18,
+			scaleMax = 9e19,
 			-- NOTE: If a factor is added to make the distribution of scales non-uniform, ensure that the per-layer average mass estimates are changed accordingly
 			zScaleRatioMin = 1.5, -- Less than 1 is flatter
 			zScaleRatioMax = 4
+		},
+		{
+			name = "spiralGalaxy",
+			weight = 16,
+			scaleMin = 8e19,
+			scaleMax = 4e21,
+			zScaleRatioMin = 0.075,
+			zScaleRatioMax = 0.2,
 		}
-		-- We also add spiral galaxies with arms
 	}
 }
-
-table.insert(galaxyPointLayerInfo.features.shapeTypeSet, {
-	name = "spiralGalaxy",
-	weight = 4,
-	scaleMin = 8e19,
-	scaleMax = 4e21,
-	zScaleRatioMin = 0.075,
-	zScaleRatioMax = 0.2,
-})
 
 function galaxyPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, chunkBufferIndex, count)
 	local randomChoice = util.weightedRandomChoice
@@ -130,7 +130,11 @@ function starSystemPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, ch
 		local y = randomTODO()
 		local z = randomTODO()
 
-		local starMass = randomRangeTODO(1.989e30 * 0.5, 1.989e30 * 1.5) -- TEMP, define elsewhere
+		-- Copied in consts.lua (for now)
+		local randomValue = randomTODO()
+		local exponentT = consts.starMassRandomTerm1Weight * randomValue ^ consts.starMassRandomTerm1Exponent + (1 - consts.starMassRandomTerm1Weight) * randomValue
+		local exponent = consts.starMassExponentRangeLow + exponentT * (consts.starMassExponentRangeHigh - consts.starMassExponentRangeLow)
+		local starMass = consts.starMassMultiplier * 10 ^ exponent
 		mass[i] = starMass
 		local density = consts.starDensity
 		local temperature = consts.starEffectiveTemperature
@@ -169,8 +173,8 @@ function game:initPointLayers()
 
 	-- Topmost layer is treated specially
 	-- TODO: Allow it to collapse to a point when sufficiently far away. Since that's just one point there's no need for optimisations like chunks etc.
-	local topLayer = self:newPointLayer("galaxies", "Galaxies", consts.galaxyLayerChunkSize, consts.maxGalacticDensity, 4, galaxyPointLayerInfo)
-	self:newPointLayer("starSystems", "Star Systems", consts.starLayerChunkSize, consts.maxStellarDensity, 9, starSystemPointLayerInfo)
+	local topLayer = self:newPointLayer("galaxies", "Galaxies", consts.galaxyLayerChunkSize, consts.maxGalacticDensity, 13, galaxyPointLayerInfo)
+	self:newPointLayer("starSystems", "Star Systems", consts.starLayerChunkSize, consts.maxStellarDensity, 11, starSystemPointLayerInfo)
 
 	-- Find distance at which top layer shape has the same angular radius as points
 	local topRadius = math.max(topLayer.fixedParentObjectRadii.x, topLayer.fixedParentObjectRadii.y, topLayer.fixedParentObjectRadii.z)
@@ -203,10 +207,10 @@ function game:initPointLayers()
 
 	-- TEMP/TODO
 	-- TODO: Verify
-	local starAverageMass = 1.989e30
-	local starAverageLuminousFluxR = 3.828e26 -- Not even exactly calculated from the range used in generateChunk
-	local starAverageLuminousFluxG = 3.828e26
-	local starAverageLuminousFluxB = 3.828e26
+	local starAverageMass = consts.averageStarMass
+	local starAverageLuminousFluxR = consts.averageStarLuminousFluxR
+	local starAverageLuminousFluxG = consts.averageStarLuminousFluxG
+	local starAverageLuminousFluxB = consts.averageStarLuminousFluxB
 	for i = #self.pointLayers, 1, -1 do
 		local pointLayer = self.pointLayers[i]
 		if i == #self.pointLayers then
@@ -270,14 +274,13 @@ function pointLayerFunctions:getDensity(realX, realY, realZ) -- The position is 
 	local shapeType = self.gameObject.pointLayerShapeTypes[shapeTypeName]
 	local densityFunction = shapeType.getDensity
 	local densityParametersScratchTable = self.gameObject:decodeShapeSubtypeIntoScratchTable(shapeType, shapeSubtypeId)
-	self:setValueNoiseFunction()
+	self:prepareValueNoiseFunction()
 	local returnValue = densityFunction(
 		realX / size.x * self.chunkSize,
 		realY / size.y * self.chunkSize,
 		realZ / size.z * self.chunkSize,
 		unpack(densityParametersScratchTable)
 	)
-	self:setValueNoiseFunction(true)
 	return returnValue
 end
 
@@ -298,24 +301,17 @@ function pointLayerFunctions:randomiseValueNoise()
 	self.valueNoiseBuffer:setArrayData(self.valueNoiseData, 1, 1, shapeType.noiseInfo.requiredValueCount)
 end
 
-function pointLayerFunctions:setValueNoiseFunction(unset) -- This is per shape type, so in case multiple layers use the same shape type this must be set before every use of the density function
+function pointLayerFunctions:prepareValueNoiseFunction(unset) -- This is per shape type, so in case multiple layers use the same shape type this must be set before every use of the density function
 	local relevantShapeTypeName =
 		self.parentPointLayer and self.parentPointLayer.currentObject.shapeTypeName
 		or self.fixedParentObjectShapeTypeName
 	local shapeType = self.gameObject.pointLayerShapeTypes[relevantShapeTypeName]
 	if not shapeType.noiseInfo then
-		self.gameObject:setValueNoiseForShapeTypeDensityFunc(shapeType, function()
-			error("Should not call valueNoise in a shape type density function if noise info is not present for that shape type")
-		end)
 		return
 	end
 	local layers = shapeType.noiseInfo.layers
-
 	local dataFFI = self.valueNoiseDataFFI
-	self.gameObject:setValueNoiseForShapeTypeDensityFunc(shapeType, function(noiseLayerIndex, x, y, z)
-		local layer = layers[noiseLayerIndex]
-		return 0.5 -- TEMP/TODO
-	end)
+	setValueNoiseFunctionVars(layers, dataFFI)
 end
 
 function pointLayerFunctions:getBoundingBoxChunks()
@@ -707,31 +703,6 @@ function game:handlePointLayers()
 			pointLayer.chunkPointCountBuffer:setArrayData(pointLayer.chunkPointCountData, 1, 1, pointLayer.chunkBufferTotalSize)
 		end
 
-		-- Reveals bug, will fix. move out of galaxy render range and start holding c and suddenly galaxy is broken
-		-- if love.keyboard.isDown("c") --[[and not pointLayer.parentPointLayer]] then -- TEMP
-		-- 	local x, y, z = pointLayer:getPointVars(0, 0, "position", "float", 3)
-		-- 	self.ship.position = parentOrigin + pointLayer.chunkSize * bm.vec3(0+x, 0+y, 0+z)
-		-- 	if not pointLayer.childPointLayer and pointLayer.currentObject then
-		-- 		self.ship.position = self.ship.position - bm.vec3(0, 0, self:getSphereResolvableDistance(pointLayer.currentObject.bodies[1].radius))
-		-- 	end
-		-- end
-		-- if love.keyboard.isDown("c") and not pointLayer.parentPointLayer then -- Even more TEMP
-		-- 	local x, y, z = pointLayer:getPointVars(0, 0, "position", "float", 3)
-		-- 	self.ship.position = parentOrigin + pointLayer.chunkSize * bm.vec3(0+x, 0+y, 0+z) - bm.vec3(0, 0, 5e22)
-		-- end
-		if love.keyboard.isDown("c") and not pointLayer.parentPointLayer then
-			if pointLayer:getChunkPointCount(0) == 0 then
-				self.ship.position = bm.vec3.clone(parentOrigin)
-			else
-				local x, y, z = pointLayer:getPointVars(0, 0, "position", "float", 3)
-				self.ship.position = parentOrigin + pointLayer.chunkSize * bm.vec3(0+x, 0+y, 0+z) - bm.vec3(0, 0, self:getSphereResolvableDistance(math.max(
-					pointLayer.chunkExtraInfo[0].radii[0],
-					pointLayer.chunkExtraInfo[0].radii[1],
-					pointLayer.chunkExtraInfo[0].radii[2]
-				)))
-			end
-		end
-
 		if not pointLayer.parentPointLayer then
 			if
 				math.abs(positionRelative.x) > widthChunks + pointLayer.chunkBufferSideLength / 2 or
@@ -889,6 +860,7 @@ function game:getPointLayerGravityWellSlowdownFactor()
 		local totalThisLayer = 0
 
 		local temp = mathsies.vec3() -- No need to generate tons of new vec3s
+		-- TODO: Derive upper from lower (=lower+1)?
 		local xLower, xUpper = math.floor(positionRelative.x - 0.5), math.floor(positionRelative.x + 0.5)
 		local yLower, yUpper = math.floor(positionRelative.y - 0.5), math.floor(positionRelative.y + 0.5)
 		local zLower, zUpper = math.floor(positionRelative.z - 0.5), math.floor(positionRelative.z + 0.5)
@@ -940,7 +912,7 @@ function game:getPointLayerGravityWellSlowdownFactor()
 		end
 
 		local radiusChunks = parentRadii / pointLayer.chunkSize
-		local detail = 10 -- TODO: Find optimisations to allow greater detail without such time cost (multithreading?)
+		local detail = 11 -- TODO: Find optimisations to allow greater detail without such time cost (multithreading?)
 		local sampleCount, sampledVolume = 0, 0 -- TEMP
 		local shapeType = self.pointLayerShapeTypes[parentShapeTypeName]
 		local densityFunction = shapeType.getDensity
@@ -964,7 +936,7 @@ function game:getPointLayerGravityWellSlowdownFactor()
 		end
 		-- Sample boxes in a grid that (TODO) decreases in detail the further out you go (TODO end), missing the cell containing the chunks that we have already checked the points of
 		local lerp, sign = util.lerp, util.sign
-		pointLayer:setValueNoiseFunction()
+		pointLayer:prepareValueNoiseFunction()
 		for xi = -detail, detail do
 			for yi = -detail, detail do
 				for zi = -detail, detail do
@@ -1060,8 +1032,6 @@ function game:getPointLayerGravityWellSlowdownFactor()
 			end
 		end
 
-		pointLayer:setValueNoiseFunction(true)
-
 		-- TODO: Verify the maths. Is 2 ^ 3 - sampledVolume approximately equal to chunkCheckedVolume when the size of everything is small enough to avoid huge rounding error? It should be!
 		-- local chunkCheckedVolume = sampledChunksWidth * sampledChunksHeight * sampledChunksDepth / (radiusChunks.x * radiusChunks.y * radiusChunks.z)
 		-- print(2 ^ 3 - sampledVolume, chunkCheckedVolume, (2 ^ 3 - sampledVolume) / chunkCheckedVolume)
@@ -1081,19 +1051,28 @@ function game:drawPointLayers()
 	local cameraPositionFull = self.ship.position
 	local cameraOrientation = self.ship.orientation
 	local cameraVerticalFOV = self.ship.verticalFOV
+	local diagonalFOV = 2 * math.atan(math.sqrt(1 ^ 2 + aspectRatio ^ 2) * math.tan(cameraVerticalFOV / 2))
 
 	local cameraForwards = mathsies.vec3.rotate(consts.forwardVector, cameraOrientation)
 	local cameraUp = mathsies.vec3.rotate(consts.upVector, cameraOrientation)
 	local cameraRight = mathsies.vec3.rotate(consts.rightVector, cameraOrientation)
+	local vertexZAtFurthestAngle = math.cos(diagonalFOV / 2)
 	local cameraToClip = mathsies.mat4.perspectiveLeftHanded(
 		aspectRatio,
 		cameraVerticalFOV,
-		2,
-		0.5
+		-- 1, -- Only a point disk vertex right in the centre of the screen has any chance of being clipped, and it will just be pushed slightly away from the centre. I don't see how any holes could form.
+		1.01, -- But whatever lol
+		-- vertexZAtFurthestAngle
+		vertexZAtFurthestAngle * 0.99
 	)
 	local worldToCameraStationary = mathsies.mat4.camera(mathsies.vec3(), cameraOrientation)
 	local skyToClip = cameraToClip * worldToCameraStationary
 	local clipToSky = mathsies.mat4.inverse(skyToClip)
+
+	-- local vec = mathsies.vec3(1, 1, 1) -- 1, 1 for top right. Z doesn't matter because of normalisation below.
+	-- vec = clipToSky * vec
+	-- local angle = math.acos(mathsies.vec3.dot(mathsies.vec3.normalise(vec), mathsies.vec3(0, 0, 1)))
+	-- print(angle - diagonalFOV / 2) -- Very very very close to 0. This means that the diagonal FOV calculation is correct.
 
 	love.graphics.setBlendMode("add")
 
@@ -1176,7 +1155,6 @@ function game:drawPointLayers()
 		local scaleToGetAngularRadius = math.tan(consts.pointAngularRadius)
 		local luminanceCalcConst = 1 / (diskSolidAngle * 2 * consts.tau)
 
-		local diagonalFOV = cameraVerticalFOV * math.sqrt(1 ^ 2 + aspectRatio ^ 2) -- Angular distance from camera forwards at corners of screen
 		local maxAngleFromCentre = diagonalFOV / 2 + consts.pointAngularRadius
 		local minDot = math.cos(maxAngleFromCentre)
 		local skipIndex =

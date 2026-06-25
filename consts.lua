@@ -7,7 +7,10 @@ function consts.load()
 
 	consts.identity = "picnic-pioneers"
 	consts.loveVersion = "12.0"
+
 	consts.windowTitle = "Picnic Pioneers"
+	consts.windowWidth = 800
+	consts.windowHeight = 600
 
 	consts.tau = math.pi * 2
 
@@ -24,7 +27,9 @@ function consts.load()
 	consts.pointMinDistanceInChunk = 0.03125 -- Use of this during generation is TODO!!!!
 
 	consts.idObjectTypes = util.makeBidirectional({
-		[0] = "universe",
+		[0] = "special", -- E.g. shape type integral noise seed
+
+		"universe",
 		"galaxyChunk",
 		"galaxy",
 		"starChunk",
@@ -91,29 +96,63 @@ function consts.load()
 
 	consts.starLayerChunkSize = 4e17
 	consts.maxStellarDensity = 4.72e-51 -- Stellar density near the sun
-	consts.galaxyLayerChunkSize = 1e25
+	consts.galaxyLayerChunkSize = 1.25e25
 	consts.maxGalacticDensity = 1e-73
 	consts.galaxyGroupPosition = bm.vec3(0, 0, 0)
-	consts.galaxyGroupRadii = mathsies.vec3(5e26, 5e26, 5e26) -- Radius does not need to be precise like position does
+	consts.galaxyGroupRadii = mathsies.vec3(1e27) -- Radius does not need to be precise like position does
 	consts.galaxyGroupShapeTypeName = "universeFilaments"
 
-	consts.slowdownDistanceExponent = -6
-	consts.gravityFactorExponent = 1/6
-	consts.gravityMovementRate = 4e3
+	consts.slowdownDistanceExponent = -5
+	consts.gravityFactorExponent = 1/5
+	consts.gravityMovementRate = 4e4
 
 	consts.diskMeshVertices = 5
 	consts.pointAngularRadius = 0.006
-	consts.pointFadeStart = 0.9
+	consts.pointFadeStart = 0.1
 
 	consts.celestialLuminanceMultiplier = 1 / 2e-11
 
 	consts.pointPreparationThreadgroupSize = 256
-	consts.pointLayerShapeTypeAmountIntegralSteps = 64 -- TODO: Use threads for this and bump number up
-	consts.volumetricMaxRaySteps = 64
+	consts.pointLayerShapeTypeAmountIntegralMaxThreads = 7
+	consts.pointLayerShapeTypeAmountIntegralSteps = 100
+	consts.volumetricMaxRaySteps = 128
 
-	-- TEMP
-	consts.starDensity = 1408
+	consts.starDensity = 1408 -- TEMP?
 	consts.starEffectiveTemperature = 5772
+
+	consts.starMassRandomTerm1Weight = 0.75
+	consts.starMassRandomTerm1Exponent = 20
+	consts.starMassExponentRangeLow = 28.25
+	consts.starMassExponentRangeHigh = 31.5
+	consts.starMassMultiplier = 1.5
+	-- Derived
+	-- TEMP/TODO: Properly, please... this is copy/pasted from pointLayer.lua's starSystemPointLayerInfo:generateChunk
+	local count = 10000
+	local sumMass = 0
+	local sumFluxR = 0
+	local sumFluxG = 0
+	local sumFluxB = 0
+	for i = 1, count do
+		local randomValue = (i - 0.5) / count
+		local exponentT = consts.starMassRandomTerm1Weight * randomValue ^ consts.starMassRandomTerm1Exponent + (1 - consts.starMassRandomTerm1Weight) * randomValue
+		local exponent = consts.starMassExponentRangeLow + exponentT * (consts.starMassExponentRangeHigh - consts.starMassExponentRangeLow)
+		local starMass = consts.starMassMultiplier * 10 ^ exponent
+		sumMass = sumMass + starMass
+		local density = consts.starDensity
+		local temperature = consts.starEffectiveTemperature
+		local volume = starMass / density
+		local radius = (volume / (2 / 3 * consts.tau)) ^ (1 / 3)
+		local area = 2 * consts.tau * radius ^ 2
+		local luminousExitance = consts.stefanBoltzmannConstant * temperature ^ 4
+		local luminousFlux = luminousExitance * area
+		sumFluxR = sumFluxR + luminousFlux
+		sumFluxG = sumFluxG + luminousFlux
+		sumFluxB = sumFluxB + luminousFlux
+	end
+	consts.averageStarMass = sumMass / count
+	consts.averageStarLuminousFluxR = sumFluxR / count
+	consts.averageStarLuminousFluxG = sumFluxG / count
+	consts.averageStarLuminousFluxB = sumFluxB / count
 end
 
 return consts

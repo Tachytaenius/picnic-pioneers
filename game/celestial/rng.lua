@@ -16,9 +16,7 @@ function game:initCelestialRNG()
 	-- self.isCelestialRNGSeeded = false
 end
 
-function game:seedCelestialRNGWithObject(...)
-	local a, b, c, d = self.getGlobalCelestialObjectIdNumbers(...)
-
+function game:seedCelestialRNG(a, b, c, d)
 	-- TODO
 
 	-- Debug...
