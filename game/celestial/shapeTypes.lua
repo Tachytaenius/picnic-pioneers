@@ -219,7 +219,6 @@ function game:loadShapeTypes()
 			for subtypeId = 0, shapeType.subtypeCount - 1 do
 				shapeType.subtypeBaseObjectAmounts[subtypeId] = shapeType.subtypeBaseObjectAmounts[subtypeId] /
 					consts.pointLayerShapeTypeAmountIntegralAverageRepeatCount
-				print(shapeType.name, subtypeId, shapeType.subtypeBaseObjectAmounts[subtypeId])
 			end
 		end
 	end
