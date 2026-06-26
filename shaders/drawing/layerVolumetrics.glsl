@@ -9,6 +9,7 @@ uniform uint maxRaySteps;
 
 uniform float fadeInRadius;
 uniform float fadeOutRadius;
+uniform float fadeExponent;
 
 uniform vec3 baseEmission;
 
@@ -47,10 +48,10 @@ vec3 getRayColour(vec3 rayPosition, vec3 rayDirection) {
 		float sampleT = mix(segmentEnd, segmentStart, 0.5);
 		vec3 samplePosition = (rayPosition + rayDirection * sampleT) / shapeRadii;
 
-		float emissionFadeMultiplier = clamp(
+		float emissionFadeMultiplier = pow(clamp(
 			1.0 - (sampleT - fadeInRadius) / (fadeOutRadius - fadeInRadius),
 			0.0, 1.0
-		);
+		), fadeExponent);
 
 		float transmittanceThisStep = 1.0;
 

@@ -29,8 +29,9 @@ end
 -- Multiply by object's real radii to estimate object count
 -- densityFunction should return 0 when the inputs are further from the origin than 1
 -- densityFunction return values should be within [0, 1]
-function game:getShapeTypeBaseObjectAmount(integralThreads, shapeTypeId, valueNoiseData)
-	local infoTable = {shapeTypeId = shapeTypeId, params = decodeShapeSubtypeScratchTable, valueNoiseData = valueNoiseData}
+function game:getShapeTypeBaseObjectAmount(integralThreads, shapeType, subtypeId, valueNoiseData)
+	self:decodeShapeSubtypeIntoScratchTable(shapeType, subtypeId)
+	local infoTable = {shapeTypeId = shapeType.id, params = decodeShapeSubtypeScratchTable, valueNoiseData = valueNoiseData}
 
 	-- Set threads going
 	for i, thread in ipairs(integralThreads) do
@@ -151,15 +152,6 @@ function game:loadShapeTypes()
 		pointLayerShapeTypes[i - 1], pointLayerShapeTypes[i] = pointLayerShapeTypes[i], nil
 	end
 
-	-- Init noise for the integrals. They are allowed to use the same value data
-	local bytesPerFloat = 4
-	local valueNoiseData = love.data.newByteData(bytesPerFloat * maxRequiredNoiseValues)
-	local valueNoiseDataFFI = ffi.cast("float*", valueNoiseData:getFFIPointer())
-	self:seedCelestialRNG(self:getShapeIntegralNoiseSeed()) -- The code in there is TOOD
-	for i = 0, maxRequiredNoiseValues - 1 do
-		valueNoiseDataFFI[i] = self:celestialRandom()
-	end
-
 	-- Start threads
 	local integralThreads = {}
 	local threadCount = consts.pointLayerShapeTypeAmountIntegralMaxThreads
@@ -186,15 +178,50 @@ function game:loadShapeTypes()
 		firstSample = lastSample + 1
 	end
 
+	local bytesPerFloat = 4
+	local valueNoiseData = love.data.newByteData(bytesPerFloat * maxRequiredNoiseValues)
+	local valueNoiseDataFFI = ffi.cast("float*", valueNoiseData:getFFIPointer())
+
+	local alreadyDoneNoiseless = false
+	for averagingIteration = 0, consts.pointLayerShapeTypeAmountIntegralAverageRepeatCount - 1 do
+		-- Init noise for the integrals. They are allowed to use the same value data
+		self:seedCelestialRNG(self:getShapeIntegralNoiseSeed(averagingIteration)) -- The code in there is TOOD
+		for i = 0, maxRequiredNoiseValues - 1 do
+			valueNoiseDataFFI[i] = self:celestialRandom()
+		end
+
+		for id = 0, count - 1 do
+			local shapeType = pointLayerShapeTypes[id]
+
+			if not shapeType.noiseInfo and alreadyDoneNoiseless then
+				goto continue
+			end
+
+			local subtypeBaseObjectAmounts = shapeType.subtypeBaseObjectAmounts or {}
+			for subtypeId = 0, shapeType.subtypeCount - 1 do
+				local result = self:getShapeTypeBaseObjectAmount(integralThreads, shapeType, subtypeId, valueNoiseData)
+				subtypeBaseObjectAmounts[subtypeId] = (subtypeBaseObjectAmounts[subtypeId] or 0) + result
+			end
+			shapeType.subtypeBaseObjectAmounts = subtypeBaseObjectAmounts
+
+		    ::continue::
+		end
+
+		alreadyDoneNoiseless = true
+	end
+
+	-- Divide down the averaging sums for the shape types with noise
 	for id = 0, count - 1 do
 		local shapeType = pointLayerShapeTypes[id]
 
-		local subtypeBaseObjectAmounts = {}
-		for subtypeId = 0, shapeType.subtypeCount - 1 do
-			self:decodeShapeSubtypeIntoScratchTable(shapeType, subtypeId)
-			subtypeBaseObjectAmounts[subtypeId] = self:getShapeTypeBaseObjectAmount(integralThreads, shapeType.id, valueNoiseData)
+		if shapeType.noiseInfo then
+			-- subtypeBaseObjectAmounts' entries will have been added to multiple times to get an average
+			for subtypeId = 0, shapeType.subtypeCount - 1 do
+				shapeType.subtypeBaseObjectAmounts[subtypeId] = shapeType.subtypeBaseObjectAmounts[subtypeId] /
+					consts.pointLayerShapeTypeAmountIntegralAverageRepeatCount
+				print(shapeType.name, subtypeId, shapeType.subtypeBaseObjectAmounts[subtypeId])
+			end
 		end
-		shapeType.subtypeBaseObjectAmounts = subtypeBaseObjectAmounts
 	end
 
 	self.pointLayerShapeTypes = pointLayerShapeTypes

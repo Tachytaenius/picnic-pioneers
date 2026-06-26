@@ -13,6 +13,7 @@ end
 -- star id bits: 12
 -- celestial body bits: 16
 -- Some bits remain unused
+-- The chunk ids being 36 bits is referenced in initPointLayers
 function game:getGlobalCelestialObjectIdNumbers(objectType, galaxyChunkId, galaxyId, starChunkId, starId, systemBodyId)
 	galaxyChunkId = galaxyChunkId or 0
 	galaxyId = galaxyId or 0
@@ -35,13 +36,11 @@ function game:getGlobalCelestialObjectIdNumbers(objectType, galaxyChunkId, galax
 	return a, b, c, d
 end
 -- Designed not to clash with any celestial objects
--- function game:getShapeIntegralNoiseSeed(typeId, subTypeId)
-function game:getShapeIntegralNoiseSeed() -- No need to even specify type or subtype
-	local a = 0
-	-- local b = typeId
-	-- local c = subTypeId
-	local b = 0
-	local c = 0 -- Could be special type id if more are needed
+-- function game:getShapeIntegralNoiseSeed(averagingIteration, typeId, subTypeId)
+function game:getShapeIntegralNoiseSeed(averagingIteration) -- No need to even specify type or subtype
+	local a = 0 -- typeId?
+	local b = 0 -- subTypeId?
+	local c = averagingIteration
 	local d = consts.idObjectTypes.special * 2 ^ 16
 	return a, b, c, d
 end

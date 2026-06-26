@@ -20,6 +20,14 @@ local function randomRangeTODO(lower, upper)
 	return lower + love.math.random() * (upper - lower)
 end
 
+local function getBoundingBoxChunksForSize(chunkSize, x, y, z)
+	-- TODO: I think this and the code using it breaks (slightly) when size[x/y/z] / chunkSize is an integer
+	local minX, maxX = math.floor(-x / chunkSize), math.floor(x / chunkSize)
+	local minY, maxY = math.floor(-y / chunkSize), math.floor(y / chunkSize)
+	local minZ, maxZ = math.floor(-z / chunkSize), math.floor(z / chunkSize)
+	return minX, maxX, minY, maxY, minZ, maxZ
+end
+
 local galaxyPointLayerInfo = {
 	fixedParentObjectPosition = consts.galaxyGroupPosition,
 	fixedParentObjectRadii = consts.galaxyGroupRadii,
@@ -173,8 +181,8 @@ function game:initPointLayers()
 
 	-- Topmost layer is treated specially
 	-- TODO: Allow it to collapse to a point when sufficiently far away. Since that's just one point there's no need for optimisations like chunks etc.
-	local topLayer = self:newPointLayer("galaxies", "Galaxies", consts.galaxyLayerChunkSize, consts.maxGalacticDensity, 13, galaxyPointLayerInfo)
-	self:newPointLayer("starSystems", "Star Systems", consts.starLayerChunkSize, consts.maxStellarDensity, 11, starSystemPointLayerInfo)
+	local topLayer = self:newPointLayer("galaxies", "Galaxies", consts.galaxyLayerChunkSize, consts.maxGalacticDensity, 17, galaxyPointLayerInfo)
+	self:newPointLayer("starSystems", "Star Systems", consts.starLayerChunkSize, consts.maxStellarDensity, 13, starSystemPointLayerInfo)
 
 	-- Find distance at which top layer shape has the same angular radius as points
 	local topRadius = math.max(topLayer.fixedParentObjectRadii.x, topLayer.fixedParentObjectRadii.y, topLayer.fixedParentObjectRadii.z)
@@ -254,6 +262,34 @@ function game:initPointLayers()
 			pointLayer.averageLuminousFluxBPerPoint = averageAmount * childPointLayer.averageLuminousFluxBPerPoint
 		end
 	end
+
+	-- Ensure no objects could be too big for the celestal id system to work on its contained points
+	for i = 1, #self.pointLayers do
+		local layer = self.pointLayers[i]
+		if not layer.features.shapeTypeSet then
+			goto continue
+		end
+		for j, shapeTypeInfo in ipairs(layer.features.shapeTypeSet) do
+			local identifier = "point layer " .. i .. ", shape type info " .. j
+			assert(shapeTypeInfo.scaleMin <= shapeTypeInfo.scaleMax, "Scale min and max are flipped for " .. identifier)
+			assert(shapeTypeInfo.zScaleRatioMin <= shapeTypeInfo.zScaleRatioMax, "Z scale ratio min and max are flipped for " .. identifier)
+			local largestX = shapeTypeInfo.scaleMax
+			local largestY = shapeTypeInfo.scaleMax
+			local largestZ = shapeTypeInfo.scaleMax * shapeTypeInfo.zScaleRatioMax
+			local minX, maxX, minY, maxY, minZ, maxZ = getBoundingBoxChunksForSize(layer.chunkSize, largestX, largestY, largestZ)
+			local widthChunks = maxX - minX + 1
+			local heightChunks = maxY - minY + 1
+			local depthChunks = maxZ - minZ + 1
+			local largestChunkCount = widthChunks * heightChunks * depthChunks
+
+			local maximumChunks = 2 ^ 36
+			if largestChunkCount >= maximumChunks then -- 36 bits as per getGlobalCelestialObjectIdNumbers
+				error("Too many chunks possible for " .. identifier .. ". Must be at most " .. maximumChunks)
+			end
+		end
+	    ::continue::
+	end
+	-- TODO: Check universe size too (but really it should be its own point layer that only ever has one point?)
 end
 
 local pointLayerFunctions = {}
@@ -323,11 +359,7 @@ function pointLayerFunctions:getBoundingBoxChunks()
 	else
 		size = self.fixedParentObjectRadii
 	end
-	-- TODO: I think this and the code using it breaks (slightly) when size[x/y/z] / chunkSize is an integer
-	local minX, maxX = math.floor(-size.x / self.chunkSize), math.floor(size.x / self.chunkSize)
-	local minY, maxY = math.floor(-size.y / self.chunkSize), math.floor(size.y / self.chunkSize)
-	local minZ, maxZ = math.floor(-size.z / self.chunkSize), math.floor(size.z / self.chunkSize)
-	return minX, maxX, minY, maxY, minZ, maxZ
+	return getBoundingBoxChunksForSize(self.chunkSize, mathsies.vec3.components(size))
 end
 
 function pointLayerFunctions:setChunkPointCount(chunkBufferIndex, count)
@@ -1122,6 +1154,7 @@ function game:drawPointLayers()
 		end
 		volumetricShader:send("fadeInRadius", fullyVolumetricRadiusProperUnits * distanceUnitScale)
 		volumetricShader:send("fadeOutRadius", fullyPointRadiusProperUnits * distanceUnitScale)
+		volumetricShader:send("fadeExponent", consts.pointFadeExponent)
 		volumetricShader:send("clipToSky", {mathsies.mat4.components(clipToSky)})
 		volumetricShader:send("cameraPosition", {mathsies.vec3.components(bm.vec3.toMathsiesVec3(cameraPositionFullRelative * distanceUnitScale))})
 		volumetricShader:send("maxRaySteps", consts.volumetricMaxRaySteps)
@@ -1179,6 +1212,7 @@ function game:drawPointLayers()
 		preparationShader:send("cameraForwards", {mathsies.vec3.components(cameraForwards)})
 		preparationShader:send("fadeInRadius", fullyPointRadius)
 		preparationShader:send("fadeOutRadius", fullyVolumetricRadius)
+		preparationShader:send("fadeExponent", consts.pointFadeExponent)
 		-- preparationShader:send("skyToClip", {mathsies.mat4.components(skyToClip)}) -- TODO (this is for attenuation)
 		preparationShader:send("skipIndex", skipIndex)
 		preparationShader:send("maxPointsPerChunk", pointLayer.maxPointsPerChunk)

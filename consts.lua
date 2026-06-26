@@ -96,7 +96,7 @@ function consts.load()
 
 	consts.starLayerChunkSize = 4e17
 	consts.maxStellarDensity = 4.72e-51 -- Stellar density near the sun
-	consts.galaxyLayerChunkSize = 1.25e25
+	consts.galaxyLayerChunkSize = 1e25
 	consts.maxGalacticDensity = 1e-73
 	consts.galaxyGroupPosition = bm.vec3(0, 0, 0)
 	consts.galaxyGroupRadii = mathsies.vec3(1e27) -- Radius does not need to be precise like position does
@@ -108,13 +108,16 @@ function consts.load()
 
 	consts.diskMeshVertices = 5
 	consts.pointAngularRadius = 0.006
-	consts.pointFadeStart = 0.1
+	consts.pointFadeStart = 1 / 3
+	consts.pointFadeExponent = 3
 
 	consts.celestialLuminanceMultiplier = 1 / 2e-11
 
 	consts.pointPreparationThreadgroupSize = 256
 	consts.pointLayerShapeTypeAmountIntegralMaxThreads = 7
-	consts.pointLayerShapeTypeAmountIntegralSteps = 100
+	consts.pointLayerShapeTypeAmountIntegralSteps = 64
+	consts.pointLayerShapeTypeAmountIntegralAverageRepeatCount = 10 -- Skips noiseless shape types
+
 	consts.volumetricMaxRaySteps = 128
 
 	consts.starDensity = 1408 -- TEMP?

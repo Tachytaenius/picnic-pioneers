@@ -2,9 +2,9 @@ local info = {}
 
 info.valueNoiseInfo = {
 	{
-		countX = 14,
-		countY = 14,
-		countZ = 14
+		countX = 32,
+		countY = 32,
+		countZ = 32
 	}
 }
 
