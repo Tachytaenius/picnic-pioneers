@@ -290,6 +290,8 @@ function game:initPointLayers()
 	    ::continue::
 	end
 	-- TODO: Check universe size too (but really it should be its own point layer that only ever has one point?)
+
+	self.slowdownSampleDistribution = self:initSampleDistribution(consts.shapeSlowdownIntegralHighestStepCount)
 end
 
 local pointLayerFunctions = {}
@@ -337,7 +339,7 @@ function pointLayerFunctions:randomiseValueNoise()
 	self.valueNoiseBuffer:setArrayData(self.valueNoiseData, 1, 1, shapeType.noiseInfo.requiredValueCount)
 end
 
-function pointLayerFunctions:prepareValueNoiseFunction(unset) -- This is per shape type, so in case multiple layers use the same shape type this must be set before every use of the density function
+function pointLayerFunctions:prepareValueNoiseFunction() -- This is per shape type, so in case multiple layers use the same shape type this must be set before every use of the density function
 	local relevantShapeTypeName =
 		self.parentPointLayer and self.parentPointLayer.currentObject.shapeTypeName
 		or self.fixedParentObjectShapeTypeName
@@ -892,10 +894,12 @@ function game:getPointLayerGravityWellSlowdownFactor()
 		local totalThisLayer = 0
 
 		local temp = mathsies.vec3() -- No need to generate tons of new vec3s
-		-- TODO: Derive upper from lower (=lower+1)?
-		local xLower, xUpper = math.floor(positionRelative.x - 0.5), math.floor(positionRelative.x + 0.5)
-		local yLower, yUpper = math.floor(positionRelative.y - 0.5), math.floor(positionRelative.y + 0.5)
-		local zLower, zUpper = math.floor(positionRelative.z - 0.5), math.floor(positionRelative.z + 0.5)
+		local xLower = math.floor(positionRelative.x - 0.5)
+		local yLower = math.floor(positionRelative.y - 0.5)
+		local zLower = math.floor(positionRelative.z - 0.5)
+		local xUpper = xLower + 1
+		local yUpper = yLower + 1
+		local zUpper = zLower + 1
 		local sampledChunksWidth = xUpper - xLower + 1
 		local sampledChunksHeight = yUpper - yLower + 1
 		local sampledChunksDepth = zUpper - zLower + 1
@@ -943,133 +947,61 @@ function game:getPointLayerGravityWellSlowdownFactor()
 			end
 		end
 
-		local radiusChunks = parentRadii / pointLayer.chunkSize
-		local detail = 11 -- TODO: Find optimisations to allow greater detail without such time cost (multithreading?)
-		local sampleCount, sampledVolume = 0, 0 -- TEMP
+		local integralThreads = self.shapeIntegralThreads
 		local shapeType = self.pointLayerShapeTypes[parentShapeTypeName]
-		local densityFunction = shapeType.getDensity
-		local densityParametersScratchTable = self:decodeShapeSubtypeIntoScratchTable(shapeType, parentShapeSubtypeId)
-		local function sample(x, y, z, w, h, d)
-			sampleCount = sampleCount + 1
-			sampledVolume = sampledVolume + w * h * d
+		local scratch = self:decodeShapeSubtypeIntoScratchTable(shapeType, parentShapeSubtypeId)
+		for i = 1, #self.slowdownSampleDistribution do
+			local thread = integralThreads[i]
+			local err = thread:getError()
+			assert(not err, err)
 
-			local averageMassPerPoint = pointLayer.averageMassPerPoint
-			local density = densityFunction(x, y, z, unpack(densityParametersScratchTable)) * pointLayer.maxPointDensity * averageMassPerPoint
-			local trueDeltaX = x * parentRadii.x - positionRelativeFull.x
-			local trueDeltaY = y * parentRadii.y - positionRelativeFull.y
-			local trueDeltaZ = z * parentRadii.z - positionRelativeFull.z
-			local trueW = w * parentRadii.x
-			local trueH = h * parentRadii.y
-			local trueD = d * parentRadii.z
-			local dist = math.sqrt(trueDeltaX ^ 2 + trueDeltaY ^ 2 + trueDeltaZ ^ 2)
-			if dist > 0 then
-				totalThisLayer = totalThisLayer + density * dist ^ exponent * trueW * trueH * trueD
-			end
+			local infoTable = {
+				shapeTypeId = shapeType.id,
+				params = scratch,
+				valueNoiseData = pointLayer.valueNoiseData,
+				type = "gravitySlowdown",
+				firstSample = self.slowdownSampleDistribution[i].firstSample,
+				lastSample = self.slowdownSampleDistribution[i].lastSample,
+				stepCount = self.slowdownSampleDistribution.stepCount,
+
+				exponent = exponent,
+				-- From radius 1 (as in the shape type density function) to full object radii
+				scaleX = parentRadii.x,
+				scaleY = parentRadii.y,
+				scaleZ = parentRadii.z,
+				-- These all work in full positions
+				referencePosX = positionRelativeFull.x,
+				referencePosY = positionRelativeFull.y,
+				referencePosZ = positionRelativeFull.z,
+				cutRegionStartX = xLower * pointLayer.chunkSize,
+				cutRegionStartY = yLower * pointLayer.chunkSize,
+				cutRegionStartZ = zLower * pointLayer.chunkSize,
+				cutRegionEndX = (xUpper + 1) * pointLayer.chunkSize,
+				cutRegionEndY = (yUpper + 1) * pointLayer.chunkSize,
+				cutRegionEndZ = (zUpper + 1) * pointLayer.chunkSize,
+				sampleDensityMultiplier = pointLayer.averageMassPerPoint * pointLayer.maxPointDensity
+			}
+			love.thread.getChannel("shapeAmountIntegralInfo"):push(infoTable)
 		end
-		-- Sample boxes in a grid that (TODO) decreases in detail the further out you go (TODO end), missing the cell containing the chunks that we have already checked the points of
-		local lerp, sign = util.lerp, util.sign
-		pointLayer:prepareValueNoiseFunction()
-		for xi = -detail, detail do
-			for yi = -detail, detail do
-				for zi = -detail, detail do
-					-- I got tired at this point. This code can probably be improved
-
-					local xi, xSide = math.abs(xi), sign(xi)
-					local yi, ySide = math.abs(yi), sign(yi)
-					local zi, zSide = math.abs(zi), sign(zi)
-
-					-- TODO: Make this work when outside chunk range
-
-					local sampleX, xCellSize
-					if xSide == -1 then
-						local xa = math.min(1, xLower / radiusChunks.x)
-						-- xLower / radiusChunks.x is approximately equal to (positionRelative.x / pointLayer.chunkSize - sampledChunksWidth / 2) / radiusChunks.x
-						local xb = -1
-						if xa <= xb then
-							goto continue
-						end
-						xCellSize = (xa - xb) / detail
-						sampleX = lerp(xa, xb, (xi + 0.5) / detail)
-					elseif xSide == 1 then
-						local xa = math.max(-1, (xUpper + 1) / radiusChunks.x)
-						local xb = 1
-						if xa >= xb then
-							goto continue
-						end
-						xCellSize = (xb - xa) / detail
-						sampleX = lerp(xa, xb, (xi + 0.5) / detail)
-					elseif math.abs(positionRelative.x / radiusChunks.x) < 1 then
-						xCellSize = (xUpper + 1 - xLower) / radiusChunks.x
-						sampleX = positionRelative.x / radiusChunks.x
-					else
-						goto continue
-					end
-
-					local sampleY, yCellSize
-					if ySide == -1 then
-						local ya = math.min(1, yLower / radiusChunks.y)
-						local yb = -1
-						if ya < yb then
-							goto continue
-						end
-						yCellSize = (ya - yb) / detail
-						sampleY = lerp(ya, yb, (yi + 0.5) / detail)
-					elseif ySide == 1 then
-						local ya = math.max(-1, (yUpper + 1) / radiusChunks.y)
-						local yb = 1
-						if ya > yb then
-							goto continue
-						end
-						yCellSize = (yb - ya) / detail
-						sampleY = lerp(ya, yb, (yi + 0.5) / detail)
-					elseif math.abs(positionRelative.y / radiusChunks.y) < 1 then
-						yCellSize = (yUpper + 1 - yLower) / radiusChunks.y
-						sampleY = positionRelative.y / radiusChunks.y
-					else
-						goto continue
-					end
-
-					local sampleZ, zCellSize
-					if zSide == -1 then
-						local za = math.min(1, zLower / radiusChunks.z)
-						local zb = -1
-						if za < zb then
-							goto continue
-						end
-						zCellSize = (za - zb) / detail
-						sampleZ = lerp(za, zb, (zi + 0.5) / detail)
-					elseif zSide == 1 then
-						local za = math.max(-1, (zUpper + 1) / radiusChunks.z)
-						local zb = 1
-						if za > zb then
-							goto continue
-						end
-						zCellSize = (zb - za) / detail
-						sampleZ = lerp(za, zb, (zi + 0.5) / detail)
-					elseif math.abs(positionRelative.z / radiusChunks.z) < 1 then
-						zCellSize = (zUpper + 1 - zLower) / radiusChunks.z
-						sampleZ = positionRelative.z / radiusChunks.z
-					else
-						goto continue
-					end
-
-					if xi == 0 and yi == 0 and zi == 0 then
-						goto continue
-					end
-
-					sample(sampleX, sampleY, sampleZ, xCellSize, yCellSize, zCellSize)
-
-					::continue::
-				end
-			end
+		local results = {}
+		for i = 1, #self.slowdownSampleDistribution do
+			local result
+			repeat
+				local thread = integralThreads[i]
+				local err = thread:getError()
+				assert(not err, err)
+				result = love.thread.getChannel("shapeAmountIntegralResult"):demand(consts.shapeIntegralThreadTimeout)
+			until result
+			table.insert(results, result)
 		end
-
-		-- TODO: Verify the maths. Is 2 ^ 3 - sampledVolume approximately equal to chunkCheckedVolume when the size of everything is small enough to avoid huge rounding error? It should be!
-		-- local chunkCheckedVolume = sampledChunksWidth * sampledChunksHeight * sampledChunksDepth / (radiusChunks.x * radiusChunks.y * radiusChunks.z)
-		-- print(2 ^ 3 - sampledVolume, chunkCheckedVolume, (2 ^ 3 - sampledVolume) / chunkCheckedVolume)
+		table.sort(results, function(a, b) -- Sort for determinism
+			return a.firstSample < b.firstSample
+		end)
+		for _, v in ipairs(results) do
+			totalThisLayer = totalThisLayer + v.rangeTotal
+		end
 
 		total = total + totalThisLayer
-
 		::continue::
 	end
 

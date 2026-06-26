@@ -1,5 +1,3 @@
-local firstSample, lastSample, stepCount = ...
-
 local processShapeNoiseLayerInfo = require("threadCode.common.processShapeNoiseLayerInfo")
 local setValueNoiseForShapeTypeDensityFunc = require("threadCode.common.setValueNoiseForShapeTypeDensityFunc")
 local setValueNoiseFunctionVars = require("threadCode.common.setValueNoiseFunctionVars")
@@ -30,11 +28,27 @@ for i = 1, #shapeTypes do
 end
 
 local axisLength = 2
-local stepSize = axisLength / stepCount
-local sampleVolume = stepSize ^ 3
+
+local integralType
+local stepSize
+local sampleVolume
+local firstSample
+local lastSample
+local stepCount
+-- For gravity slowdown:
+local scaleX, scaleY, scaleZ
+local referencePosX, referencePosY, referencePosZ
+local exponent
+local cutRegionStartX, cutRegionEndX
+local cutRegionStartY, cutRegionEndY
+local cutRegionStartZ, cutRegionEndZ
+local densityMultiplier
 
 local floor = math.floor
-local function getSampleRangeTotal(densityFunction, ...)
+local min = math.min
+local max = math.max
+
+local function getSampleRangeTotalBaseAmount(densityFunction, ...)
 	local rangeTotal = 0
 	for sampleI = firstSample, lastSample do
 		local xi = sampleI % stepCount
@@ -48,8 +62,67 @@ local function getSampleRangeTotal(densityFunction, ...)
 	return rangeTotal
 end
 
+local function  getSampleRangeTotalGravitySlowdown(densityFunction, ...)
+	local rangeTotal = 0
+	local fullSampleVolume = sampleVolume * scaleX * scaleY * scaleZ
+	local fullStepSizeX = stepSize * scaleX
+	local fullStepSizeY = stepSize * scaleY
+	local fullStepSizeZ = stepSize * scaleZ
+	for sampleI = firstSample, lastSample do
+		local xi = sampleI % stepCount
+		local yi = floor(sampleI / stepCount) % stepCount
+		local zi = floor(floor(sampleI / stepCount) / stepCount)
+		local sampleX = -1 + stepSize * (xi + 0.5)
+		local sampleY = -1 + stepSize * (yi + 0.5)
+		local sampleZ = -1 + stepSize * (zi + 0.5)
+		local sampleDensity = densityMultiplier * densityFunction(sampleX, sampleY, sampleZ, ...)
+		local sampleCutStartX = max(-scaleX + fullStepSizeX * xi, cutRegionStartX)
+		local sampleCutEndX = min(-scaleX + fullStepSizeX * (xi + 1), cutRegionEndX)
+		local sampleCutStartY = max(-scaleY + fullStepSizeY * yi, cutRegionStartY)
+		local sampleCutEndY = min(-scaleY + fullStepSizeY * (yi + 1), cutRegionEndY)
+		local sampleCutStartZ = max(-scaleZ + fullStepSizeZ * zi, cutRegionStartZ)
+		local sampleCutEndZ = min(-scaleZ + fullStepSizeZ * (zi + 1), cutRegionEndZ)
+		local cutVolume =
+			math.max(0, sampleCutEndX - sampleCutStartX) *
+			math.max(0, sampleCutEndY - sampleCutStartY) *
+			math.max(0, sampleCutEndZ - sampleCutStartZ)
+		local sampleMass = sampleDensity * math.max(0, fullSampleVolume - cutVolume)
+
+		local sampleXFull = sampleX * scaleX
+		local sampleYFull = sampleX * scaleY
+		local sampleZFull = sampleX * scaleZ
+		local deltaX = sampleXFull - referencePosX
+		local deltaY = sampleYFull - referencePosY
+		local deltaZ = sampleZFull - referencePosZ
+		local dist = math.sqrt(deltaX ^ 2 + deltaY ^ 2 + deltaZ ^ 2)
+		if dist > 0 then
+			local valueThisSample = sampleMass * dist ^ exponent
+			rangeTotal = rangeTotal + valueThisSample
+		end
+	end
+	return rangeTotal
+end
+
 while true do
 	local info = love.thread.getChannel("shapeAmountIntegralInfo"):demand()
+
+	integralType = info.type
+	firstSample = info.firstSample
+	lastSample = info.lastSample
+	stepCount = info.stepCount
+	stepSize = axisLength / stepCount
+	sampleVolume = stepSize ^ 3
+
+	exponent = info.exponent
+	referencePosX = info.referencePosX
+	referencePosY = info.referencePosY
+	referencePosZ = info.referencePosZ
+	scaleX, scaleY, scaleZ = info.scaleX, info.scaleY, info.scaleZ
+	cutRegionStartX, cutRegionEndX = info.cutRegionStartX, info.cutRegionEndX
+	cutRegionStartY, cutRegionEndY = info.cutRegionStartY, info.cutRegionEndY
+	cutRegionStartZ, cutRegionEndZ = info.cutRegionStartZ, info.cutRegionEndZ
+	densityMultiplier = info.sampleDensityMultiplier
+
 	local shapeType = shapeTypes[info.shapeTypeId]
 	local currentNoiseLayers = shapeType.noiseInfo and shapeType.noiseInfo.layers
 	if currentNoiseLayers then
@@ -57,6 +130,7 @@ while true do
 		setValueNoiseFunctionVars(currentNoiseLayers, valueNoiseDataFFI)
 	end
 	local densityFunction = shapeType.getDensity
-	local rangeTotal = getSampleRangeTotal(densityFunction, unpack(info.params))
+	local func = integralType == "baseAmount" and getSampleRangeTotalBaseAmount or getSampleRangeTotalGravitySlowdown
+	local rangeTotal = func(densityFunction, unpack(info.params))
 	love.thread.getChannel("shapeAmountIntegralResult"):push({firstSample = firstSample, rangeTotal = rangeTotal})
 end

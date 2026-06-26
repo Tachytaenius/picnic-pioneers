@@ -1,5 +1,5 @@
-const float noise1Exponent = 60.0;
-const float noise2Exponent = 60.0;
+const float noise1Exponent = 10.0;
+const float noise2Exponent = 10.0;
 const float distExponent = 2.0;
 
 float sampleShapeDensity(vec3 samplePosition) {
