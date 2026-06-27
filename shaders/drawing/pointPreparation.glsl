@@ -1,5 +1,3 @@
-// TODO: Per-layer ifdef features
-
 readonly buffer ChunkPointCounts {
 	int chunkPointCounts[];
 };

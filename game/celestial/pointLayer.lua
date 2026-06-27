@@ -84,8 +84,6 @@ function galaxyPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, chunkB
 		local shapeTypeId = shapeType.id
 		local shapeSubtypeId = randomTODO(0, shapeType.subtypeCount - 1)
 
-		-- NOTE/TEMP/TODO? changes made that may be wrong: scale is no longer divided by nextLayerChunkSize, amountWithin is now multiplied by nextLayerMaxDensity, and there is no multiplication by nextLayerChunkSize when creating a currentObject
-
 		local scale = randomRangeTODO(choice.scaleMin, choice.scaleMax)
 		local zScaleRatio = randomRangeTODO(choice.zScaleRatioMin, choice.zScaleRatioMax)
 
@@ -222,8 +220,7 @@ function game:initPointLayers()
 		end
 	end
 
-	-- TEMP/TODO
-	-- TODO: Verify
+	-- TODO: Verify?
 	local starAverageMass = consts.averageStarMass
 	local starAverageLuminousFluxR = consts.averageStarLuminousFluxR
 	local starAverageLuminousFluxG = consts.averageStarLuminousFluxG
@@ -1239,7 +1236,6 @@ function game:drawPointLayers()
 		local fullyPointRadius = (pointLayer.chunkBufferSideLength / 2 - 0.5) * consts.pointFadeStart
 		local fullyVolumetricRadius = pointLayer.chunkBufferSideLength / 2 - 0.5
 		-- In terms of proper units and not chunks
-		-- TODO: Is this right???????
 		local fullyPointRadiusProperUnits = fullyPointRadius * pointLayer.chunkSize
 		local fullyVolumetricRadiusProperUnits = fullyVolumetricRadius * pointLayer.chunkSize
 

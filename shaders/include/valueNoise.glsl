@@ -45,7 +45,6 @@ float getValue(int start, ivec3 size, ivec3 pos) {
 }
 
 float valueNoise(int layerIndex, vec3 pos) {
-	// Must give an average value of 0.5 (TODO: check!)
 	// TODO: since noise (by itself before any further processing) is considered to have a consistent average value of 0.5, allow making the noise be isotropic in scale even if the object is squished
 
 	pos = pos * 0.5 + 0.5; // Input pos axes range from -1 to 1 as they are generally intended to cover the entire shape type.
