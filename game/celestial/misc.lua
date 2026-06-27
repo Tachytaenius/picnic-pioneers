@@ -6,6 +6,10 @@ function game:getSphereResolvableDistance(radius)
 	return radius / math.sqrt(1 - math.cos(consts.pointAngularRadius) ^ 2)
 end
 
+function game:getSphereRadiusFromResolvableDistance(resolvableDistance)
+	return resolvableDistance * math.sqrt(1 - math.cos(consts.pointAngularRadius) ^ 2)
+end
+
 -- object type bits: 4
 -- galaxy chunk id bits: 36
 -- galaxy id bits: 12

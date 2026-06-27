@@ -34,10 +34,6 @@ function game:getShapeTypeBaseObjectAmount(sampleDistribution, integralThreads, 
 
 	-- Set threads going
 	for i = 1, #sampleDistribution do
-		local thread = integralThreads[i]
-		local err = thread:getError()
-		assert(not err, err)
-
 		local infoTable = {
 			shapeTypeId = shapeType.id,
 			params = scratch,
@@ -47,21 +43,21 @@ function game:getShapeTypeBaseObjectAmount(sampleDistribution, integralThreads, 
 			lastSample = sampleDistribution[i].lastSample,
 			stepCount = sampleDistribution.stepCount
 		}
-		love.thread.getChannel("shapeAmountIntegralInfo"):push(infoTable)
+		love.thread.getChannel("shapeAmountsInfo"):push(infoTable)
 	end
 
 	-- Gather up results
 	local results = {}
-	for i = 1, #sampleDistribution do
+	for _=1, #sampleDistribution do
 		-- The sum is sorted by thread id. This makes it [a little closer to being] deterministic.
 		-- It's floats, so order can matter. Also, the thread count could make a difference, though I'm sure there are ways to make it a setting that does not affect a single bit of the final float by distributing the additions in a particular way.
 		local result
-		repeat
-			local thread = integralThreads[i]
-			local err = thread:getError()
-			assert(not err, err)
-			result = love.thread.getChannel("shapeAmountIntegralResult"):demand(consts.shapeIntegralThreadTimeout)
-		until result
+		while not result do
+			result = love.thread.getChannel("shapeAmountsResult"):demand(consts.shapeIntegralThreadTimeout)
+			if not result then
+				self:checkThreadsForErrors()
+			end
+		end
 		table.insert(results, result)
 	end
 
@@ -87,7 +83,7 @@ function game:initSampleDistribution(stepCount)
 		totalSamples = totalSamples
 	}
 	for i = 1, maxThreads do
-		local lastSample = math.min(totalSamples - 1, firstSample + samplesPerThread - 1)
+		local lastSample = math.max(0, math.min(totalSamples - 1, firstSample + samplesPerThread - 1))
 		if i == maxThreads then
 			lastSample = totalSamples - 1
 		end
@@ -184,7 +180,7 @@ function game:loadShapeTypes()
 			)
 		end
 	end
-	-- Must match sorting in shapeAmountIntegral.lua
+	-- Must match sorting in shapeAmounts.lua
 	table.sort(pointLayerShapeTypes, function (a, b)
 		return a.name < b.name
 	end)
@@ -200,11 +196,10 @@ function game:loadShapeTypes()
 	local integralThreads = {}
 	self.shapeIntegralThreads = integralThreads
 	for i = 1, maxThreads do
-		integralThreads[i] = love.thread.newThread("threadCode/shapeAmountIntegral.lua")
+		integralThreads[i] = love.thread.newThread("threadCode/shapeAmounts.lua")
 		integralThreads[i]:start()
-		local err = integralThreads[i]:getError()
-		assert(not err, err)
 	end
+	self:checkThreadsForErrors()
 	local sampleDistribution = self:initSampleDistribution(consts.pointLayerShapeTypeAmountIntegralSteps)
 
 	local bytesPerFloat = 4
@@ -253,6 +248,15 @@ function game:loadShapeTypes()
 	end
 
 	self.pointLayerShapeTypes = pointLayerShapeTypes
+
+	self.valueNoiseDataReusableForPointLayers = valueNoiseData -- Generously donate valueNoiseData to the point layers now that it won't be used again here
+end
+
+function game:checkThreadsForErrors()
+	for _, thread in ipairs(self.shapeIntegralThreads) do
+		local err = thread:getError()
+		assert(not err, err)
+	end
 end
 
 return game

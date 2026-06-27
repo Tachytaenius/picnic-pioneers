@@ -111,29 +111,28 @@ function consts.load()
 	consts.pointFadeStart = 1 / 3
 	consts.pointFadeExponent = 3
 
-	consts.celestialLuminanceMultiplier = 1e11
+	consts.celestialLuminanceMultiplier = 3e12
 
 	consts.pointPreparationThreadgroupSize = 256
 
 	consts.pointLayerShapeTypeAmountIntegralMaxThreads = 7
 	consts.shapeIntegralThreadTimeout = 1
 	consts.pointLayerShapeTypeAmountIntegralSteps = 100
-	consts.pointLayerShapeTypeAmountIntegralAverageRepeatCount = 10 -- Skips noiseless shape types
+	consts.pointLayerShapeTypeAmountIntegralAverageRepeatCount = 8 -- Skips noiseless shape types
 
-	consts.shapeSlowdownIntegralDetail = 5 -- TODO: Use levels of detail and spread calculations for them out over a few frames (start at a particular distance and expect/wait for it to be done once closer). Can then bump this number up
+	consts.lodBoxRange = 2
+	consts.shapeSlowdownIntegralDetail = 6
 	-- Derived
 	consts.shapeSlowdownIntegralHighestStepCount = 2 ^ consts.shapeSlowdownIntegralDetail
-	-- TODO:
-	-- local currentStart = 0
-	-- consts.shapeSlowdownIntegralDataStarts = {}
-	-- for i = 0, consts.shapeSlowdownIntegralDetail do
-	-- 	consts.shapeSlowdownIntegralDataStarts[i] = currentStart
-
-	-- 	local sideLengthThisDetail = 2 ^ i
-	-- 	local count = sideLengthThisDetail ^ 3
-	-- 	currentStart = currentStart + count
-	-- end
-	-- consts.shapeSlowdownIntegralDataCount = currentStart
+	local currentStart = 0
+	consts.shapeSlowdownIntegralDataStarts = {}
+	for i = 0, consts.shapeSlowdownIntegralDetail do
+		consts.shapeSlowdownIntegralDataStarts[i] = currentStart
+		local sideLengthThisDetail = 2 ^ i
+		local count = sideLengthThisDetail ^ 3
+		currentStart = currentStart + count
+	end
+	consts.shapeSlowdownIntegralDataCount = currentStart
 
 	consts.volumetricMaxRaySteps = 32 -- TODO: Stochastic rays, then bump number up
 

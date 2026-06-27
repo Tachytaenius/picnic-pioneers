@@ -54,8 +54,8 @@ galaxyPointLayerInfo.features = {
 		{
 			name = "spiralGalaxy",
 			weight = 16,
-			scaleMin = 8e19,
-			scaleMax = 4e21,
+			scaleMin = 3e19,
+			scaleMax = 9e20,
 			zScaleRatioMin = 0.075,
 			zScaleRatioMax = 0.2,
 		}
@@ -179,10 +179,18 @@ end
 function game:initPointLayers()
 	self.pointLayers = {}
 
+	self.slowdownSampleDistribution = self:initSampleDistribution(consts.shapeSlowdownIntegralHighestStepCount)
+	self.massDataSampleDistributions = {} -- 0-indexed
+	for i = 0, consts.shapeSlowdownIntegralDetail do
+		self.massDataSampleDistributions[i] = self:initSampleDistribution(2 ^ i)
+	end
+
 	-- Topmost layer is treated specially
 	-- TODO: Allow it to collapse to a point when sufficiently far away. Since that's just one point there's no need for optimisations like chunks etc.
 	local topLayer = self:newPointLayer("galaxies", "Galaxies", consts.galaxyLayerChunkSize, consts.maxGalacticDensity, 17, galaxyPointLayerInfo)
 	self:newPointLayer("starSystems", "Star Systems", consts.starLayerChunkSize, consts.maxStellarDensity, 13, starSystemPointLayerInfo)
+
+	self.valueNoiseDataReusableForPointLayers = nil -- If no point layers took this then it now no longer will be used
 
 	-- Find distance at which top layer shape has the same angular radius as points
 	local topRadius = math.max(topLayer.fixedParentObjectRadii.x, topLayer.fixedParentObjectRadii.y, topLayer.fixedParentObjectRadii.z)
@@ -190,6 +198,7 @@ function game:initPointLayers()
 
 	-- TODO: Seed RNG with consistent seed for the universe
 	topLayer:randomiseValueNoise()
+	topLayer:writeMassData()
 
 	local highestMaxPoints
 	for _, pointLayer in ipairs(self.pointLayers) do
@@ -263,7 +272,7 @@ function game:initPointLayers()
 		end
 	end
 
-	-- Ensure no objects could be too big for the celestal id system to work on its contained points
+	-- Ensure no objects could be too big for the celestal id system to work on its contained points or to smoothly transition between resolvable and unresolved
 	for i = 1, #self.pointLayers do
 		local layer = self.pointLayers[i]
 		if not layer.features.shapeTypeSet then
@@ -281,17 +290,22 @@ function game:initPointLayers()
 			local heightChunks = maxY - minY + 1
 			local depthChunks = maxZ - minZ + 1
 			local largestChunkCount = widthChunks * heightChunks * depthChunks
-
 			local maximumChunks = 2 ^ 36
 			if largestChunkCount >= maximumChunks then -- 36 bits as per getGlobalCelestialObjectIdNumbers
 				error("Too many chunks possible for " .. identifier .. ". Must be at most " .. maximumChunks)
+			end
+
+			local maxAllowedResolvableDistance = layer.chunkSize * consts.pointMinDistanceInChunk / 2
+			local maxAllowedRadius = self:getSphereRadiusFromResolvableDistance(maxAllowedResolvableDistance)
+			local largestRadius = math.max(largestX, largestY, largestZ)
+			-- local largestResolvableDistance = self:getSphereResolvableDistance(largestRadius)
+			if largestRadius > maxAllowedRadius then
+				error("Maximum size of " .. identifier .. " (" .. largestRadius .. ") is too high, must be at most " .. maxAllowedRadius)
 			end
 		end
 	    ::continue::
 	end
 	-- TODO: Check universe size too (but really it should be its own point layer that only ever has one point?)
-
-	self.slowdownSampleDistribution = self:initSampleDistribution(consts.shapeSlowdownIntegralHighestStepCount)
 end
 
 local pointLayerFunctions = {}
@@ -495,6 +509,58 @@ function pointLayerFunctions:getClosestPoint(referencePosition)
 	return closestChunkX, closestChunkY, closestChunkZ, closestIdInChunk, closestDistance
 end
 
+function pointLayerFunctions:writeMassData()
+	local s = love.timer.getTime()
+
+	local shapeTypeName, shapeSubtypeId
+	if self.parentPointLayer then
+		local currentObject = self.parentPointLayer.currentObject
+		shapeTypeName = currentObject.shapeTypeName
+		shapeSubtypeId = currentObject.shapeSubtypeId
+	else
+		shapeTypeName = self.fixedParentObjectShapeTypeName
+		shapeSubtypeId = self.fixedParentObjectShapeSubtypeId
+	end
+	local shapeType = self.gameObject.pointLayerShapeTypes[shapeTypeName]
+	local scratch = self.gameObject:decodeShapeSubtypeIntoScratchTable(shapeType, shapeSubtypeId)
+
+	local distributions = self.gameObject.massDataSampleDistributions
+	for lod = consts.shapeSlowdownIntegralDetail, 0, -1 do
+		local sampleDistribution = distributions[lod]
+
+		for i = 1, #sampleDistribution do
+			local infoTable = {
+				shapeTypeId = shapeType.id,
+				params = scratch,
+				valueNoiseData = self.valueNoiseData,
+				type = "massWrite",
+				firstSample = sampleDistribution[i].firstSample,
+				lastSample = sampleDistribution[i].lastSample,
+				stepCount = sampleDistribution.stepCount,
+
+				shapeMassData = self.shapeMassData,
+				lodToWriteTo = lod,
+				massDataStartOffsets = consts.shapeSlowdownIntegralDataStarts
+			}
+			love.thread.getChannel("shapeAmountsInfo"):push(infoTable)
+		end
+
+		for _=1, #sampleDistribution do
+			while true do
+				local finished = love.thread.getChannel("shapeAmountsResult"):demand(consts.shapeIntegralThreadTimeout)
+				if finished then
+					break
+				else
+					self.gameObject:checkThreadsForErrors()
+				end
+			end
+		end
+	end
+
+	local e = love.timer.getTime()
+	-- print(e - s) -- TODO: Minimise (or spread out over multiple frames before it's needed, rather)
+end
+
 function game:clearPointLayers(startIndex)
 	for i = startIndex, #self.pointLayers do
 		local pointLayer = self.pointLayers[i]
@@ -636,7 +702,16 @@ function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBu
 			shaderstorage = true,
 			debugname = debugName .. " Noise Values"
 		})
-		new.valueNoiseData = love.data.newByteData(new.valueNoiseBuffer:getElementStride() * new.maxNoiseValues)
+		local requiredSize = new.valueNoiseBuffer:getElementStride() * new.maxNoiseValues
+		if
+			self.valueNoiseDataReusableForPointLayers and
+			self.valueNoiseDataReusableForPointLayers:getSize() == requiredSize
+		then
+			new.valueNoiseData = self.valueNoiseDataReusableForPointLayers
+			self.valueNoiseDataReusableForPointLayers = nil
+		else
+			new.valueNoiseData = love.data.newByteData(requiredSize)
+		end
 		new.valueNoiseDataFFI = ffi.cast("float*", new.valueNoiseData:getFFIPointer())
 	end
 
@@ -657,6 +732,10 @@ function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBu
 			end
 		end
 	end
+
+	local bytesPerFloat = 4
+	new.shapeMassData = love.data.newByteData(bytesPerFloat * consts.shapeSlowdownIntegralDataCount)
+	new.shapeMassDataFFI = ffi.cast("float*", new.shapeMassData:getFFIPointer())
 
 	return new
 end
@@ -832,8 +911,11 @@ function game:handlePointLayers()
 					currentObject.mass = mass
 				end
 				-- TODO: Seed RNG with pointLayer:getGlobalCelestialObjectIdParameters()
-				if pointLayer.childPointLayer and pointLayer.childPointLayer.hasNoise then
-					pointLayer.childPointLayer:randomiseValueNoise()
+				if pointLayer.childPointLayer then
+					if pointLayer.childPointLayer.hasNoise then
+						pointLayer.childPointLayer:randomiseValueNoise()
+					end
+					pointLayer.childPointLayer:writeMassData()
 				end
 				-- Remaining features are generated (or fetched from extra info) in possibly layer-specific ways
 				pointLayer:generateRemainingCurrentObjectInfo()
@@ -947,58 +1029,150 @@ function game:getPointLayerGravityWellSlowdownFactor()
 			end
 		end
 
-		local integralThreads = self.shapeIntegralThreads
-		local shapeType = self.pointLayerShapeTypes[parentShapeTypeName]
-		local scratch = self:decodeShapeSubtypeIntoScratchTable(shapeType, parentShapeSubtypeId)
-		for i = 1, #self.slowdownSampleDistribution do
-			local thread = integralThreads[i]
-			local err = thread:getError()
-			assert(not err, err)
+		local doLods = true
+		if doLods then
+			local gridIters = 0
+			local samples = 0
+			local dataVolumeToRealVolume = parentRadii.x * parentRadii.y * parentRadii.z
+			local massData = pointLayer.shapeMassDataFFI
+			local range = consts.lodBoxRange
+			local posX = positionRelativeFull.x / parentRadii.x * 0.5 + 0.5
+			local posY = positionRelativeFull.y / parentRadii.y * 0.5 + 0.5
+			local posZ = positionRelativeFull.z / parentRadii.z * 0.5 + 0.5
+			local cutRegionStartX = xLower * pointLayer.chunkSize / parentRadii.x * 0.5 + 0.5
+			local cutRegionStartY = yLower * pointLayer.chunkSize / parentRadii.y * 0.5 + 0.5
+			local cutRegionStartZ = zLower * pointLayer.chunkSize / parentRadii.z * 0.5 + 0.5
+			local cutRegionEndX = (xUpper + 1) * pointLayer.chunkSize / parentRadii.x * 0.5 + 0.5
+			local cutRegionEndY = (yUpper + 1) * pointLayer.chunkSize / parentRadii.y * 0.5 + 0.5
+			local cutRegionEndZ = (zUpper + 1) * pointLayer.chunkSize / parentRadii.z * 0.5 + 0.5
+			local nextLodStartX = 0
+			local nextLodStartY = 0
+			local nextLodStartZ = 0
+			local nextLodEndX = 1
+			local nextLodEndY = 1
+			local nextLodEndZ = 1
+			for lod = 0, consts.shapeSlowdownIntegralDetail do -- Go from lowest detail to highest, leaving gaps for the next lod
+				local lodStepCount = 2 ^ lod
+				local lodReadOffset = consts.shapeSlowdownIntegralDataStarts[lod]
+				local isHighestDetailLod = lod == consts.shapeSlowdownIntegralDetail
+				local posXThisLod = math.floor(posX * lodStepCount)
+				local posYThisLod = math.floor(posY * lodStepCount)
+				local posZThisLod = math.floor(posZ * lodStepCount)
+				local thisLodCutRegionStartX = cutRegionStartX * lodStepCount
+				local thisLodCutRegionStartY = cutRegionStartY * lodStepCount
+				local thisLodCutRegionStartZ = cutRegionStartZ * lodStepCount
+				local thisLodCutRegionEndX = cutRegionEndX * lodStepCount
+				local thisLodCutRegionEndY = cutRegionEndY * lodStepCount
+				local thisLodCutRegionEndZ = cutRegionEndZ * lodStepCount
+				local thisLodStartX = nextLodStartX
+				local thisLodStartY = nextLodStartY
+				local thisLodStartZ = nextLodStartZ
+				local thisLodEndX = nextLodEndX
+				local thisLodEndY = nextLodEndY
+				local thisLodEndZ = nextLodEndZ
+				nextLodStartX = math.huge
+				nextLodStartY = math.huge
+				nextLodStartZ = math.huge
+				nextLodEndX = -math.huge
+				nextLodEndY = -math.huge
+				nextLodEndZ = -math.huge
+				for x = thisLodStartX, thisLodEndX - 1 do
+					for y = thisLodStartY, thisLodEndY - 1 do
+						for z = thisLodStartZ, thisLodEndZ - 1 do
+							gridIters = gridIters + 1
+							if
+								math.abs(x - posXThisLod) <= range and
+								math.abs(y - posYThisLod) <= range and
+								math.abs(z - posZThisLod) <= range and
+								not isHighestDetailLod -- For the highest detail lod, read from the whole range without leaving a gap
+							then
+								-- Leave to next lod (which is higher detail)
+								nextLodStartX = math.min(nextLodStartX, x * 2)
+								nextLodStartY = math.min(nextLodStartY, y * 2)
+								nextLodStartZ = math.min(nextLodStartZ, z * 2)
+								nextLodEndX = math.max(nextLodEndX, (x + 1) * 2)
+								nextLodEndY = math.max(nextLodEndY, (y + 1) * 2)
+								nextLodEndZ = math.max(nextLodEndZ, (z + 1) * 2)
+							else
+								samples = samples + 1
+								local sampleI = lodReadOffset + x + y * lodStepCount + z * lodStepCount ^ 2
+								local sampleCutStartX = math.max(x, thisLodCutRegionStartX)
+								local sampleCutEndX = math.min((x + 1), thisLodCutRegionEndX)
+								local sampleCutStartY = math.max(y, thisLodCutRegionStartY)
+								local sampleCutEndY = math.min((y + 1), thisLodCutRegionEndY)
+								local sampleCutStartZ = math.max(z, thisLodCutRegionStartZ)
+								local sampleCutEndZ = math.min((z + 1), thisLodCutRegionEndZ)
+								local cutVolume =
+									math.max(0, sampleCutEndX - sampleCutStartX) *
+									math.max(0, sampleCutEndY - sampleCutStartY) *
+									math.max(0, sampleCutEndZ - sampleCutStartZ)
+								local volumeProportion = math.max(0, 1 - cutVolume)
+								local mass = massData[sampleI] * pointLayer.averageMassPerPoint * pointLayer.maxPointDensity * dataVolumeToRealVolume * volumeProportion
+								local samplePosX = ((x + 0.5) / lodStepCount * 2 - 1) * parentRadii.x
+								local samplePosY = ((y + 0.5) / lodStepCount * 2 - 1) * parentRadii.y
+								local samplePosZ = ((z + 0.5) / lodStepCount * 2 - 1) * parentRadii.z
+								local distance = math.sqrt(
+									(samplePosX - positionRelativeFull.x) ^ 2 +
+									(samplePosY - positionRelativeFull.y) ^ 2 +
+									(samplePosZ - positionRelativeFull.z) ^ 2
+								)
+								if distance > 0 then
+									totalThisLayer = totalThisLayer + mass * distance ^ exponent
+								end
+							end
+						end
+					end
+				end
+			end
+		else
+			local shapeType = self.pointLayerShapeTypes[parentShapeTypeName]
+			local scratch = self:decodeShapeSubtypeIntoScratchTable(shapeType, parentShapeSubtypeId)
+			for i = 1, #self.slowdownSampleDistribution do
+				local infoTable = {
+					shapeTypeId = shapeType.id,
+					params = scratch,
+					valueNoiseData = pointLayer.valueNoiseData,
+					type = "gravitySlowdown",
+					firstSample = self.slowdownSampleDistribution[i].firstSample,
+					lastSample = self.slowdownSampleDistribution[i].lastSample,
+					stepCount = self.slowdownSampleDistribution.stepCount,
 
-			local infoTable = {
-				shapeTypeId = shapeType.id,
-				params = scratch,
-				valueNoiseData = pointLayer.valueNoiseData,
-				type = "gravitySlowdown",
-				firstSample = self.slowdownSampleDistribution[i].firstSample,
-				lastSample = self.slowdownSampleDistribution[i].lastSample,
-				stepCount = self.slowdownSampleDistribution.stepCount,
-
-				exponent = exponent,
-				-- From radius 1 (as in the shape type density function) to full object radii
-				scaleX = parentRadii.x,
-				scaleY = parentRadii.y,
-				scaleZ = parentRadii.z,
-				-- These all work in full positions
-				referencePosX = positionRelativeFull.x,
-				referencePosY = positionRelativeFull.y,
-				referencePosZ = positionRelativeFull.z,
-				cutRegionStartX = xLower * pointLayer.chunkSize,
-				cutRegionStartY = yLower * pointLayer.chunkSize,
-				cutRegionStartZ = zLower * pointLayer.chunkSize,
-				cutRegionEndX = (xUpper + 1) * pointLayer.chunkSize,
-				cutRegionEndY = (yUpper + 1) * pointLayer.chunkSize,
-				cutRegionEndZ = (zUpper + 1) * pointLayer.chunkSize,
-				sampleDensityMultiplier = pointLayer.averageMassPerPoint * pointLayer.maxPointDensity
-			}
-			love.thread.getChannel("shapeAmountIntegralInfo"):push(infoTable)
-		end
-		local results = {}
-		for i = 1, #self.slowdownSampleDistribution do
-			local result
-			repeat
-				local thread = integralThreads[i]
-				local err = thread:getError()
-				assert(not err, err)
-				result = love.thread.getChannel("shapeAmountIntegralResult"):demand(consts.shapeIntegralThreadTimeout)
-			until result
-			table.insert(results, result)
-		end
-		table.sort(results, function(a, b) -- Sort for determinism
-			return a.firstSample < b.firstSample
-		end)
-		for _, v in ipairs(results) do
-			totalThisLayer = totalThisLayer + v.rangeTotal
+					exponent = exponent,
+					-- From radius 1 (as in the shape type density function) to full object radii
+					scaleX = parentRadii.x,
+					scaleY = parentRadii.y,
+					scaleZ = parentRadii.z,
+					-- These all work in full positions
+					referencePosX = positionRelativeFull.x,
+					referencePosY = positionRelativeFull.y,
+					referencePosZ = positionRelativeFull.z,
+					cutRegionStartX = xLower * pointLayer.chunkSize,
+					cutRegionStartY = yLower * pointLayer.chunkSize,
+					cutRegionStartZ = zLower * pointLayer.chunkSize,
+					cutRegionEndX = (xUpper + 1) * pointLayer.chunkSize,
+					cutRegionEndY = (yUpper + 1) * pointLayer.chunkSize,
+					cutRegionEndZ = (zUpper + 1) * pointLayer.chunkSize,
+					sampleDensityMultiplier = pointLayer.averageMassPerPoint * pointLayer.maxPointDensity
+				}
+				love.thread.getChannel("shapeAmountsInfo"):push(infoTable)
+			end
+			local results = {}
+			for _=1, #self.slowdownSampleDistribution do
+				local result
+				while not result do
+					result = love.thread.getChannel("shapeAmountsResult"):demand(consts.shapeIntegralThreadTimeout)
+					if not result then
+						self:checkThreadsForErrors()
+					end
+				end
+				table.insert(results, result)
+			end
+			table.sort(results, function(a, b) -- Sort for determinism
+				return a.firstSample < b.firstSample
+			end)
+			for _, v in ipairs(results) do
+				totalThisLayer = totalThisLayer + v.rangeTotal
+			end
 		end
 
 		total = total + totalThisLayer
