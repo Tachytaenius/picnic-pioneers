@@ -184,7 +184,7 @@ function game:initPointLayers()
 	end
 
 	-- Topmost layer is treated specially
-	-- TODO: Allow it to collapse to a point when sufficiently far away. Since that's just one point there's no need for optimisations like chunks etc.
+	-- TODO: Allow it to collapse to a point when sufficiently far away. Since that's just one point there's no need for optimisations like chunks etc. Would definitely be easier if the topmost point layer has a semi-functioning parent point layer for this purpose
 	local topLayer = self:newPointLayer("galaxies", "Galaxies", consts.galaxyLayerChunkSize, consts.maxGalacticDensity, 17, galaxyPointLayerInfo)
 	self:newPointLayer("starSystems", "Star Systems", consts.starLayerChunkSize, consts.maxStellarDensity, 13, starSystemPointLayerInfo)
 
@@ -935,11 +935,21 @@ function game:getPointLayerGravityWellSlowdownFactor()
 
 	local exponent = consts.slowdownDistanceExponent
 
-	local topLayer = self.pointLayers[1]
-	if topLayer.topLayerOutOfRange then
-		-- TODO: Calculate
-		return 1
-	end
+	-- Not needed since the top point layer remains loaded and the calculations work fine
+	-- local topLayer = self.pointLayers[1]
+	-- local distToTopLayer = bm.mapm.tonumber(bm.vec3.distance(topLayer.fixedParentObjectPosition, referencePosition))
+	-- if distToTopLayer >= topLayer.fixedParentObjectPointDistance then
+	-- 	local shapeType = self.pointLayerShapeTypes[topLayer.fixedParentObjectShapeTypeName]
+	-- 	local shapeSubtypeId = topLayer.fixedParentObjectShapeSubtypeId
+	-- 	local mass = -- Estimate
+	-- 		shapeType.subtypeBaseObjectAmounts[shapeSubtypeId] *
+	-- 		topLayer.fixedParentObjectRadii.x *
+	-- 		topLayer.fixedParentObjectRadii.y *
+	-- 		topLayer.fixedParentObjectRadii.z *
+	-- 		topLayer.maxPointDensity *
+	-- 		topLayer.averageMassPerPoint
+	-- 	return mass * distToTopLayer ^ exponent
+	-- end
 
 	for pointLayerIndex, pointLayer in ipairs(self.pointLayers) do
 		local massSent
