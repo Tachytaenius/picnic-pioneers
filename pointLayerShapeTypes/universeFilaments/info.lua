@@ -2,19 +2,19 @@ local info = {}
 
 info.valueNoiseInfo = {
 	{
-		countX = 16,
-		countY = 16,
-		countZ = 16
+		countX = 10,
+		countY = 10,
+		countZ = 10
 	},
 	{
-		countX = 16,
-		countY = 16,
-		countZ = 16
+		countX = 10,
+		countY = 10,
+		countZ = 10
 	}
 }
 
-local noise1Exponent = 10
-local noise2Exponent = 10
+local noise1Exponent = 50
+local noise2Exponent = 50
 local distExponent = 2
 
 -- valueNoise is given by setfenv elsewhere in the codebase

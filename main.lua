@@ -27,14 +27,15 @@ end
 
 function love.draw()
 	state:draw()
-	local maxLuminance = 0
-	local data = love.graphics.readbackTexture(state.screenCanvasses.celestialLuminanceCanvas)
-	for x = 0, data:getWidth() - 1 do
-		for y = 0, data:getHeight() - 1 do
-			local luminance = data:getPixel(x, y)
-			maxLuminance = math.max(maxLuminance, luminance)
-		end
-	end
+	-- Non-async readback causes lag
+	-- local maxLuminance = 0
+	-- local data = love.graphics.readbackTexture(state.screenCanvasses.celestialLuminanceCanvas)
+	-- for x = 0, data:getWidth() - 1 do
+	-- 	for y = 0, data:getHeight() - 1 do
+	-- 		local luminance = data:getPixel(x, y)
+	-- 		maxLuminance = math.max(maxLuminance, luminance)
+	-- 	end
+	-- end
 	love.graphics.print( -- TEMP
 		"fps: " .. love.timer.getFPS() .. "\n" ..
 		"x: " .. tostring(state.ship.position.x) .. "\n" ..
@@ -42,8 +43,8 @@ function love.draw()
 		"z: " .. tostring(state.ship.position.z) .. "\n" ..
 		"factor: " .. state:getGravityWellSlowdownFactor() .. "\n" ..
 		"base max speed: " .. state:getMaxMovementSpeed() .. "\n" ..
-		"max \"luminance\" order: " .. math.floor(math.log10(maxLuminance)) .. "\n" ..
-		"max \"luminance\": " .. maxLuminance .. "\n" ..
+		-- "max \"luminance\" order: " .. math.floor(math.log10(maxLuminance)) .. "\n" ..
+		-- "max \"luminance\": " .. maxLuminance .. "\n" ..
 		"\"luminance\" multiplier order: " .. math.floor(math.log10(consts.celestialLuminanceMultiplier)) .. "\n" ..
 		"\"luminance\" multiplier: " .. consts.celestialLuminanceMultiplier
 	)

@@ -109,9 +109,9 @@ function consts.load()
 	consts.diskMeshVertices = 5
 	consts.pointAngularRadius = 0.006
 	consts.pointFadeStart = 1 / 3
-	consts.pointFadeExponent = 3
+	consts.pointFadeExponent = 1 -- TODO: Ensure fair tradeoff between point and volumetric
 
-	consts.celestialLuminanceMultiplier = 3e12
+	consts.celestialLuminanceMultiplier = 1e14
 
 	consts.pointPreparationThreadgroupSize = 256
 
