@@ -2,6 +2,7 @@ local ffi = require("ffi")
 
 local processShapeNoiseLayerInfo = require("threadCode.common.processShapeNoiseLayerInfo")
 local setValueNoiseForShapeTypeDensityFunc = require("threadCode.common.setValueNoiseForShapeTypeDensityFunc")
+local initSampleDistribution = require("threadCode.common.initSampleDistribution")
 
 local consts = require("consts")
 
@@ -71,35 +72,6 @@ function game:getShapeTypeBaseObjectAmount(sampleDistribution, integralThreads, 
 	end
 
 	return total
-end
-
-function game:initSampleDistribution(stepCount)
-	local maxThreads = consts.pointLayerShapeTypeAmountIntegralMaxThreads
-	local totalSamples = stepCount ^ 3
-	local samplesPerThread = math.floor(totalSamples / maxThreads)
-	local firstSample = 0
-	local sampleDistribution = {
-		stepCount = stepCount,
-		totalSamples = totalSamples
-	}
-	for i = 1, maxThreads do
-		local lastSample = math.max(0, math.min(totalSamples - 1, firstSample + samplesPerThread - 1))
-		if i == maxThreads then
-			lastSample = totalSamples - 1
-		end
-
-		sampleDistribution[i] = {
-			firstSample = firstSample,
-			lastSample = lastSample
-		}
-
-		if lastSample >= totalSamples - 1 then
-			break
-		end
-
-		firstSample = lastSample + 1
-	end
-	return sampleDistribution
 end
 
 function game:loadShapeTypes()
@@ -200,7 +172,7 @@ function game:loadShapeTypes()
 		integralThreads[i]:start()
 	end
 	self:checkThreadsForErrors()
-	local sampleDistribution = self:initSampleDistribution(consts.pointLayerShapeTypeAmountIntegralSteps)
+	local sampleDistribution = initSampleDistribution(consts.pointLayerShapeTypeAmountIntegralSteps, consts.pointLayerShapeTypeAmountIntegralMaxThreads)
 
 	local bytesPerFloat = 4
 	local valueNoiseData = love.data.newByteData(bytesPerFloat * maxRequiredNoiseValues)
@@ -257,6 +229,8 @@ function game:checkThreadsForErrors()
 		local err = thread:getError()
 		assert(not err, err)
 	end
+	local err = self.amountDataStageManagerThread:getError()
+	assert(not err, err)
 end
 
 return game

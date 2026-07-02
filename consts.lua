@@ -25,6 +25,7 @@ function consts.load()
 	consts.bytesPerGPUVar = 4
 
 	consts.pointMinDistanceInChunk = 0.03125 -- Use of this during generation is TODO!!!!
+	consts.pointAsyncSetupDistanceMultiplier = 1.2 -- Generate point info before reaching the point's resolvability distance
 
 	consts.idObjectTypes = util.makeBidirectional({
 		[0] = "special", -- E.g. shape type integral noise seed
@@ -35,6 +36,11 @@ function consts.load()
 		"starChunk",
 		"starSystem",
 		"systemBody"
+	})
+
+	consts.objectGenerationStages = util.makeBidirectional({ -- For multithreading
+		[0] = "main",
+		"noiseValues"
 	})
 
 	-- TEMP/TODO
@@ -121,7 +127,7 @@ function consts.load()
 	consts.pointLayerShapeTypeAmountIntegralAverageRepeatCount = 8 -- Skips noiseless shape types
 
 	consts.lodBoxRange = 2
-	consts.shapeSlowdownIntegralDetail = 6
+	consts.shapeSlowdownIntegralDetail = 7
 	-- Derived
 	consts.shapeSlowdownIntegralHighestStepCount = 2 ^ consts.shapeSlowdownIntegralDetail
 	local currentStart = 0

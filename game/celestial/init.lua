@@ -13,6 +13,8 @@ function game:initCelestial()
 	self:initCelestialRNG()
 
 	-- Mix of graphics and non-graphics
+	self.amountDataStageManagerThread = love.thread.newThread("threadCode/amountDataStageManager.lua")
+	self.amountDataStageManagerThread:start(consts.shapeSlowdownIntegralDetail, consts.pointLayerShapeTypeAmountIntegralMaxThreads)
 	self:loadShapeTypes()
 	self:initPointLayers()
 

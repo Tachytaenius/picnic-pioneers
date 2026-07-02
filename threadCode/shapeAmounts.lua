@@ -149,6 +149,9 @@ end
 while true do
 	local info = love.thread.getChannel("shapeAmountsInfo"):demand()
 
+	local resultChannelName = "shapeAmountsResult" .. (info.resultChannelSuffix or "")
+	local resultChannel = love.thread.getChannel(resultChannelName)
+
 	workType = info.type
 	firstSample = info.firstSample
 	lastSample = info.lastSample
@@ -183,13 +186,13 @@ while true do
 		else
 			writeToLowerLevelOfMassDataDetail(massDataStartOffsets[lodToWriteTo], massDataStartOffsets[lodToWriteTo + 1])
 		end
-		love.thread.getChannel("shapeAmountsResult"):push("finished")
+		resultChannel:push("finished")
 		goto continue
 	end
 	local func =
 		workType == "baseAmount" and getSampleRangeTotalBaseAmount or
 		workType == "gravitySlowdown" and getSampleRangeTotalGravitySlowdown
 	local rangeTotal = func(densityFunction, unpack(info.params))
-	love.thread.getChannel("shapeAmountsResult"):push({firstSample = firstSample, rangeTotal = rangeTotal})
+	resultChannel:push({firstSample = firstSample, rangeTotal = rangeTotal})
     ::continue::
 end

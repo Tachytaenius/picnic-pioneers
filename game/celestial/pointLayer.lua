@@ -6,6 +6,7 @@ local bm = require("bigmaths")
 local mathsies = require("lib.mathsies")
 
 local setValueNoiseFunctionVars = require("threadCode.common.setValueNoiseFunctionVars")
+local initSampleDistribution = require("threadCode.common.initSampleDistribution")
 
 local util = require("util")
 local consts = require("consts")
@@ -55,9 +56,9 @@ galaxyPointLayerInfo.features = {
 			name = "spiralGalaxy",
 			weight = 16,
 			scaleMin = 3e19,
-			scaleMax = 9e20,
+			scaleMax = 7.5e20,
 			zScaleRatioMin = 0.075,
-			zScaleRatioMax = 0.2,
+			zScaleRatioMax = 0.2
 		}
 	}
 }
@@ -109,15 +110,15 @@ function galaxyPointLayerInfo:generateRemainingCurrentObjectInfo()
 	local currentObject = self.currentObject
 end
 
-function galaxyPointLayerInfo:getGlobalCelestialObjectIdParameters() -- Separate from the 128-bit number split into four 32-bit numbers that this produces
-	local currentObject = self.currentObject
+function galaxyPointLayerInfo:getGlobalCelestialObjectIdParameters(stage, forceFakeCurrentObject) -- Not quite the same as the 128-bit number split into four 32-bit numbers that this produces
+	local currentObject = forceFakeCurrentObject or self.currentObject
 	local objectType = consts.idObjectTypes.galaxy
 	local galaxyChunkId = currentObject.chunkId
 	local galaxyId = currentObject.pointId
 	-- local starChunkId
 	-- local starId
 	-- local systemBodyId
-	return objectType, galaxyChunkId, galaxyId
+	return objectType, stage, galaxyChunkId, galaxyId
 end
 
 local starSystemPointLayerInfo = {}
@@ -162,7 +163,7 @@ function starSystemPointLayerInfo:generateRemainingCurrentObjectInfo()
 	self.gameObject:generateStarSystem(currentObject)
 end
 
-function starSystemPointLayerInfo:getGlobalCelestialObjectIdParameters()
+function starSystemPointLayerInfo:getGlobalCelestialObjectIdParameters(stage)
 	local parentObject = self.parentPointLayer.currentObject
 	local currentObject = self.currentObject
 	local objectType = consts.idObjectTypes.starSystem
@@ -171,17 +172,13 @@ function starSystemPointLayerInfo:getGlobalCelestialObjectIdParameters()
 	local starChunkId = currentObject.chunkId
 	local starId = currentObject.pointId
 	-- local systemBodyId
-	return objectType, galaxyChunkId, galaxyId, starChunkId, starId
+	return objectType, stage, galaxyChunkId, galaxyId, starChunkId, starId
 end
 
 function game:initPointLayers()
 	self.pointLayers = {}
 
-	self.slowdownSampleDistribution = self:initSampleDistribution(consts.shapeSlowdownIntegralHighestStepCount)
-	self.massDataSampleDistributions = {} -- 0-indexed
-	for i = 0, consts.shapeSlowdownIntegralDetail do
-		self.massDataSampleDistributions[i] = self:initSampleDistribution(2 ^ i)
-	end
+	self.slowdownSampleDistribution = initSampleDistribution(consts.shapeSlowdownIntegralHighestStepCount, consts.pointLayerShapeTypeAmountIntegralMaxThreads)
 
 	-- Topmost layer is treated specially
 	-- TODO: Allow it to collapse to a point when sufficiently far away. Since that's just one point there's no need for optimisations like chunks etc. Would definitely be easier if the topmost point layer has a semi-functioning parent point layer for this purpose
@@ -194,9 +191,12 @@ function game:initPointLayers()
 	local topRadius = math.max(topLayer.fixedParentObjectRadii.x, topLayer.fixedParentObjectRadii.y, topLayer.fixedParentObjectRadii.z)
 	topLayer.fixedParentObjectPointDistance = self:getSphereResolvableDistance(topRadius)
 
-	-- TODO: Seed RNG with consistent seed for the universe
-	topLayer:randomiseValueNoise()
-	topLayer:writeMassData()
+	self:seedCelestialRNG(self:getGlobalCelestialObjectIdNumbers(
+		consts.idObjectTypes.universe,
+		consts.objectGenerationStages.noiseValues
+	))
+	topLayer:handleThreadedShapeInit("prepare")
+	topLayer:handleThreadedShapeInit("expect")
 
 	local highestMaxPoints
 	for _, pointLayer in ipairs(self.pointLayers) do
@@ -292,7 +292,7 @@ function game:initPointLayers()
 				error("Too many chunks possible for " .. identifier .. ". Must be at most " .. maximumChunks)
 			end
 
-			local maxAllowedResolvableDistance = layer.chunkSize * consts.pointMinDistanceInChunk / 2
+			local maxAllowedResolvableDistance = layer.chunkSize * consts.pointMinDistanceInChunk / 2 / consts.pointAsyncSetupDistanceMultiplier
 			local maxAllowedRadius = self:getSphereRadiusFromResolvableDistance(maxAllowedResolvableDistance)
 			local largestRadius = math.max(largestX, largestY, largestZ)
 			-- local largestResolvableDistance = self:getSphereResolvableDistance(largestRadius)
@@ -333,10 +333,10 @@ function pointLayerFunctions:getDensity(realX, realY, realZ) -- The position is 
 	return returnValue
 end
 
+-- Expects RNG to be seeded appropriately
 function pointLayerFunctions:randomiseValueNoise()
-	-- Should be called with RNG set
 	local relevantShapeTypeName =
-		self.parentPointLayer and self.parentPointLayer.currentObject.shapeTypeName
+		self.parentPointLayer and (self.parentPointLayer.currentObject or self.parentPointLayer.currentPotentialObject).shapeTypeName
 		or self.fixedParentObjectShapeTypeName
 	local shapeType = self.gameObject.pointLayerShapeTypes[relevantShapeTypeName]
 	if not shapeType.noiseInfo then
@@ -425,7 +425,7 @@ function pointLayerFunctions:generateChunkCommon(realX, realY, realZ, chunkId, c
 		realY + 0.5,
 		realZ + 0.5
 	)
-	local amount = density * self.maxPointDensity * self.chunkVolume -- TODO: Rename properly.
+	local amount = density * self.maxPointDensity * self.chunkVolume
 	local count = math.floor(amount)
 	if randomTODO() < amount % 1 then -- Use fractional part of amount as a probability
 		count = count + 1
@@ -449,12 +449,12 @@ function pointLayerFunctions:setChunkEmpty(chunkBufferIndex)
 	self:setChunkPointCount(chunkBufferIndex, 0)
 end
 
-function pointLayerFunctions:getClosestPoint(referencePosition)
+function pointLayerFunctions:getClosestPointIn2x2x2(referencePosition)
 	local parentOrigin
 	if not self.parentPointLayer then
 		parentOrigin = self.fixedParentObjectPosition
 	else
-		assert(self.parentPointLayer.currentObject, "Can't call getClosestPoint on a pointLayer that isn't loaded")
+		assert(self.parentPointLayer.currentObject, "Can't call getClosestPointIn2x2x2 on a pointLayer that isn't loaded")
 		parentOrigin = self.parentPointLayer.currentObject.position
 	end
 	local positionRelative = bm.vec3.toMathsiesVec3( -- Chunk sides have a length of 1
@@ -468,7 +468,6 @@ function pointLayerFunctions:getClosestPoint(referencePosition)
 	local closestDistance = math.huge
 
 	local temp = mathsies.vec3() -- No need to generate tons of new vec3s
-	-- TODO: Fix assumption that there are points in the 2x2x2 chunk cube around the ship. Maybe spiral outwards when searching? Or just have a distance limit?
 	for x = math.floor(positionRelative.x - 0.5), math.floor(positionRelative.x + 0.5) do
 		for y = math.floor(positionRelative.y - 0.5), math.floor(positionRelative.y + 0.5) do
 			for z = math.floor(positionRelative.z - 0.5), math.floor(positionRelative.z + 0.5) do
@@ -506,62 +505,88 @@ function pointLayerFunctions:getClosestPoint(referencePosition)
 	return closestChunkX, closestChunkY, closestChunkZ, closestIdInChunk, closestDistance
 end
 
-function pointLayerFunctions:writeMassData()
-	local s = love.timer.getTime()
-
-	local shapeTypeName, shapeSubtypeId
-	if self.parentPointLayer then
-		local currentObject = self.parentPointLayer.currentObject
-		shapeTypeName = currentObject.shapeTypeName
-		shapeSubtypeId = currentObject.shapeSubtypeId
-	else
-		shapeTypeName = self.fixedParentObjectShapeTypeName
-		shapeSubtypeId = self.fixedParentObjectShapeSubtypeId
-	end
-	local shapeType = self.gameObject.pointLayerShapeTypes[shapeTypeName]
-	local scratch = self.gameObject:decodeShapeSubtypeIntoScratchTable(shapeType, shapeSubtypeId)
-
-	local distributions = self.gameObject.massDataSampleDistributions
-	for lod = consts.shapeSlowdownIntegralDetail, 0, -1 do
-		local sampleDistribution = distributions[lod]
-
-		for i = 1, #sampleDistribution do
-			local infoTable = {
-				shapeTypeId = shapeType.id,
-				params = scratch,
-				valueNoiseData = self.valueNoiseData,
-				type = "massWrite",
-				firstSample = sampleDistribution[i].firstSample,
-				lastSample = sampleDistribution[i].lastSample,
-				stepCount = sampleDistribution.stepCount,
-
-				shapeMassData = self.shapeMassData,
-				lodToWriteTo = lod,
-				massDataStartOffsets = consts.shapeSlowdownIntegralDataStarts
-			}
-			love.thread.getChannel("shapeAmountsInfo"):push(infoTable)
-		end
-
-		for _=1, #sampleDistribution do
-			while true do
-				local finished = love.thread.getChannel("shapeAmountsResult"):demand(consts.shapeIntegralThreadTimeout)
-				if finished then
-					break
+-- Actions are "prepare" (when near to an object but not close enough to need the results yet),
+-- "expect" (when the results are needed), and
+-- "cancel" (when there is no longer an object nearby or the point layer is not active)
+-- RNG should be be seeded appropriately for value noise if action == "prepare".
+-- action being prepare or expect means the the other two arguments are needed.
+function pointLayerFunctions:handleThreadedShapeInit(action)
+	if action == "prepare" then
+		if self.threadedShapeInitWorkInfo then
+			if not self.threadedShapeInitWorkInfo.completed then -- Not strictly necessary since the result is also popped on expect (or cleared on cancel). But if completion status is needed pre-expect, then this code would help.
+				local result = love.thread.getChannel("shapeAmountDataStageManagerResult" .. self.threadedShapeInitWorkInfo.resultChannelSuffix):pop()
+				if not result then
+					self.gameObject:checkThreadsForErrors()
 				else
+					self.threadedShapeInitWorkInfo.completed = true
+				end
+			end
+			return
+		end
+		self.started = love.timer.getTime()
+
+		self:randomiseValueNoise()
+
+		self.threadedShapeInitWorkInfo = {
+			completed = false,
+			resultChannelSuffix = "Layer" .. self.index
+		}
+
+		local shapeTypeName, shapeSubtypeId
+		if self.parentPointLayer then
+			local currentObject = self.parentPointLayer.currentObject or self.parentPointLayer.currentPotentialObject
+			shapeTypeName = currentObject.shapeTypeName
+			shapeSubtypeId = currentObject.shapeSubtypeId
+		else
+			shapeTypeName = self.fixedParentObjectShapeTypeName
+			shapeSubtypeId = self.fixedParentObjectShapeSubtypeId
+		end
+		local shapeType = self.gameObject.pointLayerShapeTypes[shapeTypeName]
+		local scratch = self.gameObject:decodeShapeSubtypeIntoScratchTable(shapeType, shapeSubtypeId)
+
+		local infoTable = {
+			shapeTypeId = shapeType.id,
+			params = scratch,
+			valueNoiseData = self.valueNoiseData,
+			type = "massWrite",
+			shapeMassData = self.shapeMassData,
+			massDataStartOffsets = consts.shapeSlowdownIntegralDataStarts,
+			resultChannelSuffix = self.threadedShapeInitWorkInfo.resultChannelSuffix
+		}
+		love.thread.getChannel("shapeAmountDataStageManagerInfo"):push(infoTable)
+	elseif action == "expect" then
+		-- Ideally we want it to be finished by the time we get here, due to the time it takes to fly up to a galaxy
+		if self.threadedShapeInitWorkInfo and not self.threadedShapeInitWorkInfo.completed then
+			local result
+			while not result do
+				result = love.thread.getChannel("shapeAmountDataStageManagerResult" .. self.threadedShapeInitWorkInfo.resultChannelSuffix):demand(consts.shapeIntegralThreadTimeout)
+				if not result then
 					self.gameObject:checkThreadsForErrors()
 				end
 			end
+			self.threadedShapeInitWorkInfo.completed = true
 		end
-	end
+	elseif action == "cancel" then
+		if self.threadedShapeInitWorkInfo and not self.threadedShapeInitWorkInfo.completed then
+			love.thread.getChannel("shapeAmountDataStageManagerCancel" .. self.threadedShapeInitWorkInfo.resultChannelSuffix):supply("cancel") -- TODO: Timeout
 
-	local e = love.timer.getTime()
-	-- print(e - s) -- TODO: Minimise (or spread out over multiple frames before it's needed, rather)
+			love.thread.getChannel("shapeAmountDataStageManagerInfo" .. self.threadedShapeInitWorkInfo.resultChannelSuffix):clear() -- This clear shouldn't be necessary
+			love.thread.getChannel("shapeAmountDataStageManagerResult" .. self.threadedShapeInitWorkInfo.resultChannelSuffix):clear() -- This one might be sometimes
+		end
+		self.threadedShapeInitWorkInfo = nil
+	else
+		error("Unknown handleThreadedShapeInit action " .. action)
+	end
 end
 
 function game:clearPointLayers(startIndex)
 	for i = startIndex, #self.pointLayers do
 		local pointLayer = self.pointLayers[i]
 		pointLayer.currentObject = nil
+		if pointLayer.parentPointLayer and not pointLayer.parentPointLayer.currentPotentialObject then
+			pointLayer:handleThreadedShapeInit("cancel")
+		end
+		pointLayer.currentPotentialObject = nil
 	end
 end
 
@@ -821,13 +846,14 @@ function game:handlePointLayers()
 			then
 				pointLayer.topLayerOutOfRange = true
 				pointLayer.currentObject = nil
+				pointLayer.currentPotentialObject = nil
 				self:clearPointLayers(pointLayerIndex + 1)
 				break
 			else
 				pointLayer.topLayerOutOfRange = false
 			end
 		end
-		local closestChunkX, closestChunkY, closestChunkZ, closestIdInChunk, closestDistance = pointLayer:getClosestPoint(self.ship.position)
+		local closestChunkX, closestChunkY, closestChunkZ, closestIdInChunk, closestDistance = pointLayer:getClosestPointIn2x2x2(self.ship.position)
 		if closestIdInChunk and closestDistance < consts.pointMinDistanceInChunk / 2 then
 			local x2, y2, z2 = closestChunkX - minX, closestChunkY - minY, closestChunkZ - minZ
 			local chunkId = x2 + y2 * widthChunks + z2 * widthChunks * heightChunks
@@ -838,6 +864,40 @@ function game:handlePointLayers()
 			local chunkBufferIndex = chunkBufferX + chunkBufferY * pointLayer.chunkBufferSideLength + chunkBufferZ * pointLayer.chunkBufferSideLength * pointLayer.chunkBufferSideLength
 
 			local chunkExtraInfo = pointLayer.chunkExtraInfo[chunkBufferIndex]
+
+			local shapeTypeId, shapeSubtypeId
+			if pointLayer.features.shapeTypeSubtypeIds then
+				if pointLayer.features.shapeTypeSubtypeIds == "sent" then
+					shapeTypeId, shapeSubtypeId = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "shapeTypeSubtypeIds", "uint32", 2)
+				elseif pointLayer.features.shapeTypeId == "unsent" then
+					shapeTypeId, shapeSubtypeId = chunkExtraInfo.shapeTypeId[closestIdInChunk * 2], chunkExtraInfo.shapeTypeId[closestIdInChunk * 2 + 1]
+				end
+			end
+
+			if pointLayer.childPointLayer then
+				if
+					pointLayer.currentPotentialObject and
+					(
+						pointLayer.currentPotentialObject.chunkId ~= chunkId or
+						pointLayer.currentPotentialObject.pointId ~= closestIdInChunk
+					)
+				then
+					pointLayer.currentPotentialObject = nil
+					pointLayer.childPointLayer:handleThreadedShapeInit("cancel")
+				end
+
+				pointLayer.currentPotentialObject = pointLayer.currentPotentialObject or {
+					chunkId = chunkId,
+					pointId = closestIdInChunk,
+
+					shapeTypeName = self.pointLayerShapeTypes[shapeTypeId].name,
+					shapeSubtypeId = shapeSubtypeId
+				}
+				self:seedCelestialRNG(self:getGlobalCelestialObjectIdNumbers(
+					pointLayer:getGlobalCelestialObjectIdParameters(consts.objectGenerationStages.noiseValues, pointLayer.currentPotentialObject)
+				))
+				pointLayer.childPointLayer:handleThreadedShapeInit("prepare")
+			end
 
 			local resolvable
 			local xRadius, yRadius, zRadius
@@ -868,6 +928,10 @@ function game:handlePointLayers()
 				pointLayer.currentObject.chunkId == chunkId and
 				pointLayer.currentObject.pointId == closestIdInChunk
 			) then
+				if pointLayer.childPointLayer then
+					pointLayer.childPointLayer:handleThreadedShapeInit("expect")
+				end
+
 				local r, g, b = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "luminousFlux", "float", 3)
 
 				pointLayer.currentObject = {
@@ -886,17 +950,11 @@ function game:handlePointLayers()
 				currentObject.position = objectPosition
 				currentObject.luminousFlux = mathsies.vec3(r, g, b) * pointLayer.chunkSize ^ 2 -- Bring back to proper units
 				if pointLayer.features.shapeTypeSubtypeIds then
-					local shapeTypeId, shapeSubtypeId
-					if pointLayer.features.shapeTypeSubtypeIds == "sent" then
-						shapeTypeId, shapeSubtypeId = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "shapeTypeSubtypeIds", "uint32", 2)
-					elseif pointLayer.features.shapeTypeId == "unsent" then
-						shapeTypeId, shapeSubtypeId = chunkExtraInfo.shapeTypeId[closestIdInChunk * 2], chunkExtraInfo.shapeTypeId[closestIdInChunk * 2 + 1]
-					end
 					currentObject.shapeTypeName = self.pointLayerShapeTypes[shapeTypeId].name
 					currentObject.shapeSubtypeId = shapeSubtypeId
 				end
 				if pointLayer.features.radii then
-					currentObject.radii = mathsies.vec3(xRadius, yRadius, zRadius) -- TODO: Make sure it never goes over separation between points (/2)
+					currentObject.radii = mathsies.vec3(xRadius, yRadius, zRadius)
 				end
 				if pointLayer.features.mass then
 					local mass
@@ -907,19 +965,16 @@ function game:handlePointLayers()
 					end
 					currentObject.mass = mass
 				end
-				-- TODO: Seed RNG with pointLayer:getGlobalCelestialObjectIdParameters()
-				if pointLayer.childPointLayer then
-					if pointLayer.childPointLayer.hasNoise then
-						pointLayer.childPointLayer:randomiseValueNoise()
-					end
-					pointLayer.childPointLayer:writeMassData()
-				end
 				-- Remaining features are generated (or fetched from extra info) in possibly layer-specific ways
+				self:seedCelestialRNG(self:getGlobalCelestialObjectIdNumbers(
+					pointLayer:getGlobalCelestialObjectIdParameters(consts.objectGenerationStages.main)
+				))
 				pointLayer:generateRemainingCurrentObjectInfo()
 
 				remakeAll = true
 			end
 		else
+			pointLayer.currentPotentialObject = nil
 			self:finishHandlingPointLayers(pointLayer)
 			break
 		end
