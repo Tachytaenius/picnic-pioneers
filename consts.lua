@@ -20,7 +20,7 @@ function consts.load()
 	consts.upVector = mathsies.vec3(0, 1, 0)
 	consts.forwardVector = mathsies.vec3(0, 0, 1)
 
-	consts.mapmDigits = 4
+	consts.mapmDigits = 16
 
 	consts.bytesPerGPUVar = 4
 

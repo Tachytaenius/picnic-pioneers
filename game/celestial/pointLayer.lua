@@ -889,6 +889,11 @@ function game:handlePointLayers()
 				pointLayer.currentPotentialObject = pointLayer.currentPotentialObject or {
 					chunkId = chunkId,
 					pointId = closestIdInChunk,
+					chunkBufferIndex = chunkBufferIndex,
+
+					chunkX = closestChunkX,
+					chunkY = closestChunkY,
+					chunkZ = closestChunkZ,
 
 					shapeTypeName = self.pointLayerShapeTypes[shapeTypeId].name,
 					shapeSubtypeId = shapeSubtypeId
@@ -1341,8 +1346,6 @@ function game:drawPointLayers()
 
 		-- Points
 
-		love.graphics.setShader(self.pointDrawablesShader)
-
 		self.pointIndirectDrawArgsBuffer:setArrayData({
 			self.pointDiskMesh:getVertexCount(),
 			0, -- This gets incremented (on the GPU)
@@ -1357,10 +1360,37 @@ function game:drawPointLayers()
 
 		local maxAngleFromCentre = diagonalFOV / 2 + consts.pointAngularRadius
 		local minDot = math.cos(maxAngleFromCentre)
+		local currentObjectInfo = pointLayer.currentObject or pointLayer.currentPotentialObject
 		local skipIndex =
-			pointLayer.currentObject and (
-				pointLayer.currentObject.chunkBufferIndex * pointLayer.maxPointsPerChunk + pointLayer.currentObject.pointId
+			currentObjectInfo and (
+				currentObjectInfo.chunkBufferIndex * pointLayer.maxPointsPerChunk + currentObjectInfo.pointId
 			) or pointLayer.maxPoints -- Use unreachable skip index
+		if pointLayer.currentPotentialObject and not pointLayer.currentObject then
+			-- Draw in a CPU-calculated direction to fix precision issues when on the approach to small galaxies
+			local object = pointLayer.currentPotentialObject
+			local x, y, z = pointLayer:getPointVars(object.chunkBufferIndex, object.pointId, "position", "float", 3)
+			local position = bm.vec3(object.chunkX + x, object.chunkY + y, object.chunkZ + z)
+			local difference = position - cameraPositionFullRelative / pointLayer.chunkSize
+			local distance = bm.vec3.length(difference)
+			if distance == 0 then
+				skipIndex = pointLayer.maxPoints -- Use unreachable skip index
+			else
+				local direction = difference / distance
+				direction = bm.vec3.toMathsiesVec3(direction)
+				distance = bm.mapm.tonumber(distance)
+				local r, g, b = pointLayer:getPointVars(object.chunkBufferIndex, object.pointId, "luminousFlux", "float", 3)
+				local luminance = mathsies.vec3(r, g, b) / distance ^ 2 * luminanceCalcConst
+				self.individualPointShader:send("diskDistanceToSphere", diskDistanceToSphere)
+				self.individualPointShader:send("scale", scaleToGetAngularRadius)
+				self.individualPointShader:send("skyToClip", {mathsies.mat4.components(skyToClip)})
+				self.individualPointShader:send("cameraUp", {mathsies.vec3.components(cameraUp)})
+				self.individualPointShader:send("cameraRight", {mathsies.vec3.components(cameraRight)})
+				self.individualPointShader:send("direction", {mathsies.vec3.components(direction)})
+				self.individualPointShader:send("luminance", {mathsies.vec3.components(luminance)})
+				love.graphics.setShader(self.individualPointShader)
+				love.graphics.draw(self.pointDiskMesh)
+			end
+		end
 
 		local preparationShader = pointLayer.pointPreparationShader
 		preparationShader:send("luminanceCalcConst", luminanceCalcConst)
@@ -1391,6 +1421,7 @@ function game:drawPointLayers()
 		love.graphics.dispatchThreadgroups(preparationShader, threadgroupCount)
 
 		local drawShader = self.pointDrawablesShader
+		love.graphics.setShader(drawShader)
 		drawShader:send("PointDrawables", self.pointDrawableBuffer)
 		drawShader:send("diskDistanceToSphere", diskDistanceToSphere)
 		drawShader:send("scale", scaleToGetAngularRadius)

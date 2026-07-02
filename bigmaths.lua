@@ -155,7 +155,7 @@ do -- vec3
 			local isVec3 = b.type == "vec3"
 			return isVec3 and a.x == b.x and a.y == b.y and a.z == b.z
 		end,
-		__len = length,
+		-- __len = length, -- Not supported on tables
 		__tostring = function(v)
 			return string.format("mapmVec3(%s, %s, %s)", mapmTostring(v.x), mapmTostring(v.y), mapmTostring(v.z))
 		end
