@@ -350,6 +350,37 @@ function pointLayerFunctions:randomiseValueNoise()
 	self.valueNoiseBuffer:setArrayData(self.valueNoiseData, 1, 1, shapeType.noiseInfo.requiredValueCount)
 end
 
+function pointLayerFunctions:setupVolumetricStepSizeMap()
+	local parentObjectShapeTypeName, parentObjectShapeSubtypeId, parentObjectRadii
+	if not self.parentPointLayer then
+		parentObjectShapeTypeName = self.fixedParentObjectShapeTypeName
+		parentObjectShapeSubtypeId = self.fixedParentObjectShapeSubtypeId
+		parentObjectRadii = self.fixedParentObjectRadii
+	else
+		local parentObject = self.parentPointLayer.currentObject or self.parentPointLayer.currentPotentialObject
+		parentObjectShapeTypeName = parentObject.shapeTypeName
+		parentObjectShapeSubtypeId = parentObject.shapeSubtypeId
+		parentObjectRadii = parentObject.radii
+	end
+	local shapeType = self.gameObject.pointLayerShapeTypes[parentObjectShapeTypeName]
+	local mapShader = shapeType.stepSizeShader
+	mapShader:send("map", self.volumetricStepSizeMap)
+	local radiiScale = 1 / math.max(parentObjectRadii.x, parentObjectRadii.y, parentObjectRadii.z)
+	mapShader:send("radii", {mathsies.vec3.components(radiiScale * parentObjectRadii)})
+	local densityParametersScratchTable = self.gameObject:decodeShapeSubtypeIntoScratchTable(shapeType, parentObjectShapeSubtypeId)
+	for i, parameter in ipairs(shapeType.parameters) do
+		mapShader:send("shape_" .. parameter.name, densityParametersScratchTable[i])
+	end
+	if self.hasNoise and shapeType.noiseInfo then
+		mapShader:send("NoiseValues", self.valueNoiseBuffer)
+	end
+	love.graphics.dispatchThreadgroups(mapShader,
+		consts.rayStepSizeMapSideLength,
+		consts.rayStepSizeMapSideLength,
+		consts.rayStepSizeMapSideLength
+	)
+end
+
 function pointLayerFunctions:prepareValueNoiseFunction() -- This is per shape type, so in case multiple layers use the same shape type this must be set before every use of the density function
 	local relevantShapeTypeName =
 		self.parentPointLayer and self.parentPointLayer.currentObject.shapeTypeName
@@ -526,6 +557,7 @@ function pointLayerFunctions:handleThreadedShapeInit(action)
 		self.started = love.timer.getTime()
 
 		self:randomiseValueNoise()
+		-- self:setupVolumetricStepSizeMap()
 
 		self.threadedShapeInitWorkInfo = {
 			completed = false,
@@ -618,6 +650,23 @@ function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBu
 	new.chunkBufferTotalSize = chunkBufferSideLength ^ 3
 	new.maxPointsPerChunk = math.ceil(new.chunkVolume * new.maxPointDensity)
 	new.maxPoints = new.chunkBufferTotalSize * new.maxPointsPerChunk
+
+	new.volumetricsCanvas = love.graphics.newCanvas(self.volumetricCanvasWidth, self.volumetricCanvasHeight, {
+		format = "rgba32f",
+		debugname = debugName .. " Volumetrics Canvas",
+		type = "array",
+		layers = consts.volumetricAveragingFrames
+	})
+	new.volumetricsCanvas:setFilter("linear") -- For when upscaling the temporarily reused layer. There is no upscaling/filtering when stacking the layers together
+	new.currentVolumetricsLayer = 0
+
+	-- new.volumetricStepSizeMap = love.graphics.newCanvas(consts.rayStepSizeMapSideLength, consts.rayStepSizeMapSideLength, {
+	-- 	layers = consts.rayStepSizeMapSideLength,
+	-- 	type = "volume",
+	-- 	format = "r16f",
+	-- 	computewrite = true,
+	-- 	debugname = debugName .. " Volumetric Step Size Map"
+	-- })
 
 	-- Add features to the following two tables
 	new.pointBufferFormat = {}
@@ -865,6 +914,7 @@ function game:handlePointLayers()
 
 			local chunkExtraInfo = pointLayer.chunkExtraInfo[chunkBufferIndex]
 
+			-- Some early feature getting
 			local shapeTypeId, shapeSubtypeId
 			if pointLayer.features.shapeTypeSubtypeIds then
 				if pointLayer.features.shapeTypeSubtypeIds == "sent" then
@@ -872,6 +922,14 @@ function game:handlePointLayers()
 				elseif pointLayer.features.shapeTypeId == "unsent" then
 					shapeTypeId, shapeSubtypeId = chunkExtraInfo.shapeTypeId[closestIdInChunk * 2], chunkExtraInfo.shapeTypeId[closestIdInChunk * 2 + 1]
 				end
+			end
+			local xRadius, yRadius, zRadius
+			if pointLayer.features.radii == "sent" then
+				xRadius, yRadius, zRadius = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "radii", "float", 3)
+			elseif pointLayer.features.radii == "unsent" then
+				xRadius = chunkExtraInfo.radii[closestIdInChunk * 3]
+				yRadius = chunkExtraInfo.radii[closestIdInChunk * 3 + 1]
+				zRadius = chunkExtraInfo.radii[closestIdInChunk * 3 + 2]
 			end
 
 			if pointLayer.childPointLayer then
@@ -896,7 +954,8 @@ function game:handlePointLayers()
 					chunkZ = closestChunkZ,
 
 					shapeTypeName = self.pointLayerShapeTypes[shapeTypeId].name,
-					shapeSubtypeId = shapeSubtypeId
+					shapeSubtypeId = shapeSubtypeId,
+					radii = xRadius and mathsies.vec3(xRadius, yRadius, zRadius) or nil
 				}
 				self:seedCelestialRNG(self:getGlobalCelestialObjectIdNumbers(
 					pointLayer:getGlobalCelestialObjectIdParameters(consts.objectGenerationStages.noiseValues, pointLayer.currentPotentialObject)
@@ -905,17 +964,9 @@ function game:handlePointLayers()
 			end
 
 			local resolvable
-			local xRadius, yRadius, zRadius
 			if not pointLayer.features.radii then
 				resolvable = true
 			else
-				if pointLayer.features.radii == "sent" then
-					xRadius, yRadius, zRadius = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "radii", "float", 3)
-				elseif pointLayer.features.radii == "unsent" then
-					xRadius = chunkExtraInfo.radii[closestIdInChunk * 3]
-					yRadius = chunkExtraInfo.radii[closestIdInChunk * 3 + 1]
-					zRadius = chunkExtraInfo.radii[closestIdInChunk * 3 + 2]
-				end
 				assert(xRadius and yRadius and zRadius, "Missing radii")
 				local maxRadius = math.max(xRadius, yRadius, zRadius)
 				-- local trueDistance = bm.mapm.tonumber(bm.vec3.distance(self.ship.position, objectPosition))
@@ -1250,7 +1301,7 @@ function game:getPointLayerGravityWellSlowdownFactor()
 end
 
 function game:drawPointLayers()
-	local outputCanvas = love.graphics.getCanvas()
+	local outputCanvas = self.screenCanvasses.celestialLuminanceCanvas
 	local aspectRatio = outputCanvas:getWidth() / outputCanvas:getHeight()
 
 	local cameraPositionFull = self.ship.position
@@ -1309,27 +1360,34 @@ function game:drawPointLayers()
 		local fullyPointRadiusProperUnits = fullyPointRadius * pointLayer.chunkSize
 		local fullyVolumetricRadiusProperUnits = fullyVolumetricRadius * pointLayer.chunkSize
 
-		-- Volumetrics
+		-- Volumetrics (render to array texture, add array texture together into temp canvas (they are multiplied down so's to be averaged), draw temp canvas to output canvas in additive mode with a denoise shader active)
 
+		love.graphics.setBlendMode("replace")
+
+		-- Draw this frame's volumetrics
 		local distanceUnitScale = 1 / math.max(parentObjectRadii.x, parentObjectRadii.y, parentObjectRadii.z)
 		local shapeType = self.pointLayerShapeTypes[parentObjectShapeTypeName]
 		local volumetricShader = shapeType.volumetricShader
-
-		-- Send shape params
 		local densityParametersScratchTable = self:decodeShapeSubtypeIntoScratchTable(shapeType, parentObjectShapeSubtypeId)
-		for i, parameter in ipairs(shapeType.parameters) do
+		for i, parameter in ipairs(shapeType.parameters) do -- Send shape params
 			volumetricShader:send("shape_" .. parameter.name, densityParametersScratchTable[i])
 		end
-
+		assert(consts.raysPerPixel <= 1, "raysPerPixel is just a probaility (0 to 1) per pixel for now, it can't be above 1")
+		volumetricShader:send("rayChance", consts.raysPerPixel)
+		volumetricShader:send("rayStepVariance", consts.rayStepVariance)
+		volumetricShader:send("raySeed", love.math.random(0, 2 ^ 32 - 1))
 		if pointLayer.hasNoise and shapeType.noiseInfo then
 			volumetricShader:send("NoiseValues", pointLayer.valueNoiseBuffer)
 		end
+		-- volumetricShader:send("stepSizeMap", pointLayer.volumetricStepSizeMap)
+		-- volumetricShader:send("stepSizeMapSize", {consts.rayStepSizeMapSideLength, consts.rayStepSizeMapSideLength, consts.rayStepSizeMapSideLength})
+		-- volumetricShader:send("rayStepSize", 0.01)
 		volumetricShader:send("fadeInRadius", fullyVolumetricRadiusProperUnits * distanceUnitScale)
 		volumetricShader:send("fadeOutRadius", fullyPointRadiusProperUnits * distanceUnitScale)
 		volumetricShader:send("fadeExponent", consts.pointFadeExponent)
 		volumetricShader:send("clipToSky", {mathsies.mat4.components(clipToSky)})
 		volumetricShader:send("cameraPosition", {mathsies.vec3.components(bm.vec3.toMathsiesVec3(cameraPositionFullRelative * distanceUnitScale))})
-		volumetricShader:send("maxRaySteps", consts.volumetricMaxRaySteps)
+		volumetricShader:send("maxRaySteps", shapeType.raySteps)
 		volumetricShader:send("shapeRadii", {mathsies.vec3.components(distanceUnitScale * parentObjectRadii)})
 		volumetricShader:send("baseEmission", {
 			-- TODO: Understand how these distanceUnitScale things work. I thought you multiplied in an amount with an exponent corresponding to the exponent on the distance dimension?
@@ -1339,8 +1397,41 @@ function game:drawPointLayers()
 		})
 		-- volumetricShader:send("luminousIntensityPerPoint", {1, 1, 1})
 		-- volumetricShader:send("maxDensity", 1)
+		love.graphics.setCanvas(pointLayer.volumetricsCanvas, pointLayer.currentVolumetricsLayer + 1)
+		pointLayer.currentVolumetricsLayer = (pointLayer.currentVolumetricsLayer + 1) % pointLayer.volumetricsCanvas:getLayerCount()
+		love.graphics.clear(0, 0, 0, 1)
 		love.graphics.setShader(volumetricShader)
-		love.graphics.draw(self.dummyTexture, 0, 0, 0, outputCanvas:getDimensions())
+		love.graphics.draw(self.dummyTexture, 0, 0, 0, pointLayer.volumetricsCanvas:getDimensions()) -- getDimensions is still two values
+
+		-- Stack all saved frames' volumetrics together
+		self.stackVolumetricsShader:send("multiplier", 1 / (consts.raysPerPixel * pointLayer.volumetricsCanvas:getLayerCount()))
+		self.stackVolumetricsShader:send("canvas", pointLayer.volumetricsCanvas)
+		self.stackVolumetricsShader:send("count", pointLayer.volumetricsCanvas:getLayerCount())
+		love.graphics.setShader(self.stackVolumetricsShader)
+		love.graphics.setCanvas(self.stackedVolumetricsCanvas)
+		love.graphics.clear(0, 0, 0, 1) -- TODO: Comment this out but first check if WIP stuff is working
+		love.graphics.draw(self.dummyTexture, 0, 0, 0, self.stackedVolumetricsCanvas:getDimensions())
+
+		-- Draw from stacked canvas to next frame's volumetric result canvas layer while denoising.
+		-- We use next frame's volumetric result canvas to save on VRAM since it will be replaced next frame and has the same dimensions and format as we need.
+		-- The data drawn here should not escape to the screen next frame.
+		love.graphics.setCanvas(pointLayer.volumetricsCanvas, pointLayer.currentVolumetricsLayer + 1)
+		love.graphics.setShader(self.denoiseVolumetricsShader)
+		-- self.denoiseVolumetricsShader:send()
+		love.graphics.draw(self.stackedVolumetricsCanvas) -- We're in replace mode
+
+		-- Finally draw the reused layer to output canvas while upscaling
+		love.graphics.setBlendMode("add")
+		love.graphics.setShader()
+		love.graphics.setCanvas(outputCanvas)
+		love.graphics.drawLayer(pointLayer.volumetricsCanvas, pointLayer.currentVolumetricsLayer + 1, 0, 0, 0, 1 / consts.volumetricCanvasScale)
+		love.graphics.setCanvas()
+
+		-- Warn with white if something went wrong (TEMP)
+		love.graphics.setShader()
+		love.graphics.setCanvas(pointLayer.volumetricsCanvas, pointLayer.currentVolumetricsLayer + 1)
+		love.graphics.rectangle("fill", 0, 0, pointLayer.volumetricsCanvas:getDimensions())
+		love.graphics.setCanvas(outputCanvas)
 
 		-- TODO: Point attenuation
 

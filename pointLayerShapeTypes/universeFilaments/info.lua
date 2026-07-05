@@ -1,4 +1,6 @@
-local info = {}
+local info = {
+	raySteps = 48
+}
 
 info.valueNoiseInfo = {
 	{

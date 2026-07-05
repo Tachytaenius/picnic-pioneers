@@ -89,6 +89,7 @@ function game:loadShapeTypes()
 			shapeType.name = itemName
 
 			local info = require(itemPath:gsub("/", ".") .. ".info")
+			shapeType.raySteps = info.raySteps
 			shapeType.parameters = info.parameters or {}
 			shapeType.getDensity = info.getDensity
 			setValueNoiseForShapeTypeDensityFunc(shapeType)
@@ -139,6 +140,7 @@ function game:loadShapeTypes()
 			end
 			shapeType.volumetricShader = love.graphics.newShader(
 				"#pragma language glsl4\n" ..
+				"#line 1\n" .. love.filesystem.read("shaders/include/lib/random.glsl") ..
 				"#line 1\n" .. love.filesystem.read("shaders/include/structs.glsl") ..
 				noiseString ..
 				"#line 1\n" .. love.filesystem.read("shaders/include/raycasts.glsl") ..
@@ -147,9 +149,25 @@ function game:loadShapeTypes()
 				"#line 1\n" .. love.filesystem.read("shaders/include/skyDirection.glsl") ..
 				"#line 1\n" .. love.filesystem.read("shaders/drawing/layerVolumetrics.glsl"),
 				{
-					defines = shaderDefines
+					defines = shaderDefines,
+					debugname = shapeType.name .. " Volumetric Shader"
 				}
 			)
+			-- shapeType.stepSizeShader = love.graphics.newComputeShader(
+			-- 	"#pragma language glsl4\n" ..
+			-- 	"#line 1\n" .. love.filesystem.read("shaders/include/structs.glsl") ..
+			-- 	noiseString ..
+			-- 	table.concat(includeStrings) ..
+			-- 	"#line 1\n" .. love.filesystem.read(itemPath .. "/shaderCode.glsl") ..
+			-- 	"#line 1\n" .. love.filesystem.read("shaders/drawing/initStepSizeMap.glsl"),
+			-- 	{
+			-- 		defines = {
+			-- 			THREADGROUP_SIZE = consts.rayStepSizeMapCellSampleSideLength,
+			-- 			STEP_SIZE_MUL = consts.stepSizeMultiplier,
+			-- 			IMAGE_SIZE = consts.rayStepSizeMapSideLength
+			-- 		}
+			-- 	}
+			-- )
 		end
 	end
 	-- Must match sorting in shapeAmounts.lua

@@ -15,6 +15,10 @@ uniform vec3 baseEmission;
 
 uniform vec3 shapeRadii;
 
+uniform float rayChance;
+uniform uint raySeed;
+uniform float rayStepVariance;
+
 VolumetricSample sampleVolumetrics(vec3 samplePosition) {
 	float density = sampleShapeDensity(samplePosition);
 	return VolumetricSample (
@@ -23,7 +27,7 @@ VolumetricSample sampleVolumetrics(vec3 samplePosition) {
 	);
 }
 
-vec3 getRayColour(vec3 rayPosition, vec3 rayDirection) {
+vec3 getRayColour(vec3 rayPosition, vec3 rayDirection, float sampleLerp) {
 	vec3 totalRayLuminance = vec3(0.0);
 	float totalTransmittance = 1.0;
 	// Ray moves backwards from end to camera
@@ -43,9 +47,11 @@ vec3 getRayColour(vec3 rayPosition, vec3 rayDirection) {
 
 	float segmentStart = result.t2;
 	for (uint rayStep = 0u; rayStep < rayStepCount; rayStep++) {
-		float segmentEnd = rayOffset + rayLength * pow((1.0 - float(rayStep) / float(rayStepCount)), 2.5);
+		float t = 1.0 - float(rayStep) / float(rayStepCount);
+		t = t * t; // Increase detail towards camera (without using pow)
+		float segmentEnd = rayOffset + rayLength * t;
 		float rayStepSize = segmentStart - segmentEnd; // Start is greater than end
-		float sampleT = mix(segmentEnd, segmentStart, 0.5);
+		float sampleT = mix(segmentEnd, segmentStart, sampleLerp);
 		vec3 samplePosition = (rayPosition + rayDirection * sampleT) / shapeRadii;
 
 		float emissionFadeMultiplier = pow(clamp(
@@ -69,9 +75,22 @@ vec3 getRayColour(vec3 rayPosition, vec3 rayDirection) {
 }
 
 void pixelmain() {
-	vec3 direction = normalize(directionPreNormalise);
-	vec3 outColour = getRayColour(cameraPosition, direction);
-	fragmentColour = vec4(outColour, 1.0);
+	uint x = uint(love_PixelCoord.x);
+	uint y = uint(love_PixelCoord.y);
+	uint w = uint(love_ScreenSize.x);
+	uint h = uint(love_ScreenSize.y);
+	uint pixelId = x + y * w;
+	uint chanceSeed = pixelId ^ raySeed;
+	if (rayChance == 1.0 || hash11(chanceSeed) < rayChance) {
+		vec3 direction = normalize(directionPreNormalise);
+		uint variationSeed = (pixelId + w * h) ^ raySeed;
+		float stepVariation = (hash11(variationSeed) - 0.5) * rayStepVariance + 0.5;
+		vec3 outColour = getRayColour(cameraPosition, direction, stepVariation);
+		fragmentColour = vec4(outColour, 1.0);
+		return;
+	}
+	fragmentColour = vec4(vec3(0.0), 1.0);
 }
+
 
 #endif

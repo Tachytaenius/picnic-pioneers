@@ -37,7 +37,25 @@ function game:initCelestial()
 		"#line 1\n" .. love.filesystem.read("shaders/drawing/star.glsl")
 	)
 
-	local width, height = love.graphics.getDimensions()
+	self.stackVolumetricsShader = love.graphics.newShader(
+		"#line 1\n" .. love.filesystem.read("shaders/include/lib/random.glsl") ..
+		"#line 1\n" .. love.filesystem.read("shaders/drawing/stackVolumetrics.glsl"),
+		{
+			debugname = "Volumetric Draw Shader"
+		}
+	)
+
+	self.stackedVolumetricsCanvas = love.graphics.newCanvas(self.volumetricCanvasWidth, self.volumetricCanvasHeight, {
+		format = "rgba32f",
+		debugname = "Stacked Volumetrics Canvas",
+	})
+
+	self.denoiseVolumetricsShader = love.graphics.newShader(
+		"#line 1\n" .. love.filesystem.read("shaders/include/lib/denoise.glsl") ..
+		"#line 1\n" .. love.filesystem.read("shaders/drawing/denoiseVolumetrics.glsl")
+	)
+
+	local width, height = self.screenWidth, self.screenHeight
 	self.screenCanvasses.celestialLuminanceCanvas = love.graphics.newCanvas(width, height, {
 		format = "rgba32f",
 		debugname = "Celestial Luminance Canvas"

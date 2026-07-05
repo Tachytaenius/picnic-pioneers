@@ -1,3 +1,5 @@
+local consts = require("consts")
+
 local game = {}
 
 function game:newState()
@@ -12,7 +14,10 @@ end
 
 function game:initState()
 	-- Common graphics init
-	self.screenCanvasses = {} -- Canvasses for which the size is supposed to match the game output size
+	self.screenCanvasses = {} -- Canvasses for which the size is supposed to match the game output size. There are also scaled canvasses in point layers for their volumetrics
+	self.screenWidth, self.screenHeight = love.graphics.getDimensions()
+	self.volumetricCanvasWidth = math.ceil(consts.volumetricCanvasScale * self.screenWidth)
+	self.volumetricCanvasHeight = math.ceil(consts.volumetricCanvasScale * self.screenHeight)
 	self.dummyTexture = love.graphics.newImage(love.image.newImageData(1, 1))
 
 	self:initShip()

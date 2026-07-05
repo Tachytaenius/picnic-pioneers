@@ -140,7 +140,14 @@ function consts.load()
 	end
 	consts.shapeSlowdownIntegralDataCount = currentStart
 
-	consts.volumetricMaxRaySteps = 32 -- TODO: Stochastic rays, then bump number up
+	consts.defaultVolumetricMaxRaySteps = 8 -- It should really be specified per shape type
+	-- consts.stepSizeMultiplier = 0.25
+	-- consts.rayStepSizeMapSideLength = 50
+	-- consts.rayStepSizeMapCellSampleSideLength = 8
+	consts.volumetricCanvasScale = 1 / 3
+	consts.raysPerPixel = 1
+	consts.volumetricAveragingFrames = 4
+	consts.rayStepVariance = 1
 
 	consts.starDensity = 1408 -- TEMP?
 	consts.starEffectiveTemperature = 5772

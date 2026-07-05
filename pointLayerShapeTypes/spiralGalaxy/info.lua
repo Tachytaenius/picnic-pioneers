@@ -1,4 +1,6 @@
-local info = {}
+local info = {
+	raySteps = 16
+}
 
 info.parameters = {
 	{
