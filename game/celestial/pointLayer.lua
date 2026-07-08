@@ -1101,17 +1101,31 @@ function game:getPointLayerGravityWellSlowdownFactor()
 			local gridIters = 0
 			local samples = 0
 			local dataVolumeToRealVolume = parentRadii.x * parentRadii.y * parentRadii.z
+			local function gravity(mass, x, y, z)
+				local finalX = x * parentRadii.x
+				local finalY = y * parentRadii.y
+				local finalZ = z * parentRadii.z
+				local finalMass = mass * pointLayer.averageMassPerPoint * pointLayer.maxPointDensity * dataVolumeToRealVolume
+				local distance = math.sqrt(
+					(finalX - positionRelativeFull.x) ^ 2 +
+					(finalY - positionRelativeFull.y) ^ 2 +
+					(finalZ - positionRelativeFull.z) ^ 2
+				)
+				if distance > 0 then
+					totalThisLayer = totalThisLayer + finalMass * distance ^ exponent
+				end
+			end
 			local massData = pointLayer.shapeMassDataFFI
 			local range = consts.lodBoxRange
 			local posX = positionRelativeFull.x / parentRadii.x * 0.5 + 0.5
 			local posY = positionRelativeFull.y / parentRadii.y * 0.5 + 0.5
 			local posZ = positionRelativeFull.z / parentRadii.z * 0.5 + 0.5
-			local cutRegionStartX = xLower * pointLayer.chunkSize / parentRadii.x * 0.5 + 0.5
-			local cutRegionStartY = yLower * pointLayer.chunkSize / parentRadii.y * 0.5 + 0.5
-			local cutRegionStartZ = zLower * pointLayer.chunkSize / parentRadii.z * 0.5 + 0.5
-			local cutRegionEndX = (xUpper + 1) * pointLayer.chunkSize / parentRadii.x * 0.5 + 0.5
-			local cutRegionEndY = (yUpper + 1) * pointLayer.chunkSize / parentRadii.y * 0.5 + 0.5
-			local cutRegionEndZ = (zUpper + 1) * pointLayer.chunkSize / parentRadii.z * 0.5 + 0.5
+			local cutRegionStartX = xLower * pointLayer.chunkSize / parentRadii.x
+			local cutRegionStartY = yLower * pointLayer.chunkSize / parentRadii.y
+			local cutRegionStartZ = zLower * pointLayer.chunkSize / parentRadii.z
+			local cutRegionEndX = (xUpper + 1) * pointLayer.chunkSize / parentRadii.x
+			local cutRegionEndY = (yUpper + 1) * pointLayer.chunkSize / parentRadii.y
+			local cutRegionEndZ = (zUpper + 1) * pointLayer.chunkSize / parentRadii.z
 			local nextLodStartX = 0
 			local nextLodStartY = 0
 			local nextLodStartZ = 0
@@ -1125,12 +1139,6 @@ function game:getPointLayerGravityWellSlowdownFactor()
 				local posXThisLod = math.floor(posX * lodStepCount)
 				local posYThisLod = math.floor(posY * lodStepCount)
 				local posZThisLod = math.floor(posZ * lodStepCount)
-				local thisLodCutRegionStartX = cutRegionStartX * lodStepCount
-				local thisLodCutRegionStartY = cutRegionStartY * lodStepCount
-				local thisLodCutRegionStartZ = cutRegionStartZ * lodStepCount
-				local thisLodCutRegionEndX = cutRegionEndX * lodStepCount
-				local thisLodCutRegionEndY = cutRegionEndY * lodStepCount
-				local thisLodCutRegionEndZ = cutRegionEndZ * lodStepCount
 				local thisLodStartX = nextLodStartX
 				local thisLodStartY = nextLodStartY
 				local thisLodStartZ = nextLodStartZ
@@ -1163,30 +1171,89 @@ function game:getPointLayerGravityWellSlowdownFactor()
 							else
 								samples = samples + 1
 								local sampleI = lodReadOffset + x + y * lodStepCount + z * lodStepCount ^ 2
-								local sampleCutStartX = math.max(x, thisLodCutRegionStartX)
-								local sampleCutEndX = math.min((x + 1), thisLodCutRegionEndX)
-								local sampleCutStartY = math.max(y, thisLodCutRegionStartY)
-								local sampleCutEndY = math.min((y + 1), thisLodCutRegionEndY)
-								local sampleCutStartZ = math.max(z, thisLodCutRegionStartZ)
-								local sampleCutEndZ = math.min((z + 1), thisLodCutRegionEndZ)
+
+								local sampleStartX = x / lodStepCount * 2 - 1 -- *2-1 because shape types' coordinates go from -1 to 1
+								local sampleStartY = y / lodStepCount * 2 - 1
+								local sampleStartZ = z / lodStepCount * 2 - 1
+								local sampleEndX = (x + 1) / lodStepCount * 2 - 1
+								local sampleEndY = (y + 1) / lodStepCount * 2 - 1
+								local sampleEndZ = (z + 1) / lodStepCount * 2 - 1
+								local sampleCentreX = (sampleStartX + sampleEndX) / 2
+								local sampleCentreY = (sampleStartY + sampleEndY) / 2
+								local sampleCentreZ = (sampleStartZ + sampleEndZ) / 2
+								local sampleVolume =
+									(sampleEndX - sampleStartX) *
+									(sampleEndY - sampleStartY) *
+									(sampleEndZ - sampleStartZ)
+								local sampleMass = massData[sampleI]
+								if sampleMass == 0 then
+									-- Early return
+									goto continue
+								end
+
+								local sampleCutStartX = math.max(sampleStartX, cutRegionStartX)
+								local sampleCutEndX = math.min(sampleEndX, cutRegionEndX)
+								local sampleCutStartY = math.max(sampleStartY, cutRegionStartY)
+								local sampleCutEndY = math.min(sampleEndY, cutRegionEndY)
+								local sampleCutStartZ = math.max(sampleStartZ, cutRegionStartZ)
+								local sampleCutEndZ = math.min(sampleEndZ, cutRegionEndZ)
+								local cutCentreX = (sampleCutStartX + sampleCutEndX) / 2
+								local cutCentreY = (sampleCutStartY + sampleCutEndY) / 2
+								local cutCentreZ = (sampleCutStartZ + sampleCutEndZ) / 2
 								local cutVolume =
 									math.max(0, sampleCutEndX - sampleCutStartX) *
 									math.max(0, sampleCutEndY - sampleCutStartY) *
 									math.max(0, sampleCutEndZ - sampleCutStartZ)
-								local volumeProportion = math.max(0, 1 - cutVolume)
-								local mass = massData[sampleI] * pointLayer.averageMassPerPoint * pointLayer.maxPointDensity * dataVolumeToRealVolume * volumeProportion
-								local samplePosX = ((x + 0.5) / lodStepCount * 2 - 1) * parentRadii.x
-								local samplePosY = ((y + 0.5) / lodStepCount * 2 - 1) * parentRadii.y
-								local samplePosZ = ((z + 0.5) / lodStepCount * 2 - 1) * parentRadii.z
-								local distance = math.sqrt(
-									(samplePosX - positionRelativeFull.x) ^ 2 +
-									(samplePosY - positionRelativeFull.y) ^ 2 +
-									(samplePosZ - positionRelativeFull.z) ^ 2
-								)
-								if distance > 0 then
-									totalThisLayer = totalThisLayer + mass * distance ^ exponent
+
+								if cutVolume == 0 then
+									-- Usually this branch is taken
+									gravity(sampleMass, sampleCentreX, sampleCentreY, sampleCentreZ)
+								else
+									-- This branch is only taken if the current sample AABB intersects with the AABB of chunks whose points have been iterated over.
+
+									-- Split up AABB that has had other AABB removed from it into (at most) 3^3-1 smaller AABBs. We miss out the removed AABB to avoid errors where the distance is far lower than it should be and the calculation goes wrong.
+
+									local density = sampleMass / sampleVolume
+									-- Since this branch is rarely taken, we are OK to use some tables.
+									local xCoords = {sampleStartX, sampleCutStartX, sampleCutEndX, sampleEndX}
+									local yCoords = {sampleStartY, sampleCutStartY, sampleCutEndY, sampleEndY}
+									local zCoords = {sampleStartZ, sampleCutStartZ, sampleCutEndZ, sampleEndZ}
+
+									for xi = 1, 3 do
+										for yi = 1, 3 do
+											for zi = 1, 3 do
+												if xi == 2 and yi == 2 and zi == 2 then
+													-- Skip centre as it's the cut AABB where the points were checked
+													goto continue
+												end
+
+												local startX = xCoords[xi]
+												local endX = xCoords[xi + 1]
+												local startY = yCoords[yi]
+												local endY = yCoords[yi + 1]
+												local startZ = zCoords[zi]
+												local endZ = zCoords[zi + 1]
+
+												local volume =
+													(endX - startX) *
+													(endY - startY) *
+													(endZ - startZ)
+
+												local centreX = (startX + endX) / 2
+												local centreY = (startY + endY) / 2
+												local centreZ = (startZ + endZ) / 2
+
+												local mass = volume * density -- May be 0
+
+												gravity(mass, centreX, centreY, centreZ)
+
+											    ::continue::
+											end
+										end
+									end
 								end
 							end
+						    ::continue::
 						end
 					end
 				end
