@@ -29,6 +29,8 @@ function game:initCelestial()
 	self.pointDrawablesShader = love.graphics.newShader("shaders/drawing/pointDrawables.glsl", {defines = {INSTANCED = true}})
 	self.individualPointShader = love.graphics.newShader("shaders/drawing/pointDrawables.glsl")
 
+	self.drawVolumetricShader = love.graphics.newShader("shaders/drawing/drawVolumetric.glsl")
+
 	self.brightnessMultiplyShader = love.graphics.newShader("shaders/drawing/brightnessMultiply.glsl")
 
 	self.starShader = love.graphics.newShader(
@@ -37,7 +39,7 @@ function game:initCelestial()
 		"#line 1\n" .. love.filesystem.read("shaders/drawing/star.glsl")
 	)
 
-	local width, height = love.graphics.getDimensions()
+	local width, height = self.screenWidth, self.screenHeight
 	self.screenCanvasses.celestialLuminanceCanvas = love.graphics.newCanvas(width, height, {
 		format = "rgba32f",
 		debugname = "Celestial Luminance Canvas"

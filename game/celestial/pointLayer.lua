@@ -759,6 +759,17 @@ function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBu
 	new.shapeMassData = love.data.newByteData(bytesPerFloat * consts.shapeSlowdownIntegralDataCount)
 	new.shapeMassDataFFI = ffi.cast("float*", new.shapeMassData:getFFIPointer())
 
+	new.volumetricCanvas = love.graphics.newCanvas(self.volumetricCanvasWidth, self.volumetricCanvasHeight, {
+		debugname = debugName .. " Volumetric Canvas",
+		format = "rgba32f",
+		computewrite = true
+	})
+	new.volumetricAddCountCanvas = love.graphics.newCanvas(self.volumetricCanvasWidth, self.volumetricCanvasHeight, {
+		debugname = debugName .. " Volumetric Addition Count Canvas",
+		format = "r8ui",
+		computewrite = true
+	})
+
 	return new
 end
 
@@ -865,6 +876,7 @@ function game:handlePointLayers()
 
 			local chunkExtraInfo = pointLayer.chunkExtraInfo[chunkBufferIndex]
 
+			-- Some early feature getting
 			local shapeTypeId, shapeSubtypeId
 			if pointLayer.features.shapeTypeSubtypeIds then
 				if pointLayer.features.shapeTypeSubtypeIds == "sent" then
@@ -872,6 +884,14 @@ function game:handlePointLayers()
 				elseif pointLayer.features.shapeTypeId == "unsent" then
 					shapeTypeId, shapeSubtypeId = chunkExtraInfo.shapeTypeId[closestIdInChunk * 2], chunkExtraInfo.shapeTypeId[closestIdInChunk * 2 + 1]
 				end
+			end
+			local xRadius, yRadius, zRadius
+			if pointLayer.features.radii == "sent" then
+				xRadius, yRadius, zRadius = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "radii", "float", 3)
+			elseif pointLayer.features.radii == "unsent" then
+				xRadius = chunkExtraInfo.radii[closestIdInChunk * 3]
+				yRadius = chunkExtraInfo.radii[closestIdInChunk * 3 + 1]
+				zRadius = chunkExtraInfo.radii[closestIdInChunk * 3 + 2]
 			end
 
 			if pointLayer.childPointLayer then
@@ -896,7 +916,8 @@ function game:handlePointLayers()
 					chunkZ = closestChunkZ,
 
 					shapeTypeName = self.pointLayerShapeTypes[shapeTypeId].name,
-					shapeSubtypeId = shapeSubtypeId
+					shapeSubtypeId = shapeSubtypeId,
+					radii = xRadius and mathsies.vec3(xRadius, yRadius, zRadius) or nil
 				}
 				self:seedCelestialRNG(self:getGlobalCelestialObjectIdNumbers(
 					pointLayer:getGlobalCelestialObjectIdParameters(consts.objectGenerationStages.noiseValues, pointLayer.currentPotentialObject)
@@ -905,7 +926,6 @@ function game:handlePointLayers()
 			end
 
 			local resolvable
-			local xRadius, yRadius, zRadius
 			if not pointLayer.features.radii then
 				resolvable = true
 			else
@@ -1317,8 +1337,9 @@ function game:getPointLayerGravityWellSlowdownFactor()
 end
 
 function game:drawPointLayers()
-	local outputCanvas = love.graphics.getCanvas()
+	local outputCanvas = self.screenCanvasses.celestialLuminanceCanvas
 	local aspectRatio = outputCanvas:getWidth() / outputCanvas:getHeight()
+	love.graphics.setCanvas(outputCanvas)
 
 	local cameraPositionFull = self.ship.position
 	local cameraOrientation = self.ship.orientation
@@ -1378,6 +1399,27 @@ function game:drawPointLayers()
 
 		-- Volumetrics
 
+		if pointLayer.volumetricCanvasCameraInfo then
+			if pointLayer.volumetricCanvasCameraInfo.position ~= cameraPositionFull then
+				love.graphics.setCanvas(pointLayer.volumetricCanvas)
+				love.graphics.clear()
+				love.graphics.setCanvas(pointLayer.volumetricAddCountCanvas)
+				love.graphics.clear()
+				love.graphics.setCanvas(outputCanvas)
+			elseif pointLayer.volumetricCanvasCameraInfo.orientation ~= cameraOrientation then
+				-- TODO: Save/move pixels in common
+				love.graphics.setCanvas(pointLayer.volumetricCanvas)
+				love.graphics.clear()
+				love.graphics.setCanvas(pointLayer.volumetricAddCountCanvas)
+				love.graphics.clear()
+				love.graphics.setCanvas(outputCanvas)
+			end
+		end
+		pointLayer.volumetricCanvasCameraInfo = {
+			position = bm.vec3.clone(cameraPositionFull),
+			orientation = mathsies.quat.clone(cameraOrientation)
+		}
+
 		local distanceUnitScale = 1 / math.max(parentObjectRadii.x, parentObjectRadii.y, parentObjectRadii.z)
 		local shapeType = self.pointLayerShapeTypes[parentObjectShapeTypeName]
 		local volumetricShader = shapeType.volumetricShader
@@ -1391,10 +1433,28 @@ function game:drawPointLayers()
 		if pointLayer.hasNoise and shapeType.noiseInfo then
 			volumetricShader:send("NoiseValues", pointLayer.valueNoiseBuffer)
 		end
+
+		local cornerDirs = {}
+		for y = 1, -1, -2 do
+			for x = -1, 1, 2 do
+				local clipSpacePos = mathsies.vec3(x, y, -1) -- -1 for near plane but it makes no difference one everything is normalised in the compute shader. It may need to be consistent per-corner, though
+				local result = clipToSky * clipSpacePos
+				-- table.insert(cornerDirs, result.x)
+				-- table.insert(cornerDirs, result.y)
+				-- table.insert(cornerDirs, result.z)
+				table.insert(cornerDirs, {mathsies.vec3.components(result)})
+			end
+		end
+		volumetricShader:send("preNormaliseCornerDirs", unpack(cornerDirs))
+		volumetricShader:send("size", {pointLayer.volumetricCanvas:getDimensions()})
+		volumetricShader:send("resultCanvas", pointLayer.volumetricCanvas)
+		volumetricShader:send("additionCountCanvas", pointLayer.volumetricAddCountCanvas)
+		volumetricShader:send("rayStepVariance", 1)
+		volumetricShader:send("raySeed", love.math.random(0, 2 ^ 32 - 1))
 		volumetricShader:send("fadeInRadius", fullyVolumetricRadiusProperUnits * distanceUnitScale)
 		volumetricShader:send("fadeOutRadius", fullyPointRadiusProperUnits * distanceUnitScale)
 		volumetricShader:send("fadeExponent", consts.pointFadeExponent)
-		volumetricShader:send("clipToSky", {mathsies.mat4.components(clipToSky)})
+		-- volumetricShader:send("clipToSky", {mathsies.mat4.components(clipToSky)})
 		volumetricShader:send("cameraPosition", {mathsies.vec3.components(bm.vec3.toMathsiesVec3(cameraPositionFullRelative * distanceUnitScale))})
 		volumetricShader:send("maxRaySteps", consts.volumetricMaxRaySteps)
 		volumetricShader:send("shapeRadii", {mathsies.vec3.components(distanceUnitScale * parentObjectRadii)})
@@ -1406,8 +1466,16 @@ function game:drawPointLayers()
 		})
 		-- volumetricShader:send("luminousIntensityPerPoint", {1, 1, 1})
 		-- volumetricShader:send("maxDensity", 1)
-		love.graphics.setShader(volumetricShader)
-		love.graphics.draw(self.dummyTexture, 0, 0, 0, outputCanvas:getDimensions())
+		local w, h = volumetricShader:getLocalThreadgroupSize()
+		love.graphics.dispatchThreadgroups(volumetricShader,
+			math.ceil(pointLayer.volumetricCanvas:getWidth() / w),
+			math.ceil(pointLayer.volumetricCanvas:getHeight() / h)
+		)
+
+		love.graphics.setShader(self.drawVolumetricShader)
+		self.drawVolumetricShader:send("additions", pointLayer.volumetricAddCountCanvas)
+		self.drawVolumetricShader:send("scale", consts.volumetricCanvasScale)
+		love.graphics.draw(pointLayer.volumetricCanvas, 0, 0, 0, 1 / consts.volumetricCanvasScale)
 
 		-- TODO: Point attenuation
 

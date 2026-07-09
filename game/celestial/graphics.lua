@@ -6,6 +6,8 @@ local game = {}
 function game:drawCelestial()
 	love.graphics.setCanvas(self.screenCanvasses.celestialLuminanceCanvas)
 	love.graphics.clear(0, 0, 0, 1)
+	love.graphics.setCanvas()
+
 
 	self:drawPointLayers()
 	self:drawStarSystem()

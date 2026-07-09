@@ -140,7 +140,9 @@ function consts.load()
 	end
 	consts.shapeSlowdownIntegralDataCount = currentStart
 
-	consts.volumetricMaxRaySteps = 32 -- TODO: Stochastic rays, then bump number up
+	consts.volumetricMaxRaySteps = 8
+	consts.volumetricCanvasScale = 1
+	consts.volumetricMaxPixelAdditions = 240 -- Shouldn't go above 255
 
 	consts.starDensity = 1408 -- TEMP?
 	consts.starEffectiveTemperature = 5772

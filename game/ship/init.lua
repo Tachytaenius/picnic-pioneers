@@ -1,8 +1,8 @@
 local game = {}
 
 function game:initShip()
-	local width, height = love.graphics.getDimensions()
-	self.screenCanvasses.shipOutputCanvas = love.graphics.newCanvas(width, height)
+	self.screenWidth, self.screenHeight = love.graphics.getDimensions()
+	self.screenCanvasses.shipOutputCanvas = love.graphics.newCanvas(self.screenWidth, self.screenHeight)
 
 	self.shipTime = 0
 end

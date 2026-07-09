@@ -115,7 +115,6 @@ function game:loadShapeTypes()
 			local amount = processShapeNoiseLayerInfo(shapeType, info) -- Adds info to shapeType
 			maxRequiredNoiseValues = math.max(amount, maxRequiredNoiseValues) -- Amount might be 0
 
-			local shaderDefines = {}
 			local noiseString
 			if not shapeType.noiseInfo then
 				noiseString = ""
@@ -137,8 +136,9 @@ function game:loadShapeTypes()
 				-- 	shaderDefines[defineName] = layer.start .. ", ivec3(" .. table.concat({layer.countX, layer.countY, layer.countZ}, ", ") .. ")"
 				-- end
 			end
-			shapeType.volumetricShader = love.graphics.newShader(
+			shapeType.volumetricShader = love.graphics.newComputeShader(
 				"#pragma language glsl4\n" ..
+				"#line 1\n" .. love.filesystem.read("shaders/include/lib/random.glsl") ..
 				"#line 1\n" .. love.filesystem.read("shaders/include/structs.glsl") ..
 				noiseString ..
 				"#line 1\n" .. love.filesystem.read("shaders/include/raycasts.glsl") ..
@@ -147,7 +147,9 @@ function game:loadShapeTypes()
 				"#line 1\n" .. love.filesystem.read("shaders/include/skyDirection.glsl") ..
 				"#line 1\n" .. love.filesystem.read("shaders/drawing/layerVolumetrics.glsl"),
 				{
-					defines = shaderDefines
+					defines = {
+						MAX_ADDITIONS = consts.volumetricMaxPixelAdditions
+					}
 				}
 			)
 		end
