@@ -31,6 +31,9 @@ end
 function game:drawStarSystem()
 	-- TODO: Don't copy so much from drawPointLayers! Maybe just unify into a function like drawCelestial...?
 
+	local outputCanvas = self.screenCanvasses.celestialOutputCanvas
+	love.graphics.setCanvas(outputCanvas)
+
 	local lastPointLayer = self.pointLayers[#self.pointLayers]
 	local starSystemPointLayerObject = lastPointLayer.currentObject
 	if not starSystemPointLayerObject then
@@ -43,7 +46,6 @@ function game:drawStarSystem()
 
 	local cameraOrientation = self.ship.orientation
 	local cameraVerticalFOV = self.ship.verticalFOV
-	local outputCanvas = love.graphics.getCanvas()
 	local aspectRatio = outputCanvas:getWidth() / outputCanvas:getHeight()
 
 	local cameraForwards = mathsies.vec3.rotate(consts.forwardVector, cameraOrientation)

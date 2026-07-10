@@ -119,7 +119,7 @@ function consts.load()
 
 	consts.celestialLuminanceMultiplier = 1e14
 
-	consts.pointPreparationThreadgroupSize = 256
+	consts.pointPreparationThreadgroupSize = 512
 
 	consts.pointLayerShapeTypeAmountIntegralMaxThreads = 7
 	consts.shapeIntegralThreadTimeout = 1

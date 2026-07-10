@@ -182,7 +182,7 @@ function game:initPointLayers()
 
 	-- Topmost layer is treated specially
 	-- TODO: Allow it to collapse to a point when sufficiently far away. Since that's just one point there's no need for optimisations like chunks etc. Would definitely be easier if the topmost point layer has a semi-functioning parent point layer for this purpose
-	local topLayer = self:newPointLayer("galaxies", "Galaxies", consts.galaxyLayerChunkSize, consts.maxGalacticDensity, 17, galaxyPointLayerInfo)
+	local topLayer = self:newPointLayer("galaxies", "Galaxies", consts.galaxyLayerChunkSize, consts.maxGalacticDensity, 13, galaxyPointLayerInfo)
 	self:newPointLayer("starSystems", "Star Systems", consts.starLayerChunkSize, consts.maxStellarDensity, 13, starSystemPointLayerInfo)
 
 	self.valueNoiseDataReusableForPointLayers = nil -- If no point layers took this then it now no longer will be used
@@ -761,7 +761,7 @@ function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBu
 
 	new.volumetricCanvas = love.graphics.newCanvas(self.volumetricCanvasWidth, self.volumetricCanvasHeight, {
 		debugname = debugName .. " Volumetric Canvas",
-		format = "rgba32f",
+		format = "rgba16f",
 		computewrite = true
 	})
 	new.volumetricAddCountCanvas = love.graphics.newCanvas(self.volumetricCanvasWidth, self.volumetricCanvasHeight, {
@@ -1337,7 +1337,7 @@ function game:getPointLayerGravityWellSlowdownFactor()
 end
 
 function game:drawPointLayers()
-	local outputCanvas = self.screenCanvasses.celestialLuminanceCanvas
+	local outputCanvas = self.screenCanvasses.celestialOutputCanvas
 	local aspectRatio = outputCanvas:getWidth() / outputCanvas:getHeight()
 	love.graphics.setCanvas(outputCanvas)
 
@@ -1400,24 +1400,24 @@ function game:drawPointLayers()
 		-- Volumetrics
 
 		if pointLayer.volumetricCanvasCameraInfo then
-			if pointLayer.volumetricCanvasCameraInfo.position ~= cameraPositionFull then
+			if
+				pointLayer.volumetricCanvasCameraInfo.position ~= cameraPositionFull or
+				pointLayer.volumetricCanvasCameraInfo.orientation ~= cameraOrientation or
+				pointLayer.volumetricCanvasCameraInfo.brightnessMultiplier ~= consts.celestialLuminanceMultiplier -- Won't be a const forever
+			then
+				-- TODO: Reprojection
+				local original = love.graphics.getCanvas()
 				love.graphics.setCanvas(pointLayer.volumetricCanvas)
 				love.graphics.clear()
 				love.graphics.setCanvas(pointLayer.volumetricAddCountCanvas)
 				love.graphics.clear()
-				love.graphics.setCanvas(outputCanvas)
-			elseif pointLayer.volumetricCanvasCameraInfo.orientation ~= cameraOrientation then
-				-- TODO: Save/move pixels in common
-				love.graphics.setCanvas(pointLayer.volumetricCanvas)
-				love.graphics.clear()
-				love.graphics.setCanvas(pointLayer.volumetricAddCountCanvas)
-				love.graphics.clear()
-				love.graphics.setCanvas(outputCanvas)
+				love.graphics.setCanvas(original)
 			end
 		end
 		pointLayer.volumetricCanvasCameraInfo = {
 			position = bm.vec3.clone(cameraPositionFull),
-			orientation = mathsies.quat.clone(cameraOrientation)
+			orientation = mathsies.quat.clone(cameraOrientation),
+			brightnessMultiplier = consts.celestialLuminanceMultiplier
 		}
 
 		local distanceUnitScale = 1 / math.max(parentObjectRadii.x, parentObjectRadii.y, parentObjectRadii.z)
@@ -1445,6 +1445,7 @@ function game:drawPointLayers()
 				table.insert(cornerDirs, {mathsies.vec3.components(result)})
 			end
 		end
+		volumetricShader:send("brightnessMultiplier", consts.celestialLuminanceMultiplier)
 		volumetricShader:send("preNormaliseCornerDirs", unpack(cornerDirs))
 		volumetricShader:send("size", {pointLayer.volumetricCanvas:getDimensions()})
 		volumetricShader:send("resultCanvas", pointLayer.volumetricCanvas)
@@ -1481,6 +1482,9 @@ function game:drawPointLayers()
 
 		-- Points
 
+		-- love.graphics.setCanvas(self.screenCanvasses.pointCanvas)
+		-- love.graphics.clear(0, 0, 0, 1)
+
 		self.pointIndirectDrawArgsBuffer:setArrayData({
 			self.pointDiskMesh:getVertexCount(),
 			0, -- This gets incremented (on the GPU)
@@ -1491,7 +1495,7 @@ function game:drawPointLayers()
 		local diskDistanceToSphere = 1 - math.cos(consts.pointAngularRadius) -- Unit sphere spherical cap height from angular radius
 		local diskSolidAngle = consts.tau * diskDistanceToSphere
 		local scaleToGetAngularRadius = math.tan(consts.pointAngularRadius)
-		local luminanceCalcConst = 1 / (diskSolidAngle * 2 * consts.tau)
+		local luminanceCalcConst = consts.celestialLuminanceMultiplier / (diskSolidAngle * 2 * consts.tau)
 
 		local maxAngleFromCentre = diagonalFOV / 2 + consts.pointAngularRadius
 		local minDot = math.cos(maxAngleFromCentre)
@@ -1565,6 +1569,10 @@ function game:drawPointLayers()
 		drawShader:send("skyToClip", {mathsies.mat4.components(skyToClip)})
 		-- current shader should be drawShader
 		love.graphics.drawIndirect(self.pointDiskMesh, self.pointIndirectDrawArgsBuffer, 1)
+
+		-- love.graphics.setCanvas(outputCanvas)
+		-- love.graphics.setShader()
+		-- love.graphics.draw(self.screenCanvasses.pointCanvas)
 	end
 
 	love.graphics.setShader()

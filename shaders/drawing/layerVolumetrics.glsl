@@ -13,8 +13,9 @@ uniform vec3 shapeRadii;
 uniform uint raySeed;
 uniform float rayStepVariance;
 
+uniform float brightnessMultiplier;
 uniform ivec2 size;
-uniform layout(rgba32f) image2D resultCanvas;
+uniform layout(rgba16f) image2D resultCanvas;
 uniform layout(r8ui) uimage2D additionCountCanvas;
 
 uniform vec3[4] preNormaliseCornerDirs;
@@ -74,7 +75,7 @@ vec3 getRayColour(vec3 rayPosition, vec3 rayDirection, float sampleLerp) {
 	return totalRayLuminance;
 }
 
-layout (local_size_x = 8, local_size_y = 8) in;
+layout (local_size_x = 16, local_size_y = 16) in;
 void computemain() {
 	ivec2 coord = ivec2(love_GlobalThreadID.xy);
 	if (any(greaterThanEqual(coord, size))) {
@@ -106,6 +107,10 @@ void computemain() {
 		uint variationSeed = (pixelId + w * h) ^ raySeed;
 		float stepVariation = (hash11(variationSeed) - 0.5) * rayStepVariance + 0.5;
 		vec3 outColour = getRayColour(cameraPosition, direction, stepVariation);
+		if (outColour == vec3(0.0)) {
+			return;
+		}
+		outColour *= brightnessMultiplier;
 		vec3 inColour = imageLoad(resultCanvas, coord).rgb;
 		vec4 toWrite = vec4(outColour + inColour, 1.0);
 		imageStore(resultCanvas, coord, toWrite);

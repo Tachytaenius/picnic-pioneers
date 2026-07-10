@@ -27,15 +27,6 @@ end
 
 function love.draw()
 	state:draw()
-	-- Non-async readback causes lag
-	-- local maxLuminance = 0
-	-- local data = love.graphics.readbackTexture(state.screenCanvasses.celestialLuminanceCanvas)
-	-- for x = 0, data:getWidth() - 1 do
-	-- 	for y = 0, data:getHeight() - 1 do
-	-- 		local luminance = data:getPixel(x, y)
-	-- 		maxLuminance = math.max(maxLuminance, luminance)
-	-- 	end
-	-- end
 	love.graphics.print( -- TEMP
 		"fps: " .. love.timer.getFPS() .. "\n" ..
 		"x: " .. tostring(state.ship.position.x) .. "\n" ..

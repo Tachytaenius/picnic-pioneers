@@ -40,11 +40,13 @@ function game:initCelestial()
 	)
 
 	local width, height = self.screenWidth, self.screenHeight
-	self.screenCanvasses.celestialLuminanceCanvas = love.graphics.newCanvas(width, height, {
-		format = "rgba32f",
-		debugname = "Celestial Luminance Canvas"
-	})
+	-- This isn't actually faster, it seems:
+	-- self.screenCanvasses.pointCanvas = love.graphics.newCanvas(width, height, {
+	-- 	format = "rgba8", -- For faster additive blending
+	-- 	debugname = "Point Canvas"
+	-- })
 	self.screenCanvasses.celestialOutputCanvas = love.graphics.newCanvas(width, height, {
+		format = "rgba16f",
 		debugname = "Celestial Output Canvas"
 	})
 
@@ -54,7 +56,7 @@ function game:initCelestial()
 		orientation = mathsies.quat(),
 		verticalFOV = math.rad(80)
 	}
-	self.ship.position = self.ship.position - bm.vec3(0, 0, 1.75 * consts.galaxyGroupRadii.z) -- TEMP
+	-- self.ship.position = self.ship.position - bm.vec3(0, 0, 1.75 * consts.galaxyGroupRadii.z) -- TEMP
 
 	-- Initial handlePointLayers call to get everything consistent, including pointLayerGravityWellSlowdownFactor for first handleShipMovement call
 	self:handlePointLayers()
