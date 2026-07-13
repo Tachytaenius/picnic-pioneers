@@ -47,18 +47,18 @@ galaxyPointLayerInfo.features = {
 			name = "ellipticalGalaxy",
 			weight = 1,
 			scaleMin = 7.5e18,
-			scaleMax = 9e19,
+			scaleMax = 1e19,
 			-- NOTE: If a factor is added to make the distribution of scales non-uniform, ensure that the per-layer average mass estimates are changed accordingly
-			zScaleRatioMin = 1.5, -- Less than 1 is flatter
-			zScaleRatioMax = 4
+			zScaleRatioMin = 0.1, -- Less than 1 is flatter (lenticular?). Oblate vs prolate spheroids.
+			zScaleRatioMax = 3
 		},
 		{
 			name = "spiralGalaxy",
 			weight = 16,
 			scaleMin = 3e19,
 			scaleMax = 7.5e20,
-			zScaleRatioMin = 0.075,
-			zScaleRatioMax = 0.2
+			zScaleRatioMin = 0.005,
+			zScaleRatioMax = 0.09
 		}
 	}
 }
