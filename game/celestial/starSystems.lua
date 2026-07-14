@@ -34,6 +34,8 @@ function game:drawStarSystem()
 	local outputCanvas = self.screenCanvasses.celestialOutputCanvas
 	love.graphics.setCanvas(outputCanvas)
 
+	local luminanceMultiplier = consts.celestialLuminanceMultiplier
+
 	local lastPointLayer = self.pointLayers[#self.pointLayers]
 	local starSystemPointLayerObject = lastPointLayer.currentObject
 	if not starSystemPointLayerObject then
@@ -85,7 +87,7 @@ function game:drawStarSystem()
 				luminance = body.luminousFlux / distance ^ 2 * luminanceCalcConst
 			end
 			self.individualPointShader:send("direction", {mathsies.vec3.components(direction)})
-			self.individualPointShader:send("luminance", {mathsies.vec3.components(luminance)})
+			self.individualPointShader:send("luminance", {mathsies.vec3.components(luminance * luminanceMultiplier)})
 			love.graphics.setShader(self.individualPointShader)
 			love.graphics.draw(self.pointDiskMesh)
 			love.graphics.setBlendMode("alpha")
@@ -95,6 +97,7 @@ function game:drawStarSystem()
 				local surfaceArea = 2 * consts.tau * body.radius ^ 2
 				local surfaceLuminousExitance = body.luminousFlux / surfaceArea
 				local surfaceLuminance = surfaceLuminousExitance / (consts.tau / 2) -- Lambertian emitter
+				self.starShader:send("outputMultiplier", luminanceMultiplier)
 				self.starShader:send("surfaceLuminance", {mathsies.vec3.components(surfaceLuminance)})
 				self.starShader:send("bodyPosition", {mathsies.vec3.components(body.position)}) -- TEMP
 				self.starShader:send("bodyRadius", body.radius)

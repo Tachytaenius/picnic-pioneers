@@ -1341,6 +1341,8 @@ function game:drawPointLayers()
 	local aspectRatio = outputCanvas:getWidth() / outputCanvas:getHeight()
 	love.graphics.setCanvas(outputCanvas)
 
+	local luminanceMultiplier = consts.celestialLuminanceMultiplier
+
 	local cameraPositionFull = self.ship.position
 	local cameraOrientation = self.ship.orientation
 	local cameraVerticalFOV = self.ship.verticalFOV
@@ -1403,7 +1405,7 @@ function game:drawPointLayers()
 			if
 				pointLayer.volumetricCanvasCameraInfo.position ~= cameraPositionFull or
 				pointLayer.volumetricCanvasCameraInfo.orientation ~= cameraOrientation or
-				pointLayer.volumetricCanvasCameraInfo.brightnessMultiplier ~= consts.celestialLuminanceMultiplier -- Won't be a const forever
+				pointLayer.volumetricCanvasCameraInfo.brightnessMultiplier ~= luminanceMultiplier -- Won't be a const forever
 			then
 				-- TODO: Reprojection
 				local original = love.graphics.getCanvas()
@@ -1417,7 +1419,7 @@ function game:drawPointLayers()
 		pointLayer.volumetricCanvasCameraInfo = {
 			position = bm.vec3.clone(cameraPositionFull),
 			orientation = mathsies.quat.clone(cameraOrientation),
-			brightnessMultiplier = consts.celestialLuminanceMultiplier
+			brightnessMultiplier = luminanceMultiplier
 		}
 
 		local distanceUnitScale = 1 / math.max(parentObjectRadii.x, parentObjectRadii.y, parentObjectRadii.z)
@@ -1445,7 +1447,7 @@ function game:drawPointLayers()
 				table.insert(cornerDirs, {mathsies.vec3.components(result)})
 			end
 		end
-		volumetricShader:send("brightnessMultiplier", consts.celestialLuminanceMultiplier)
+		volumetricShader:send("brightnessMultiplier", luminanceMultiplier)
 		volumetricShader:send("preNormaliseCornerDirs", unpack(cornerDirs))
 		volumetricShader:send("size", {pointLayer.volumetricCanvas:getDimensions()})
 		volumetricShader:send("resultCanvas", pointLayer.volumetricCanvas)
@@ -1495,7 +1497,7 @@ function game:drawPointLayers()
 		local diskDistanceToSphere = 1 - math.cos(consts.pointAngularRadius) -- Unit sphere spherical cap height from angular radius
 		local diskSolidAngle = consts.tau * diskDistanceToSphere
 		local scaleToGetAngularRadius = math.tan(consts.pointAngularRadius)
-		local luminanceCalcConst = consts.celestialLuminanceMultiplier / (diskSolidAngle * 2 * consts.tau)
+		local luminanceCalcConst = luminanceMultiplier / (diskSolidAngle * 2 * consts.tau)
 
 		local maxAngleFromCentre = diagonalFOV / 2 + consts.pointAngularRadius
 		local minDot = math.cos(maxAngleFromCentre)
@@ -1525,7 +1527,7 @@ function game:drawPointLayers()
 				self.individualPointShader:send("cameraUp", {mathsies.vec3.components(cameraUp)})
 				self.individualPointShader:send("cameraRight", {mathsies.vec3.components(cameraRight)})
 				self.individualPointShader:send("direction", {mathsies.vec3.components(direction)})
-				self.individualPointShader:send("luminance", {mathsies.vec3.components(luminance)})
+				self.individualPointShader:send("luminance", {mathsies.vec3.components(luminance * luminanceMultiplier)})
 				love.graphics.setShader(self.individualPointShader)
 				love.graphics.draw(self.pointDiskMesh)
 			end

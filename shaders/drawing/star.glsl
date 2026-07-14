@@ -2,6 +2,7 @@
 
 in vec3 directionPreNormalise;
 
+uniform float outputMultiplier;
 uniform vec3 surfaceLuminance; // A sphere that is a lambertian emitter (such as a star) has a contant luminance. Limb darkening is not considered yet (TODO: realistic star rendering!! NOTE: If limb darkening affects overall brightness at a distance, account for that.)
 uniform vec3 bodyPosition;
 uniform float bodyRadius;
@@ -26,7 +27,7 @@ void pixelmain() {
 	// }
 
 	vec3 outColour = surfaceLuminance;
-	fragColour = vec4(outColour, 1.0);
+	fragColour = vec4(outputMultiplier * outColour, 1.0);
 }
 
 #endif
