@@ -31,14 +31,17 @@ end
 
 local galaxyPointLayerInfo = {
 	fixedParentObjectPosition = consts.galaxyGroupPosition,
-	fixedParentObjectRadii = consts.galaxyGroupRadii,
+	fixedParentObjectRadii = consts.galaxyGroupScale * mathsies.vec3(1, 1, consts.galaxyGroupZScaleRatio),
 	fixedParentObjectShapeTypeName = consts.galaxyGroupShapeTypeName,
-	fixedParentObjectShapeSubtypeId = 0 -- TODO: Allow selecting from closest subtype to given parameters...?
+	fixedParentObjectShapeSubtypeId = 0, -- TODO: Allow selecting from closest subtype to given parameters...?
+	fixedParentObjectAttenuationShapeTypeName = consts.galaxyGroupAttenuationShapeName,
+	fixedParentObjectAttenuationShapeSubtypeId = 0
 }
 
 galaxyPointLayerInfo.features = {
 	-- "sent" means present on both CPU and GPU, "unsent" means only present on CPU, nil means not present
 	shapeTypeSubtypeIds = "sent",
+	attenuationShapeTypeSubtypeIds = "sent",
 	radii = "unsent",
 	mass = "unsent",
 
@@ -48,17 +51,29 @@ galaxyPointLayerInfo.features = {
 			weight = 1,
 			scaleMin = 7.5e18,
 			scaleMax = 1e19,
-			-- NOTE: If a factor is added to make the distribution of scales non-uniform, ensure that the per-layer average mass estimates are changed accordingly
-			zScaleRatioMin = 0.1, -- Less than 1 is flatter (lenticular?). Oblate vs prolate spheroids.
-			zScaleRatioMax = 3
+			attenuationShapeTypes = {
+				{
+					name = "genericNebulae",
+					weight = 1,
+					-- 2.5 * 10^-20 metres^-1 in the middle, converted from "1.8 magnitudes per kiloparsec" attenuation coefficient measurement near the sun
+					mulRangeMin = 6.25e-21,
+					mulRangeMax = 1e-19
+				}
+			}
 		},
 		{
 			name = "spiralGalaxy",
-			weight = 16,
+			weight = 7,
 			scaleMin = 3e19,
 			scaleMax = 7.5e20,
-			zScaleRatioMin = 0.005,
-			zScaleRatioMax = 0.09
+			attenuationShapeTypes = {
+				{
+					name = "genericNebulae",
+					weight = 1,
+					mulRangeMin = 6.25e-21,
+					mulRangeMax = 1e-19
+				}
+			}
 		}
 	}
 }
@@ -85,8 +100,13 @@ function galaxyPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, chunkB
 		local shapeTypeId = shapeType.id
 		local shapeSubtypeId = randomTODO(0, shapeType.subtypeCount - 1)
 
+		local attenuationChoice = choice.attenuationShapeTypes and randomChoice(choice.attenuationShapeTypes, randomGeneratorTODO)
+		local attenuationType = self.gameObject.pointLayerShapeTypes[attenuationChoice and attenuationChoice.name or consts.noAttenuationShapeTypeName]
+		local attenuationTypeId = attenuationType.id
+		local attenuationSubtypeId = randomTODO(0, attenuationType.subtypeCount - 1)
+
 		local scale = randomRangeTODO(choice.scaleMin, choice.scaleMax)
-		local zScaleRatio = randomRangeTODO(choice.zScaleRatioMin, choice.zScaleRatioMax)
+		local zScaleRatio = randomRangeTODO(shapeType.zScaleRatioMin, shapeType.zScaleRatioMax)
 
 		local xRadius = scale
 		local yRadius = scale
@@ -95,14 +115,27 @@ function galaxyPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, chunkB
 		radii[i * 3 + 1] = yRadius
 		radii[i * 3 + 2] = zRadius
 
-		local amountWithin = shapeType.subtypeBaseObjectAmounts[shapeSubtypeId] * xRadius * yRadius * zRadius * nextLayerMaxDensity -- Estimate
+		local baseAmount
+		if shapeType.needsTrueRatio then
+			-- Interpolate between samples
+			local where = shapeType.zScaleRatioSamples * (zScaleRatio - shapeType.zScaleRatioMin) / (shapeType.zScaleRatioMax - shapeType.zScaleRatioMin)
+			local prevSample = math.max(0, math.min(1, math.floor(where))) -- Clamp for safety
+			local whereAfterPrevious = where - prevSample -- Should be (more or less) between 0 and 1
+			local samples = shapeType.subtypeBaseObjectAmounts[shapeSubtypeId]
+			local sampleA = samples[prevSample]
+			local sampleB = samples[math.min(shapeType.zScaleRatioSamples - 1, prevSample + 1)]
+			baseAmount = sampleA + whereAfterPrevious * (sampleB - sampleA)
+		else
+			baseAmount = shapeType.subtypeBaseObjectAmounts[shapeSubtypeId]
+		end
+		local amountWithin = baseAmount * xRadius * yRadius * zRadius * nextLayerMaxDensity -- Estimate
 		mass[i] = amountWithin * nextLayerAverageMassPerPoint
 
 		local r = amountWithin * nextLayerAverageLuminousFluxRPerPoint * luminousFluxScale
 		local g = amountWithin * nextLayerAverageLuminousFluxGPerPoint * luminousFluxScale
 		local b = amountWithin * nextLayerAverageLuminousFluxBPerPoint * luminousFluxScale
 
-		self:setPoint(chunkBufferIndex, i, x, y, z, r, g, b, shapeTypeId, shapeSubtypeId)
+		self:setPoint(chunkBufferIndex, i, x, y, z, r, g, b, shapeTypeId, shapeSubtypeId, attenuationTypeId, attenuationSubtypeId)
 	end
 end
 
@@ -182,7 +215,7 @@ function game:initPointLayers()
 
 	-- Topmost layer is treated specially
 	-- TODO: Allow it to collapse to a point when sufficiently far away. Since that's just one point there's no need for optimisations like chunks etc. Would definitely be easier if the topmost point layer has a semi-functioning parent point layer for this purpose
-	local topLayer = self:newPointLayer("galaxies", "Galaxies", consts.galaxyLayerChunkSize, consts.maxGalacticDensity, 13, galaxyPointLayerInfo)
+	local topLayer = self:newPointLayer("galaxies", "Galaxies", consts.galaxyLayerChunkSize, consts.maxGalacticDensity, 7, galaxyPointLayerInfo)
 	self:newPointLayer("starSystems", "Star Systems", consts.starLayerChunkSize, consts.maxStellarDensity, 13, starSystemPointLayerInfo)
 
 	self.valueNoiseDataReusableForPointLayers = nil -- If no point layers took this then it now no longer will be used
@@ -210,7 +243,20 @@ function game:initPointLayers()
 		})
 	end
 
-	-- Check
+	-- Checks
+
+	local topLayerShapeType = self.pointLayerShapeTypes[topLayer.fixedParentObjectShapeTypeName]
+	if topLayerShapeType.needsTrueRatio then
+		assert(topLayer.fixedParentObjectRadii.x == topLayer.fixedParentObjectRadii.y,
+			"Bad radii for top point layer. x and y must be the same for shape types that have needsTrueRatio. Objects with those shape types can only be lengthened/shortened relative to other axes on the z axis for now. Spheres or oblate/prolate spheroids, no triaxial ellipsoids."
+		)
+		local xyScale = topLayer.fixedParentObjectRadii.x -- x equals y was asserted
+		local zScaleRatio = topLayer.fixedParentObjectRadii.z / xyScale
+		if not (topLayerShapeType.zScaleRatioMin <= zScaleRatio and zScaleRatio <= topLayerShapeType.zScaleRatioMax) then
+			error("Top point layer's z scale ratio is " .. zScaleRatio .. " but must be between " .. topLayerShapeType.zScaleRatioMin .. " and " .. topLayerShapeType.zScaleRatioMax)
+		end
+	end
+
 	for i, pointLayer in ipairs(self.pointLayers) do
 		local assertMessage = "All point layers must have shape types and not bodies except the last one"
 		if i < #self.pointLayers then
@@ -239,8 +285,10 @@ function game:initPointLayers()
 			for _, shapeTypeInfo in ipairs(pointLayer.features.shapeTypeSet) do
 				-- TODO: When adding attenuation, consider the average luminous flux seen from all directions. Wait, shouldn't that be luminous intensity? (TODO: Investigate any potential errors around that)
 
+				-- NOTE: If a factor is added to make the distribution of scales non-uniform, ensure that the per-layer average mass estimates are changed accordingly
+				local shapeType = self.pointLayerShapeTypes[shapeTypeInfo.name] -- shapeTypeInfo is the point layer's usage of the shape, shapeType is the shape type itself
 				local minS, maxS = shapeTypeInfo.scaleMin, shapeTypeInfo.scaleMax
-				local minZR, maxZR = shapeTypeInfo.zScaleRatioMin, shapeTypeInfo.zScaleRatioMax
+				local minZR, maxZR = shapeType.zScaleRatioMin, shapeType.zScaleRatioMax
 				local averageBaseObjectAmountMultiplier =
 					1 / 8 *
 					(minS + maxS) *
@@ -248,15 +296,24 @@ function game:initPointLayers()
 					(minZR + maxZR)
 
 				local total = 0
-				local shapeType = self.pointLayerShapeTypes[shapeTypeInfo.name]
-				-- shapeTypeInfo is the point layer's usage of the shape, shapeType is the shape type itself
+				assert(not shapeType.attenuation, "Attenuation shape types cannot be used for point density")
 				for subtypeId = 0, shapeType.subtypeCount - 1 do
+					local subtypeBaseAmount
+					if shapeType.needsTrueRatio then
+						subtypeBaseAmount = 0
+						for zSample = 0, shapeType.zScaleRatioSamples - 1 do
+							subtypeBaseAmount = subtypeBaseAmount + shapeType.subtypeBaseObjectAmounts[subtypeId][zSample]
+						end
+					else
+						subtypeBaseAmount = shapeType.subtypeBaseObjectAmounts[subtypeId]
+					end
 					total = total +
-						shapeType.subtypeBaseObjectAmounts[subtypeId] *
+						subtypeBaseAmount *
 						averageBaseObjectAmountMultiplier *
 						childPointLayer.maxPointDensity
 				end
-				local averageAmountThisShapeTypeInfo = total / shapeType.subtypeCount
+				local countMultiplier = shapeType.needsTrueRatio and shapeType.zScaleRatioSamples or 1
+				local averageAmountThisShapeTypeInfo = total / (shapeType.subtypeCount * countMultiplier)
 
 				averageAmountPreDivide = averageAmountPreDivide + averageAmountThisShapeTypeInfo
 				totalWeight = totalWeight + shapeTypeInfo.weight
@@ -276,12 +333,12 @@ function game:initPointLayers()
 			goto continue
 		end
 		for j, shapeTypeInfo in ipairs(layer.features.shapeTypeSet) do
+			local shapeType = self.pointLayerShapeTypes[shapeTypeInfo.name]
 			local identifier = "point layer " .. i .. ", shape type info " .. j
 			assert(shapeTypeInfo.scaleMin <= shapeTypeInfo.scaleMax, "Scale min and max are flipped for " .. identifier)
-			assert(shapeTypeInfo.zScaleRatioMin <= shapeTypeInfo.zScaleRatioMax, "Z scale ratio min and max are flipped for " .. identifier)
 			local largestX = shapeTypeInfo.scaleMax
 			local largestY = shapeTypeInfo.scaleMax
-			local largestZ = shapeTypeInfo.scaleMax * shapeTypeInfo.zScaleRatioMax
+			local largestZ = shapeTypeInfo.scaleMax * shapeType.zScaleRatioMax
 			local minX, maxX, minY, maxY, minZ, maxZ = getBoundingBoxChunksForSize(layer.chunkSize, largestX, largestY, largestZ)
 			local widthChunks = maxX - minX + 1
 			local heightChunks = maxY - minY + 1
@@ -324,33 +381,59 @@ function pointLayerFunctions:getDensity(realX, realY, realZ) -- The position is 
 	local densityFunction = shapeType.getDensity
 	local densityParametersScratchTable = self.gameObject:decodeShapeSubtypeIntoScratchTable(shapeType, shapeSubtypeId)
 	self:prepareValueNoiseFunction()
-	local returnValue = densityFunction(
-		realX / size.x * self.chunkSize,
-		realY / size.y * self.chunkSize,
-		realZ / size.z * self.chunkSize,
-		unpack(densityParametersScratchTable)
-	)
-	return returnValue
+	if shapeType.needsTrueRatio then
+		local sizeRatios = size / math.max(size.x, size.y, size.z)
+		local x = realX / size.x * self.chunkSize
+		local y = realY / size.y * self.chunkSize
+		local z = realZ / size.z * self.chunkSize
+		return densityFunction(
+			x, y, z,
+			x * sizeRatios.x, y * sizeRatios.y, z * sizeRatios.z,
+			unpack(densityParametersScratchTable)
+		)
+	else
+		return densityFunction(
+			realX / size.x * self.chunkSize,
+			realY / size.y * self.chunkSize,
+			realZ / size.z * self.chunkSize,
+			unpack(densityParametersScratchTable)
+		)
+	end
 end
 
 -- Expects RNG to be seeded appropriately
-function pointLayerFunctions:randomiseValueNoise()
-	local relevantShapeTypeName =
-		self.parentPointLayer and (self.parentPointLayer.currentObject or self.parentPointLayer.currentPotentialObject).shapeTypeName
-		or self.fixedParentObjectShapeTypeName
+function pointLayerFunctions:randomiseValueNoise(type)
+	local suffix = type == "attenuation" and "Attenuation" or type == "emission" and "Emission"
+	local relevantShapeTypeName
+	if type == "emission" then
+		relevantShapeTypeName =
+			self.parentPointLayer and (self.parentPointLayer.currentObject or self.parentPointLayer.currentPotentialObject).shapeTypeName
+			or self.fixedParentObjectShapeTypeName
+	elseif type == "attenuation" then
+		relevantShapeTypeName =
+			self.parentPointLayer and (self.parentPointLayer.currentObject or self.parentPointLayer.currentPotentialObject).attenuationShapeTypeName
+			or self.fixedParentObjectAttenuationShapeTypeName
+	end
+	if not relevantShapeTypeName then
+		return
+	end
 	local shapeType = self.gameObject.pointLayerShapeTypes[relevantShapeTypeName]
 	if not shapeType.noiseInfo then
 		-- Won't be used, can safely leave it as it is
 		return
 	end
-	-- This layer will have a noise buffer/data if it can ever be contained in a shape type that has noise.
+	-- This layer will have a noise buffer/data if its parent can have a shape type that has noise.
+	local buffer = self["valueNoiseBuffer" .. suffix]
+	local data = self["valueNoiseData" .. suffix]
+	local dataFFI = self["valueNoiseDataFFI" .. suffix]
 	for i = 0, shapeType.noiseInfo.requiredValueCount - 1 do
-		self.valueNoiseDataFFI[i] = randomTODO()
+		dataFFI[i] = randomTODO()
 	end
-	self.valueNoiseBuffer:setArrayData(self.valueNoiseData, 1, 1, shapeType.noiseInfo.requiredValueCount)
+	buffer:setArrayData(data, 1, 1, shapeType.noiseInfo.requiredValueCount)
 end
 
 function pointLayerFunctions:prepareValueNoiseFunction() -- This is per shape type, so in case multiple layers use the same shape type this must be set before every use of the density function
+	-- For point density (emission) only, not for attenuation
 	local relevantShapeTypeName =
 		self.parentPointLayer and self.parentPointLayer.currentObject.shapeTypeName
 		or self.fixedParentObjectShapeTypeName
@@ -359,7 +442,7 @@ function pointLayerFunctions:prepareValueNoiseFunction() -- This is per shape ty
 		return
 	end
 	local layers = shapeType.noiseInfo.layers
-	local dataFFI = self.valueNoiseDataFFI
+	local dataFFI = self.valueNoiseDataFFIEmission
 	setValueNoiseFunctionVars(layers, dataFFI)
 end
 
@@ -525,33 +608,40 @@ function pointLayerFunctions:handleThreadedShapeInit(action)
 		end
 		self.started = love.timer.getTime()
 
-		self:randomiseValueNoise()
+		self:randomiseValueNoise("emission")
+		self:randomiseValueNoise("attenuation")
 
 		self.threadedShapeInitWorkInfo = {
 			completed = false,
 			resultChannelSuffix = "Layer" .. self.index
 		}
 
-		local shapeTypeName, shapeSubtypeId
+		local shapeTypeName, shapeSubtypeId, radii
 		if self.parentPointLayer then
 			local currentObject = self.parentPointLayer.currentObject or self.parentPointLayer.currentPotentialObject
 			shapeTypeName = currentObject.shapeTypeName
 			shapeSubtypeId = currentObject.shapeSubtypeId
+			radii = currentObject.radii
 		else
 			shapeTypeName = self.fixedParentObjectShapeTypeName
 			shapeSubtypeId = self.fixedParentObjectShapeSubtypeId
+			radii = self.fixedParentObjectRadii
 		end
 		local shapeType = self.gameObject.pointLayerShapeTypes[shapeTypeName]
 		local scratch = self.gameObject:decodeShapeSubtypeIntoScratchTable(shapeType, shapeSubtypeId)
 
+		local scaledRadii = radii / math.max(radii.x, radii.y, radii.z)
 		local infoTable = {
 			shapeTypeId = shapeType.id,
 			params = scratch,
-			valueNoiseData = self.valueNoiseData,
+			valueNoiseData = self.valueNoiseDataEmission,
 			type = "massWrite",
 			shapeMassData = self.shapeMassData,
 			massDataStartOffsets = consts.shapeSlowdownIntegralDataStarts,
-			resultChannelSuffix = self.threadedShapeInitWorkInfo.resultChannelSuffix
+			resultChannelSuffix = self.threadedShapeInitWorkInfo.resultChannelSuffix,
+			ratioX = shapeType.needsTrueRatio and scaledRadii.x,
+			ratioY = shapeType.needsTrueRatio and scaledRadii.y,
+			ratioZ = shapeType.needsTrueRatio and scaledRadii.z
 		}
 		love.thread.getChannel("shapeAmountDataStageManagerInfo"):push(infoTable)
 	elseif action == "expect" then
@@ -646,6 +736,7 @@ function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBu
 	tryFeature("position", "floatvec3", "POSITION", "sent")
 	tryFeature("luminousFlux", "floatvec3", "LUMINOUS_FLUX", "sent")
 	tryFeature("shapeTypeSubtypeIds", "uint32vec2", "SHAPE_TYPE_SUBTYPE")
+	tryFeature("attenuationShapeTypeSubtypeIds", "uint32vec2", "ATTENUATION_SHAPE_TYPE_SUBTYPE")
 	tryFeature("radii", "floatvec3", "RADII")
 	tryFeature("mass", "float", "MASS") -- For final layer (star systems)
 
@@ -688,7 +779,13 @@ function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBu
 		end
 	end
 
-	new.pointPreparationShader = love.graphics.newComputeShader("shaders/drawing/pointPreparation.glsl", {defines = defines})
+	new.pointPreparationShader = love.graphics.newComputeShader(
+		"#line 1\n" .. love.filesystem.read("shaders/include/points.glsl") ..
+		"#line 1\n" .. love.filesystem.read("shaders/drawing/pointPreparation.glsl"),
+		{
+			defines = defines
+		}
+	)
 
 	new.chunkPointCountBuffer = love.graphics.newBuffer(consts.intBufferFormat, new.chunkBufferTotalSize, {
 		shaderstorage = true,
@@ -697,44 +794,71 @@ function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBu
 	new.chunkPointCountData = love.data.newByteData(new.chunkPointCountBuffer:getElementStride() * new.chunkBufferTotalSize)
 	new.chunkPointCountDataFFI = ffi.cast("int32_t*", new.chunkPointCountData:getFFIPointer())
 
-	local maxNoiseValues = 0
-	local hasNoise = false
+	local maxNoiseValuesEmission = 0
+	local maxNoiseValuesAttenuation = 0
+	local hasNoiseEmission = false
+	local hasNoiseAttenuation = false
 	local relevantShapeTypeSet = new.parentPointLayer and new.parentPointLayer.features.shapeTypeSet
 	if not relevantShapeTypeSet then
 		assert(new.index == 1, "Only the top layer should not have a parent layer")
 		local shapeType = self.pointLayerShapeTypes[new.fixedParentObjectShapeTypeName]
 		if shapeType.noiseInfo then
-			hasNoise = true
-			maxNoiseValues = math.max(maxNoiseValues, shapeType.noiseInfo.requiredValueCount)
+			hasNoiseEmission = true
+			maxNoiseValuesEmission = math.max(maxNoiseValuesEmission, shapeType.noiseInfo.requiredValueCount)
+		end
+
+		local shapeType = self.pointLayerShapeTypes[new.fixedParentObjectAttenuationShapeTypeName]
+		if shapeType and shapeType.noiseInfo then
+			hasNoiseAttenuation = true
+			maxNoiseValuesAttenuation = math.max(maxNoiseValuesAttenuation, shapeType.noiseInfo.requiredValueCount)
 		end
 	else
 		for _, shapeTypeInfo in ipairs(relevantShapeTypeSet) do
 			local shapeType = self.pointLayerShapeTypes[shapeTypeInfo.name]
 			if shapeType.noiseInfo then
-				hasNoise = true
-				maxNoiseValues = math.max(maxNoiseValues, shapeType.noiseInfo.requiredValueCount)
+				hasNoiseEmission = true
+				maxNoiseValuesEmission = math.max(maxNoiseValuesEmission, shapeType.noiseInfo.requiredValueCount)
 			end
+			if not shapeTypeInfo.attenuationShapeTypes then
+				goto continue
+			end
+			for _, shapeTypeInfo in ipairs(shapeTypeInfo.attenuationShapeTypes) do
+				local shapeType = self.pointLayerShapeTypes[shapeTypeInfo.name]
+				if shapeType.noiseInfo then
+					hasNoiseAttenuation = true
+					maxNoiseValuesAttenuation = math.max(maxNoiseValuesAttenuation, shapeType.noiseInfo.requiredValueCount)
+				end
+			end
+			::continue::
 		end
 	end
-	new.hasNoise = hasNoise
-	if hasNoise then
-		new.maxNoiseValues = maxNoiseValues
+	new.hasNoiseAttenuation = hasNoiseAttenuation
+	new.hasNoiseEmission = hasNoiseEmission
+	local function addNoiseData(type, maxNoiseValues)
+		local capitalised = type == "emission" and "Emission" or type == "attenuation" and "Attenuation"
+		new["maxNoiseValues" .. capitalised] = maxNoiseValues
 
-		new.valueNoiseBuffer = love.graphics.newBuffer(consts.floatBufferFormat, new.maxNoiseValues, {
+		new["valueNoiseBuffer" .. capitalised] = love.graphics.newBuffer(consts.floatBufferFormat, new["maxNoiseValues" .. capitalised], {
 			shaderstorage = true,
-			debugname = debugName .. " Noise Values"
+			debugname = debugName .. " " .. capitalised .. " Noise Values"
 		})
-		local requiredSize = new.valueNoiseBuffer:getElementStride() * new.maxNoiseValues
+		local requiredSize = new["valueNoiseBuffer" .. capitalised]:getElementStride() * new["maxNoiseValues" .. capitalised]
 		if
 			self.valueNoiseDataReusableForPointLayers and
 			self.valueNoiseDataReusableForPointLayers:getSize() == requiredSize
 		then
-			new.valueNoiseData = self.valueNoiseDataReusableForPointLayers
+			new["valueNoiseData" .. capitalised] = self.valueNoiseDataReusableForPointLayers
 			self.valueNoiseDataReusableForPointLayers = nil
 		else
-			new.valueNoiseData = love.data.newByteData(requiredSize)
+			new["valueNoiseData" .. capitalised] = love.data.newByteData(requiredSize)
 		end
-		new.valueNoiseDataFFI = ffi.cast("float*", new.valueNoiseData:getFFIPointer())
+		new["valueNoiseDataFFI" .. capitalised] = ffi.cast("float*", new["valueNoiseData" .. capitalised]:getFFIPointer())
+	end
+	if hasNoiseAttenuation then
+		addNoiseData("attenuation", maxNoiseValuesAttenuation)
+	end
+	if hasNoiseEmission then
+		addNoiseData("emission", maxNoiseValuesEmission)
 	end
 
 	new.chunkExtraInfo = {}
@@ -885,6 +1009,14 @@ function game:handlePointLayers()
 					shapeTypeId, shapeSubtypeId = chunkExtraInfo.shapeTypeId[closestIdInChunk * 2], chunkExtraInfo.shapeTypeId[closestIdInChunk * 2 + 1]
 				end
 			end
+			local attenuationShapeTypeId, attenuationShapeSubtypeId
+			if pointLayer.features.attenuationShapeTypeSubtypeIds then
+				if pointLayer.features.attenuationShapeTypeSubtypeIds == "sent" then
+					attenuationShapeTypeId, attenuationShapeSubtypeId = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "attenuationShapeTypeSubtypeIds", "uint32", 2)
+				elseif pointLayer.features.attenuationShapeTypeId == "unsent" then
+					attenuationShapeTypeId, attenuationShapeSubtypeId = chunkExtraInfo.attenuationShapeTypeId[closestIdInChunk * 2], chunkExtraInfo.attenuationShapeTypeId[closestIdInChunk * 2 + 1]
+				end
+			end
 			local xRadius, yRadius, zRadius
 			if pointLayer.features.radii == "sent" then
 				xRadius, yRadius, zRadius = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "radii", "float", 3)
@@ -917,6 +1049,8 @@ function game:handlePointLayers()
 
 					shapeTypeName = self.pointLayerShapeTypes[shapeTypeId].name,
 					shapeSubtypeId = shapeSubtypeId,
+					attenuationShapeTypeName = self.pointLayerShapeTypes[attenuationShapeTypeId].name,
+					attenuationShapeSubtypeId = attenuationShapeSubtypeId,
 					radii = xRadius and mathsies.vec3(xRadius, yRadius, zRadius) or nil
 				}
 				self:seedCelestialRNG(self:getGlobalCelestialObjectIdNumbers(
@@ -978,6 +1112,10 @@ function game:handlePointLayers()
 					currentObject.shapeTypeName = self.pointLayerShapeTypes[shapeTypeId].name
 					currentObject.shapeSubtypeId = shapeSubtypeId
 				end
+				if pointLayer.features.attenuationShapeTypeSubtypeIds then
+					currentObject.attenuationShapeTypeName = self.pointLayerShapeTypes[attenuationShapeTypeId].name
+					currentObject.attenuationShapeSubtypeId = attenuationShapeSubtypeId
+				end
 				if pointLayer.features.radii then
 					currentObject.radii = mathsies.vec3(xRadius, yRadius, zRadius)
 				end
@@ -1022,7 +1160,7 @@ function game:getPointLayerGravityWellSlowdownFactor()
 	-- 	local shapeType = self.pointLayerShapeTypes[topLayer.fixedParentObjectShapeTypeName]
 	-- 	local shapeSubtypeId = topLayer.fixedParentObjectShapeSubtypeId
 	-- 	local mass = -- Estimate
-	-- 		shapeType.subtypeBaseObjectAmounts[shapeSubtypeId] *
+	-- 		shapeType.subtypeBaseObjectAmounts[shapeSubtypeId] * -- NOTE: if this block is ever uncommented, this needs to account for shape types with needsTrueRatio
 	-- 		topLayer.fixedParentObjectRadii.x *
 	-- 		topLayer.fixedParentObjectRadii.y *
 	-- 		topLayer.fixedParentObjectRadii.z *
@@ -1280,6 +1418,10 @@ function game:getPointLayerGravityWellSlowdownFactor()
 			end
 		else
 			local shapeType = self.pointLayerShapeTypes[parentShapeTypeName]
+			local ratioX, ratioY, ratioZ
+			if shapeType.needsTrueRatio then
+				ratioX, ratioY, ratioZ = mathsies.vec3.components(parentRadii / math.max(parentRadii.x, parentRadii.y, parentRadii.z))
+			end
 			local scratch = self:decodeShapeSubtypeIntoScratchTable(shapeType, parentShapeSubtypeId)
 			for i = 1, #self.slowdownSampleDistribution do
 				local infoTable = {
@@ -1296,6 +1438,10 @@ function game:getPointLayerGravityWellSlowdownFactor()
 					scaleX = parentRadii.x,
 					scaleY = parentRadii.y,
 					scaleZ = parentRadii.z,
+					-- For shape types that need this information (their density function signatures are different)
+					ratioX = ratioX,
+					ratioY = ratioY,
+					ratioZ = ratioZ,
 					-- These all work in full positions
 					referencePosX = positionRelativeFull.x,
 					referencePosY = positionRelativeFull.y,
@@ -1372,12 +1518,14 @@ function game:drawPointLayers()
 	love.graphics.setBlendMode("add")
 
 	for _, pointLayer in ipairs(self.pointLayers) do
-		local parentOrigin, parentObjectShapeTypeName, parentObjectShapeSubtypeId, parentObjectRadii
+		local parentOrigin, parentObjectShapeTypeName, parentObjectShapeSubtypeId, parentObjectRadii, attenuationShapeTypeName, attenuationShapeSubtypeId
 		if not pointLayer.parentPointLayer then
 			parentOrigin = pointLayer.fixedParentObjectPosition
 			parentObjectShapeTypeName = pointLayer.fixedParentObjectShapeTypeName
 			parentObjectShapeSubtypeId = pointLayer.fixedParentObjectShapeSubtypeId
 			parentObjectRadii = pointLayer.fixedParentObjectRadii
+			attenuationShapeTypeName = pointLayer.fixedParentObjectAttenuationShapeTypeName
+			attenuationShapeSubtypeId = pointLayer.fixedParentObjectAttenuationShapeSubtypeId
 		else
 			if not pointLayer.parentPointLayer.currentObject then
 				break -- Outside of any objects below this scale
@@ -1386,6 +1534,8 @@ function game:drawPointLayers()
 			parentObjectShapeTypeName = pointLayer.parentPointLayer.currentObject.shapeTypeName
 			parentObjectShapeSubtypeId = pointLayer.parentPointLayer.currentObject.shapeSubtypeId
 			parentObjectRadii = pointLayer.parentPointLayer.currentObject.radii
+			attenuationShapeTypeName = pointLayer.parentPointLayer.currentObject.attenuationShapeTypeName
+			attenuationShapeSubtypeId = pointLayer.parentPointLayer.currentObject.attenuationShapeSubtypeId
 		end
 		local cameraPositionFullRelative = cameraPositionFull - parentOrigin
 		local cameraPosition = bm.vec3.toMathsiesVec3( -- Chunk sides have a length of 1
@@ -1405,7 +1555,7 @@ function game:drawPointLayers()
 			if
 				pointLayer.volumetricCanvasCameraInfo.position ~= cameraPositionFull or
 				pointLayer.volumetricCanvasCameraInfo.orientation ~= cameraOrientation or
-				pointLayer.volumetricCanvasCameraInfo.brightnessMultiplier ~= luminanceMultiplier -- Won't be a const forever
+				pointLayer.volumetricCanvasCameraInfo.brightnessMultiplier ~= luminanceMultiplier
 			then
 				-- TODO: Reprojection
 				local original = love.graphics.getCanvas()
@@ -1424,16 +1574,25 @@ function game:drawPointLayers()
 
 		local distanceUnitScale = 1 / math.max(parentObjectRadii.x, parentObjectRadii.y, parentObjectRadii.z)
 		local shapeType = self.pointLayerShapeTypes[parentObjectShapeTypeName]
-		local volumetricShader = shapeType.volumetricShader
+		local attenuationShapeType = self.pointLayerShapeTypes[attenuationShapeTypeName]
+		local volumetricShader = self.shapeVolumeShaders[parentObjectShapeTypeName][attenuationShapeTypeName or consts.noAttenuationShapeTypeName]
 
-		-- Send shape params
+		-- Send shape params for point density (aka emission)
 		local densityParametersScratchTable = self:decodeShapeSubtypeIntoScratchTable(shapeType, parentObjectShapeSubtypeId)
 		for i, parameter in ipairs(shapeType.parameters) do
-			volumetricShader:send("shape_" .. parameter.name, densityParametersScratchTable[i])
+			volumetricShader:send("emissionShape_" .. parameter.name, densityParametersScratchTable[i])
+		end
+		-- And for attenuation
+		local densityParametersScratchTable = self:decodeShapeSubtypeIntoScratchTable(attenuationShapeType, attenuationShapeSubtypeId)
+		for i, parameter in ipairs(attenuationShapeType.parameters) do
+			volumetricShader:send("attenuationShape_" .. parameter.name, densityParametersScratchTable[i])
 		end
 
-		if pointLayer.hasNoise and shapeType.noiseInfo then
-			volumetricShader:send("NoiseValues", pointLayer.valueNoiseBuffer)
+		if pointLayer.hasNoiseEmission and shapeType.noiseInfo then
+			volumetricShader:send("EmissionNoiseValues", pointLayer.valueNoiseBufferEmission)
+		end
+		if pointLayer.hasNoiseAttenuation and attenuationShapeType.noiseInfo then
+			volumetricShader:send("AttenuationNoiseValues", pointLayer.valueNoiseBufferAttenuation)
 		end
 
 		local cornerDirs = {}
@@ -1467,6 +1626,7 @@ function game:drawPointLayers()
 			distanceUnitScale ^ -1 * pointLayer.maxPointDensity * pointLayer.averageLuminousFluxGPerPoint / (2 * consts.tau),
 			distanceUnitScale ^ -1 * pointLayer.maxPointDensity * pointLayer.averageLuminousFluxBPerPoint / (2 * consts.tau)
 		})
+		volumetricShader:send("baseAttenuation", 1e4) -- TODO
 		-- volumetricShader:send("luminousIntensityPerPoint", {1, 1, 1})
 		-- volumetricShader:send("maxDensity", 1)
 		local w, h = volumetricShader:getLocalThreadgroupSize()
@@ -1527,7 +1687,7 @@ function game:drawPointLayers()
 				self.individualPointShader:send("cameraUp", {mathsies.vec3.components(cameraUp)})
 				self.individualPointShader:send("cameraRight", {mathsies.vec3.components(cameraRight)})
 				self.individualPointShader:send("direction", {mathsies.vec3.components(direction)})
-				self.individualPointShader:send("luminance", {mathsies.vec3.components(luminance * luminanceMultiplier)})
+				self.individualPointShader:send("luminance", {mathsies.vec3.components(luminance)})
 				love.graphics.setShader(self.individualPointShader)
 				love.graphics.draw(self.pointDiskMesh)
 			end

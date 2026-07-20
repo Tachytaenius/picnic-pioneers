@@ -52,9 +52,10 @@ function game:handleShipMovement(dt)
 		translation = translation - consts.forwardVector
 	end
 	local maxSpeed = self:getMaxMovementSpeed()
+	-- TEMP. Consider how velocity would work with this system?
 	local speed = (love.keyboard.isDown("lshift") and 25 or 1) * maxSpeed
 	if love.keyboard.isDown("lctrl") then
-		speed = math.max(consts.galaxyGroupRadii.x, consts.galaxyGroupRadii.y, consts.galaxyGroupRadii.z) * 0.5
+		speed = 1e27
 	end
 	local displacement = mathsies.vec3.rotate(util.normaliseOrZero(translation), self.ship.orientation) * speed * dt
 	self.ship.position = self.ship.position + displacement

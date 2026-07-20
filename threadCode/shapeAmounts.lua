@@ -50,7 +50,7 @@ local floor = math.floor
 local min = math.min
 local max = math.max
 
-local function getSampleRangeTotalBaseAmount(densityFunction, ...)
+local function getSampleRangeTotalBaseAmount(densityFunction, ratioX, ratioY, ratioZ, ...)
 	local rangeTotal = 0
 	for sampleI = firstSample, lastSample do
 		local xi = sampleI % stepCount
@@ -59,12 +59,20 @@ local function getSampleRangeTotalBaseAmount(densityFunction, ...)
 		local x = -1 + stepSize * (xi + 0.5)
 		local y = -1 + stepSize * (yi + 0.5)
 		local z = -1 + stepSize * (zi + 0.5)
-		rangeTotal = rangeTotal + sampleVolume * densityFunction(x, y, z, ...)
+		if ratioX and ratioY and ratioZ then
+			rangeTotal = rangeTotal + sampleVolume * densityFunction(
+				x, y, z,
+				x * ratioX, y * ratioY, z * ratioZ,
+				...
+			)
+		else
+			rangeTotal = rangeTotal + sampleVolume * densityFunction(x, y, z, ...)
+		end
 	end
 	return rangeTotal
 end
 
-local function getSampleRangeTotalGravitySlowdown(densityFunction, ...)
+local function getSampleRangeTotalGravitySlowdown(densityFunction, ratioX, ratioY, ratioZ, ...)
 	local rangeTotal = 0
 	local fullSampleVolume = sampleVolume * scaleX * scaleY * scaleZ
 	local fullStepSizeX = stepSize * scaleX
@@ -77,7 +85,19 @@ local function getSampleRangeTotalGravitySlowdown(densityFunction, ...)
 		local sampleX = -1 + stepSize * (xi + 0.5)
 		local sampleY = -1 + stepSize * (yi + 0.5)
 		local sampleZ = -1 + stepSize * (zi + 0.5)
-		local sampleDensity = densityMultiplier * densityFunction(sampleX, sampleY, sampleZ, ...)
+
+		local functionResult
+		if ratioX and ratioY and ratioZ then
+			functionResult = densityFunction(
+				sampleX, sampleY, sampleZ,
+				sampleX * ratioX, sampleY * ratioY, sampleZ * ratioZ,
+				...
+			)
+		else
+			functionResult = densityFunction(sampleX, sampleY, sampleZ, ...)
+		end
+
+		local sampleDensity = densityMultiplier * functionResult
 		local sampleCutStartX = max(-scaleX + fullStepSizeX * xi, cutRegionStartX)
 		local sampleCutEndX = min(-scaleX + fullStepSizeX * (xi + 1), cutRegionEndX)
 		local sampleCutStartY = max(-scaleY + fullStepSizeY * yi, cutRegionStartY)
@@ -106,7 +126,7 @@ local function getSampleRangeTotalGravitySlowdown(densityFunction, ...)
 	return rangeTotal
 end
 
-local function writeBaseAmountToMassData(writeOffset, densityFunction, ...)
+local function writeBaseAmountToMassData(writeOffset, densityFunction, ratioX, ratioY, ratioZ, ...)
 	for sampleI = firstSample, lastSample do
 		local xi = sampleI % stepCount
 		local yi = floor(sampleI / stepCount) % stepCount
@@ -114,7 +134,16 @@ local function writeBaseAmountToMassData(writeOffset, densityFunction, ...)
 		local x = -1 + stepSize * (xi + 0.5)
 		local y = -1 + stepSize * (yi + 0.5)
 		local z = -1 + stepSize * (zi + 0.5)
-		local mass = sampleVolume * densityFunction(x, y, z, ...)
+		local mass
+		if ratioX and ratioY and ratioZ then
+			mass = sampleVolume * densityFunction(
+				x, y, z,
+				x * ratioX, y * ratioY, z * ratioZ,
+				...
+			)
+		else
+			mass = sampleVolume * densityFunction(x, y, z, ...)
+		end
 		shapeMassDataFFI[writeOffset + sampleI] = mass
 	end
 end
@@ -173,6 +202,10 @@ while true do
 	local massDataStartOffsets = info.massDataStartOffsets
 	local lodToWriteTo = info.lodToWriteTo
 
+	local ratioX = info.ratioX
+	local ratioY = info.ratioY
+	local ratioZ = info.ratioZ
+
 	local shapeType = shapeTypes[info.shapeTypeId]
 	local currentNoiseLayers = shapeType.noiseInfo and shapeType.noiseInfo.layers
 	if currentNoiseLayers then
@@ -182,7 +215,7 @@ while true do
 	local densityFunction = shapeType.getDensity
 	if workType == "massWrite" then
 		if lodToWriteTo == #massDataStartOffsets then
-			writeBaseAmountToMassData(massDataStartOffsets[lodToWriteTo], densityFunction, unpack(info.params))
+			writeBaseAmountToMassData(massDataStartOffsets[lodToWriteTo], densityFunction, ratioX, ratioY, ratioZ, unpack(info.params))
 		else
 			writeToLowerLevelOfMassDataDetail(massDataStartOffsets[lodToWriteTo], massDataStartOffsets[lodToWriteTo + 1])
 		end
@@ -192,7 +225,7 @@ while true do
 	local func =
 		workType == "baseAmount" and getSampleRangeTotalBaseAmount or
 		workType == "gravitySlowdown" and getSampleRangeTotalGravitySlowdown
-	local rangeTotal = func(densityFunction, unpack(info.params))
+	local rangeTotal = func(densityFunction, ratioX, ratioY, ratioZ, unpack(info.params))
 	resultChannel:push({firstSample = firstSample, rangeTotal = rangeTotal})
     ::continue::
 end

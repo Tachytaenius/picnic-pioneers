@@ -3,21 +3,6 @@ readonly buffer ChunkPointCounts {
 };
 uniform int maxPointsPerChunk;
 
-struct Point {
-#ifdef FEATURE_POSITION
-	vec3 position;
-#endif
-#ifdef FEATURE_LUMINOUS_FLUX
-	vec3 luminousFlux;
-#endif
-#ifdef FEATURE_SHAPE_TYPE_SUBTYPE
-	uvec2 shapeTypeSubtypeIds;
-#endif
-};
-readonly buffer Points {
-	Point points[];
-};
-
 struct PointDrawable {
 	vec3 direction;
 	vec3 luminance;

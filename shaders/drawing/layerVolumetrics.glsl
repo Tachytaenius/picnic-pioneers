@@ -6,6 +6,7 @@ uniform float fadeOutRadius;
 uniform float fadeExponent;
 
 uniform vec3 baseEmission;
+uniform float baseAttenuation;
 
 uniform vec3 shapeRadii;
 
@@ -21,10 +22,12 @@ uniform layout(r8ui) uimage2D additionCountCanvas;
 uniform vec3[4] preNormaliseCornerDirs;
 
 VolumetricSample sampleVolumetrics(vec3 samplePosition) {
-	float density = sampleShapeDensity(samplePosition);
+	vec3 samplePositionTrueRatio = samplePosition * shapeRadii;
+	float emissionDensity = sampleEmissionShapeDensity(samplePosition, samplePositionTrueRatio);
+	float attenuationDensity = sampleAttenuationShapeDensity(samplePosition, samplePositionTrueRatio);
 	return VolumetricSample (
-		0.0,
-		baseEmission * density
+		baseAttenuation * attenuationDensity,
+		baseEmission * emissionDensity
 	);
 }
 
@@ -63,7 +66,7 @@ vec3 getRayColour(vec3 rayPosition, vec3 rayDirection, float sampleLerp) {
 		float transmittanceThisStep = 1.0;
 
 		VolumetricSample volumetricSample = sampleVolumetrics(samplePosition);
-		float attenuation = volumetricSample.attenuation; // TODO: Make attenuation nonzero and work out how to keep it working across all the drawcalls etc
+		float attenuation = volumetricSample.attenuation;
 		transmittanceThisStep *= exp(-attenuation * rayStepSize);
 
 		vec3 rayLuminanceThisStep = rayStepSize * volumetricSample.emission * emissionFadeMultiplier;

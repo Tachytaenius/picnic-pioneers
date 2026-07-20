@@ -1,55 +1,18 @@
-readonly buffer NoiseValues {
-	float noiseValues[];
+readonly buffer BUFFER_NAME {
+	float ARRAY_NAME[];
 };
 
-float trilinearMix(
-	// n is negative, p is positive
-	float nnn, float nnp, float npn, float npp,
-	float pnn, float pnp, float ppn, float ppp,
-	vec3 mixFactor
-) {
-	return mix( // z mix
-		mix( // y mix for -z
-			mix( // x mix for -y -z
-				nnn,
-				pnn,
-				mixFactor.x
-			),
-			mix( // x mix for +y -z
-				npn,
-				ppn,
-				mixFactor.x
-			),
-			mixFactor.y
-		),
-		mix( // y mix for +z
-			mix( // x mix for -y +z
-				nnp,
-				pnp,
-				mixFactor.x
-			),
-			mix( // x mix for +y +z
-				npp,
-				ppp,
-				mixFactor.x
-			),
-			mixFactor.y
-		),
-		mixFactor.z
-	);
-}
-
-float getValue(int start, ivec3 size, ivec3 pos) {
+float GET_FUNCTION_NAME(int start, ivec3 size, ivec3 pos) {
 	int index = start + pos.x + pos.y * size.x + pos.z * size.x * size.y;
-	return noiseValues[index];
+	return ARRAY_NAME[index];
 }
 
-float valueNoise(int layerIndex, vec3 pos) {
+float NOISE_FUNCTION_NAME(int layerIndex, vec3 pos) {
 	// TODO: since noise (by itself before any further processing) is considered to have a consistent average value of 0.5, allow making the noise be isotropic in scale even if the object is squished
 
 	pos = pos * 0.5 + 0.5; // Input pos axes range from -1 to 1 as they are generally intended to cover the entire shape type.
 
-	NoiseLayer layer = noiseLayers[layerIndex - 1]; // Subtract one to match Lua-side code
+	NoiseLayer layer = NOISE_LAYERS_NAME[layerIndex - 1]; // Subtract one to match Lua-side code
 	int start = layer.valueStart;
 	ivec3 size = layer.valueSize;
 
@@ -58,14 +21,14 @@ float valueNoise(int layerIndex, vec3 pos) {
 	ivec3 cell = ivec3(pos / cellSize);
 	cell = clamp(cell, ivec3(0), size - 2);
 	return trilinearMix(
-		getValue(start, size, cell + ivec3(0, 0, 0)),
-		getValue(start, size, cell + ivec3(0, 0, 1)),
-		getValue(start, size, cell + ivec3(0, 1, 0)),
-		getValue(start, size, cell + ivec3(0, 1, 1)),
-		getValue(start, size, cell + ivec3(1, 0, 0)),
-		getValue(start, size, cell + ivec3(1, 0, 1)),
-		getValue(start, size, cell + ivec3(1, 1, 0)),
-		getValue(start, size, cell + ivec3(1, 1, 1)),
+		GET_FUNCTION_NAME(start, size, cell + ivec3(0, 0, 0)),
+		GET_FUNCTION_NAME(start, size, cell + ivec3(0, 0, 1)),
+		GET_FUNCTION_NAME(start, size, cell + ivec3(0, 1, 0)),
+		GET_FUNCTION_NAME(start, size, cell + ivec3(0, 1, 1)),
+		GET_FUNCTION_NAME(start, size, cell + ivec3(1, 0, 0)),
+		GET_FUNCTION_NAME(start, size, cell + ivec3(1, 0, 1)),
+		GET_FUNCTION_NAME(start, size, cell + ivec3(1, 1, 0)),
+		GET_FUNCTION_NAME(start, size, cell + ivec3(1, 1, 1)),
 		mixFactor
 	);
 }

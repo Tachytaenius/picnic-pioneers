@@ -30,7 +30,7 @@ end
 -- Multiply by object's real radii to estimate object count
 -- densityFunction should return 0 when the inputs are further from the origin than 1
 -- densityFunction return values should be within [0, 1]
-function game:getShapeTypeBaseObjectAmount(sampleDistribution, integralThreads, shapeType, subtypeId, valueNoiseData)
+function game:getShapeTypeBaseObjectAmount(sampleDistribution, integralThreads, shapeType, subtypeId, valueNoiseData, ratioX, ratioY, ratioZ)
 	local scratch = self:decodeShapeSubtypeIntoScratchTable(shapeType, subtypeId)
 
 	-- Set threads going
@@ -42,7 +42,10 @@ function game:getShapeTypeBaseObjectAmount(sampleDistribution, integralThreads, 
 			type = "baseAmount",
 			firstSample = sampleDistribution[i].firstSample,
 			lastSample = sampleDistribution[i].lastSample,
-			stepCount = sampleDistribution.stepCount
+			stepCount = sampleDistribution.stepCount,
+			ratioX = ratioX,
+			ratioY = ratioY,
+			ratioZ = ratioZ
 		}
 		love.thread.getChannel("shapeAmountsInfo"):push(infoTable)
 	end
@@ -74,6 +77,51 @@ function game:getShapeTypeBaseObjectAmount(sampleDistribution, integralThreads, 
 	return total
 end
 
+local function getShaderNoiseString(shapeType, attenuationMode)
+	if not shapeType.noiseInfo then
+		return ""
+	end
+
+	local prefix = attenuationMode and "attenuation" or "emission"
+	local layerCodeLines = {}
+	for _, layer in ipairs(shapeType.noiseInfo.layers) do
+		table.insert(layerCodeLines,
+			"NoiseLayer (" .. layer.start .. ", ivec3(" .. table.concat({layer.countX, layer.countY, layer.countZ}, ", ") .. "))"
+		)
+	end
+	return
+		"#define NOISE_LAYERS_NAME " .. prefix .. "NoiseLayers" .. "\n" ..
+		"#define BUFFER_NAME " .. (attenuationMode and "AttenuationNoiseValues" or "EmissionNoiseValues") .. "\n" ..
+		"#define ARRAY_NAME " .. (attenuationMode and "attenuationNoiseValues" or "emissionNoiseValues") .. "\n" ..
+		"#define NOISE_FUNCTION_NAME " .. (attenuationMode and "attenuationValueNoise" or "emissionValueNoise") .. "\n" ..
+		"#define GET_FUNCTION_NAME " .. (attenuationMode and "attenuationGetValue" or "emissionGetValue") .. "\n" ..
+		"#define COUNT_CONST_NAME " .. prefix .. "NoiseLayerCount\n" ..
+		"const int " .. prefix .. "NoiseLayerCount = " .. #shapeType.noiseInfo.layers .. ";\n" ..
+		"const NoiseLayer NOISE_LAYERS_NAME[" .. prefix .. "NoiseLayerCount] = {" .. table.concat(layerCodeLines, ", ") .. "};\n" ..
+		"#line 1\n" .. love.filesystem.read("shaders/include/valueNoise.glsl") ..
+		"#undef NOISE_LAYERS_NAME\n" ..
+		"#undef BUFFER_NAME\n" ..
+		"#undef ARRAY_NAME\n" ..
+		"#undef NOISE_FUNCTION_NAME\n" ..
+		"#undef GET_FUNCTION_NAME\n" ..
+		"#undef COUNT_CONST_NAME\n"
+end
+
+local function getShapeTypeParamUniforms(prefix, shapeType)
+	local lines = {}
+	if shapeType.parameters then
+		for _, param in ipairs(shapeType.parameters) do
+			lines[#lines+1] = "uniform float " .. prefix .. param.name .. ";\n"
+		end
+	end
+	if shapeType.constants then
+		for constant, value in pairs(shapeType.constants) do -- The fact that pairs' order is undefined shouldn't matter.
+			lines[#lines+1] = "const float " .. prefix .. constant .. "=" .. value .. ";\n"
+		end
+	end
+	return table.concat(lines)
+end
+
 function game:loadShapeTypes()
 	local maxRequiredNoiseValues = 0
 
@@ -89,9 +137,37 @@ function game:loadShapeTypes()
 			shapeType.name = itemName
 
 			local info = require(itemPath:gsub("/", ".") .. ".info")
+
+			shapeType.constants = info.constants
 			shapeType.parameters = info.parameters or {}
+
+			shapeType.needsTrueRatio = info.needsTrueRatio
 			shapeType.getDensity = info.getDensity
 			setValueNoiseForShapeTypeDensityFunc(shapeType)
+
+			shapeType.zScaleRatioMin = info.zScaleRatioMin
+			shapeType.zScaleRatioMax = info.zScaleRatioMax
+			if not shapeType.zScaleRatioMin and not shapeType.zScaleRatioMax then
+				-- Default
+				shapeType.zScaleRatioMin = 1
+				shapeType.zScaleRatioMax = 1
+			end
+			assert(shapeType.zScaleRatioMin <= shapeType.zScaleRatioMax, "Z scale ratio min and max are flipped for shape type " .. itemName)
+
+			shapeType.attenuation = info.attenuation
+
+			shapeType.zScaleRatioSamples = info.zScaleRatioSamples
+			if not shapeType.needsTrueRatio then
+				assert(not shapeType.zScaleRatioSamples, "Non-needsTrueRatio shape type \"" .. itemName .. "\" can't have zScaleRatioSamples")
+			elseif not shapeType.attenuation then
+				assert(shapeType.zScaleRatioSamples > 1, "Shape type zScaleRatioSamples must be at least 2")
+			end
+
+			shapeType.shaderIncludes = info.shaderIncludes
+			shapeType.shaderPath = itemPath .. "/shaderCode.glsl"
+
+			local amount = processShapeNoiseLayerInfo(shapeType, info) -- Adds info to shapeType
+			maxRequiredNoiseValues = math.max(amount, maxRequiredNoiseValues) -- Amount can be 0
 
 			local subtypeCount = 1
 			for _, parameter in ipairs(shapeType.parameters) do
@@ -99,59 +175,6 @@ function game:loadShapeTypes()
 				subtypeCount = subtypeCount * parameter.steps
 			end
 			shapeType.subtypeCount = subtypeCount
-
-			local includeStrings = {}
-			if info.shaderIncludes then
-				for _, includePath in ipairs(info.shaderIncludes) do
-					local filePath = "shaders/include/" .. includePath .. ".glsl"
-					local fileCode = love.filesystem.read(filePath)
-					if not fileCode then
-						error("Can't find file " .. filePath .. " for shape type " .. itemName)
-					end
-					table.insert(includeStrings, "#line 1\n" .. fileCode)
-				end
-			end
-
-			local amount = processShapeNoiseLayerInfo(shapeType, info) -- Adds info to shapeType
-			maxRequiredNoiseValues = math.max(amount, maxRequiredNoiseValues) -- Amount might be 0
-
-			local noiseString
-			if not shapeType.noiseInfo then
-				noiseString = ""
-			else
-				local layerCodeLines = {}
-				for _, layer in ipairs(shapeType.noiseInfo.layers) do
-					table.insert(layerCodeLines,
-						"NoiseLayer (" .. layer.start .. ", ivec3(" .. table.concat({layer.countX, layer.countY, layer.countZ}, ", ") .. "))"
-					)
-				end
-				local constCode = "const int noiseLayerCount = " .. #shapeType.noiseInfo.layers .. ";\n" .. "const NoiseLayer noiseLayers[noiseLayerCount] = {" .. table.concat(layerCodeLines, ", ") .. "};\n"
-				noiseString =
-					"#line 1\n" .. constCode ..
-					"#line 1\n" .. love.filesystem.read("shaders/include/valueNoise.glsl")
-
-				-- Alternatively instead of using constCode use preprocessor defines
-				-- for i, layer in ipairs(shapeType.noiseInfo.layers) do
-				-- 	local defineName = "NOISE_LAYER_" .. i
-				-- 	shaderDefines[defineName] = layer.start .. ", ivec3(" .. table.concat({layer.countX, layer.countY, layer.countZ}, ", ") .. ")"
-				-- end
-			end
-			shapeType.volumetricShader = love.graphics.newComputeShader(
-				"#pragma language glsl4\n" ..
-				"#line 1\n" .. love.filesystem.read("shaders/include/lib/random.glsl") ..
-				"#line 1\n" .. love.filesystem.read("shaders/include/structs.glsl") ..
-				noiseString ..
-				"#line 1\n" .. love.filesystem.read("shaders/include/raycasts.glsl") ..
-				table.concat(includeStrings) ..
-				"#line 1\n" .. love.filesystem.read(itemPath .. "/shaderCode.glsl") ..
-				"#line 1\n" .. love.filesystem.read("shaders/include/skyDirection.glsl") ..
-				"#line 1\n" .. love.filesystem.read("shaders/drawing/layerVolumetrics.glsl"),
-				{
-					defines = {
-						MAX_ADDITIONS = consts.volumetricMaxPixelAdditions
-					}
-				}
-			)
 		end
 	end
 	-- Must match sorting in shapeAmounts.lua
@@ -191,14 +214,30 @@ function game:loadShapeTypes()
 		for id = 0, count - 1 do
 			local shapeType = pointLayerShapeTypes[id]
 
+			if shapeType.attenuation then
+				goto continue
+			end
+
 			if not shapeType.noiseInfo and alreadyDoneNoiseless then
 				goto continue
 			end
 
 			local subtypeBaseObjectAmounts = shapeType.subtypeBaseObjectAmounts or {}
 			for subtypeId = 0, shapeType.subtypeCount - 1 do
-				local result = self:getShapeTypeBaseObjectAmount(sampleDistribution, integralThreads, shapeType, subtypeId, valueNoiseData)
-				subtypeBaseObjectAmounts[subtypeId] = (subtypeBaseObjectAmounts[subtypeId] or 0) + result
+				if shapeType.needsTrueRatio then
+					subtypeBaseObjectAmounts[subtypeId] = {}
+					for zScaleStep = 0, shapeType.zScaleRatioSamples - 1 do
+						local ratioX = 1
+						local ratioY = 1
+						local lerpFactor = zScaleStep / (shapeType.zScaleRatioSamples - 1)
+						local ratioZ = shapeType.zScaleRatioMin + lerpFactor * (shapeType.zScaleRatioMax - shapeType.zScaleRatioMin)
+						local result = self:getShapeTypeBaseObjectAmount(sampleDistribution, integralThreads, shapeType, subtypeId, valueNoiseData, ratioX, ratioY, ratioZ)
+						subtypeBaseObjectAmounts[subtypeId][zScaleStep] = (subtypeBaseObjectAmounts[subtypeId][zScaleStep] or 0) + result
+					end
+				else
+					local result = self:getShapeTypeBaseObjectAmount(sampleDistribution, integralThreads, shapeType, subtypeId, valueNoiseData, nil, nil, nil)
+					subtypeBaseObjectAmounts[subtypeId] = (subtypeBaseObjectAmounts[subtypeId] or 0) + result
+				end
 			end
 			shapeType.subtypeBaseObjectAmounts = subtypeBaseObjectAmounts
 
@@ -212,16 +251,108 @@ function game:loadShapeTypes()
 	for id = 0, count - 1 do
 		local shapeType = pointLayerShapeTypes[id]
 
+		if shapeType.attenuation then
+			goto continue
+		end
+
 		if shapeType.noiseInfo then
 			-- subtypeBaseObjectAmounts' entries will have been added to multiple times to get an average
-			for subtypeId = 0, shapeType.subtypeCount - 1 do
-				shapeType.subtypeBaseObjectAmounts[subtypeId] = shapeType.subtypeBaseObjectAmounts[subtypeId] /
-					consts.pointLayerShapeTypeAmountIntegralAverageRepeatCount
+			if shapeType.needsTrueRatio then
+				for subtypeId = 0, shapeType.subtypeCount - 1 do
+					local zSamples = shapeType.subtypeBaseObjectAmounts[subtypeId]
+					for i = 0, shapeType.zScaleRatioSamples - 1 do
+						zSamples[i] = zSamples[i] / consts.pointLayerShapeTypeAmountIntegralAverageRepeatCount
+					end
+				end
+			else
+				for subtypeId = 0, shapeType.subtypeCount - 1 do
+					shapeType.subtypeBaseObjectAmounts[subtypeId] = shapeType.subtypeBaseObjectAmounts[subtypeId] /
+						consts.pointLayerShapeTypeAmountIntegralAverageRepeatCount
+				end
 			end
 		end
+
+	    ::continue::
+	end
+
+	-- Get all needed shader combinations
+	local shapeVolumeShaders = {}
+	for i = 0, count - 1 do
+		local shapeType = pointLayerShapeTypes[i]
+		if shapeType.attenuation then
+			goto continue
+		end
+		shapeVolumeShaders[shapeType.name] = shapeVolumeShaders[shapeType.name] or {}
+		for j = 0, count - 1 do
+			local otherShapeType = pointLayerShapeTypes[j]
+			if not otherShapeType.attenuation then
+				goto continue
+			end
+			local seenIncludes = {}
+			if shapeType.shaderIncludes then
+				for _, includePath in ipairs(shapeType.shaderIncludes) do
+					if not seenIncludes[includePath] then
+						seenIncludes[includePath] = true
+						seenIncludes[#seenIncludes+1] = includePath
+					end
+				end
+			end
+			local includeStrings = {}
+			for _, includePath in ipairs(seenIncludes) do
+				local filePath = "shaders/include/" .. includePath .. ".glsl"
+				local fileCode = love.filesystem.read(filePath)
+				if not fileCode then
+					error("Can't find shape type file " .. filePath)
+				end
+				table.insert(includeStrings, "#line 1\n" .. fileCode)
+			end
+
+			local emissionNoiseString = getShaderNoiseString(shapeType, false)
+			local attenuationNoiseString = getShaderNoiseString(otherShapeType, true)
+
+			local shapeTypeCode =
+				-- Emission
+				"#define SHAPE_DENSITY_SAMPLE_TYPE sampleEmissionShapeDensity\n" ..
+				"#define VALUE_NOISE emissionValueNoise\n" ..
+				"#define PARAM(name) emissionShape_##name\n" ..
+				getShapeTypeParamUniforms("emissionShape_", shapeType) ..
+				"#line 1\n" .. love.filesystem.read(shapeType.shaderPath) ..
+				"#undef SHAPE_DENSITY_SAMPLE_TYPE\n" ..
+				"#undef VALUE_NOISE\n" ..
+				"#undef PARAM\n" ..
+				-- Attenuation
+				"#define SHAPE_DENSITY_SAMPLE_TYPE sampleAttenuationShapeDensity\n" ..
+				"#define VALUE_NOISE attenuationValueNoise\n" ..
+				"#define PARAM(name) attenuationShape_##name\n" ..
+				getShapeTypeParamUniforms("attenuationShape_", otherShapeType) ..
+				"#line 1\n" .. love.filesystem.read(otherShapeType.shaderPath)
+
+			shapeVolumeShaders[shapeType.name][otherShapeType.name] = love.graphics.newComputeShader(
+				"#pragma language glsl4\n" ..
+				"#line 1\n" .. love.filesystem.read("shaders/include/lib/random.glsl") ..
+				"#line 1\n" .. love.filesystem.read("shaders/include/structs.glsl") ..
+				"#line 1\n" .. love.filesystem.read("shaders/include/trilinearMix.glsl") ..
+				emissionNoiseString ..
+				attenuationNoiseString ..
+				"#line 1\n" .. love.filesystem.read("shaders/include/raycasts.glsl") ..
+				table.concat(includeStrings) ..
+				shapeTypeCode ..
+				"#line 1\n" .. love.filesystem.read("shaders/include/skyDirection.glsl") ..
+				"#line 1\n" .. love.filesystem.read("shaders/drawing/layerVolumetrics.glsl"),
+				{
+					debugname = "Vol. Shader for Emi. " .. shapeType.name .. ", Att. " .. otherShapeType.name,
+					defines = {
+						MAX_ADDITIONS = consts.volumetricMaxPixelAdditions
+					}
+				}
+			)
+		    ::continue::
+		end
+	    ::continue::
 	end
 
 	self.pointLayerShapeTypes = pointLayerShapeTypes
+	self.shapeVolumeShaders = shapeVolumeShaders
 
 	self.valueNoiseDataReusableForPointLayers = valueNoiseData -- Generously donate valueNoiseData to the point layers now that it won't be used again here
 end

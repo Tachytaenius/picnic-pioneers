@@ -43,6 +43,8 @@ function consts.load()
 		"noiseValues"
 	})
 
+	consts.noAttenuationShapeTypeName = "noAttenuation"
+
 	-- TEMP/TODO
 	consts.controls = {
 		moveRight = "d",
@@ -105,8 +107,11 @@ function consts.load()
 	consts.galaxyLayerChunkSize = 1e25
 	consts.maxGalacticDensity = 1e-73
 	consts.galaxyGroupPosition = bm.vec3(0, 0, 0)
-	consts.galaxyGroupRadii = mathsies.vec3(1e27) -- Radius does not need to be precise like position does
+	-- Object radii do not need to be precise like positions do
+	consts.galaxyGroupScale = 5e27
+	consts.galaxyGroupZScaleRatio = 1
 	consts.galaxyGroupShapeTypeName = "universeFilaments"
+	consts.galaxyGroupAttenuationShapeName = consts.noAttenuationShapeTypeName
 
 	consts.slowdownDistanceExponent = -6
 	consts.gravityFactorExponent = 1/6
@@ -119,11 +124,13 @@ function consts.load()
 
 	consts.celestialLuminanceMultiplier = 1e14
 
+	-- TODO: Move some of these out as they're not really simulation or graphics parameters in the sense that I meant.
 	consts.pointPreparationThreadgroupSize = 512
 
 	consts.pointLayerShapeTypeAmountIntegralMaxThreads = 7
 	consts.shapeIntegralThreadTimeout = 1
-	consts.pointLayerShapeTypeAmountIntegralSteps = 100
+
+	consts.pointLayerShapeTypeAmountIntegralSteps = 80
 	consts.pointLayerShapeTypeAmountIntegralAverageRepeatCount = 8 -- Skips noiseless shape types
 
 	consts.lodBoxRange = 2
