@@ -11,6 +11,9 @@ struct Point {
 #ifdef FEATURE_ATTENUATION_SHAPE_TYPE_SUBTYPE
 	uvec2 attenuationShapeTypeSubtypeIds;
 #endif
+#ifdef FEATURE_ATTENUATION_MULTIPLIER
+	float attenuationMultiplier;
+#endif
 #ifdef FEATURE_RADII
 	vec3 radii;
 #endif

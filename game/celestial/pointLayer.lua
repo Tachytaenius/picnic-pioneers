@@ -40,8 +40,9 @@ local galaxyPointLayerInfo = {
 
 galaxyPointLayerInfo.features = {
 	-- "sent" means present on both CPU and GPU, "unsent" means only present on CPU, nil means not present
-	shapeTypeSubtypeIds = "sent",
-	attenuationShapeTypeSubtypeIds = "sent",
+	shapeTypeSubtypeIds = "unsent",
+	attenuationShapeTypeSubtypeIds = "unsent",
+	attenuationMultiplier = "unsent",
 	radii = "unsent",
 	mass = "unsent",
 
@@ -56,8 +57,8 @@ galaxyPointLayerInfo.features = {
 					name = "genericNebulae",
 					weight = 1,
 					-- 2.5 * 10^-20 metres^-1 in the middle, converted from "1.8 magnitudes per kiloparsec" attenuation coefficient measurement near the sun
-					mulRangeMin = 6.25e-21,
-					mulRangeMax = 1e-19
+					mulRangeMin = 1.875e-20,
+					mulRangeMax = 3.125e-20
 				}
 			}
 		},
@@ -70,8 +71,8 @@ galaxyPointLayerInfo.features = {
 				{
 					name = "genericNebulae",
 					weight = 1,
-					mulRangeMin = 6.25e-21,
-					mulRangeMax = 1e-19
+					mulRangeMin = 1.875e-20,
+					mulRangeMax = 3.125e-20
 				}
 			}
 		}
@@ -81,9 +82,14 @@ galaxyPointLayerInfo.features = {
 function galaxyPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, chunkBufferIndex, count)
 	local randomChoice = util.weightedRandomChoice
 	local shapeTypeSet = self.features.shapeTypeSet
+
 	local extraInfo = self.chunkExtraInfo[chunkBufferIndex]
-	local radii = extraInfo.radii
-	local mass = extraInfo.mass
+	local radiiInfo = extraInfo.radii
+	local massInfo = extraInfo.mass
+	local shapeTypeSubtypeIdInfo = extraInfo.shapeTypeSubtypeIds
+	local attenuationShapeTypeSubtypeIdInfo = extraInfo.attenuationShapeTypeSubtypeIds
+	local attenuationMultiplierInfo = extraInfo.attenuationMultiplier
+
 	local nextLayerMaxDensity = self.childPointLayer.maxPointDensity
 	local nextLayerAverageMassPerPoint = self.childPointLayer.averageMassPerPoint
 	local nextLayerAverageLuminousFluxRPerPoint = self.childPointLayer.averageLuminousFluxRPerPoint
@@ -102,8 +108,10 @@ function galaxyPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, chunkB
 
 		local attenuationChoice = choice.attenuationShapeTypes and randomChoice(choice.attenuationShapeTypes, randomGeneratorTODO)
 		local attenuationType = self.gameObject.pointLayerShapeTypes[attenuationChoice and attenuationChoice.name or consts.noAttenuationShapeTypeName]
-		local attenuationTypeId = attenuationType.id
-		local attenuationSubtypeId = randomTODO(0, attenuationType.subtypeCount - 1)
+		local attenuationShapeTypeId = attenuationType.id
+		local attenuationShapeSubtypeId = randomTODO(0, attenuationType.subtypeCount - 1)
+
+		attenuationMultiplierInfo[i] = randomRangeTODO(attenuationChoice.mulRangeMin, attenuationChoice.mulRangeMax)
 
 		local scale = randomRangeTODO(choice.scaleMin, choice.scaleMax)
 		local zScaleRatio = randomRangeTODO(shapeType.zScaleRatioMin, shapeType.zScaleRatioMax)
@@ -111,9 +119,9 @@ function galaxyPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, chunkB
 		local xRadius = scale
 		local yRadius = scale
 		local zRadius = scale * zScaleRatio
-		radii[i * 3] = xRadius
-		radii[i * 3 + 1] = yRadius
-		radii[i * 3 + 2] = zRadius
+		radiiInfo[i * 3] = xRadius
+		radiiInfo[i * 3 + 1] = yRadius
+		radiiInfo[i * 3 + 2] = zRadius
 
 		local baseAmount
 		if shapeType.needsTrueRatio then
@@ -129,13 +137,16 @@ function galaxyPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, chunkB
 			baseAmount = shapeType.subtypeBaseObjectAmounts[shapeSubtypeId]
 		end
 		local amountWithin = baseAmount * xRadius * yRadius * zRadius * nextLayerMaxDensity -- Estimate
-		mass[i] = amountWithin * nextLayerAverageMassPerPoint
+		massInfo[i] = amountWithin * nextLayerAverageMassPerPoint
 
 		local r = amountWithin * nextLayerAverageLuminousFluxRPerPoint * luminousFluxScale
 		local g = amountWithin * nextLayerAverageLuminousFluxGPerPoint * luminousFluxScale
 		local b = amountWithin * nextLayerAverageLuminousFluxBPerPoint * luminousFluxScale
 
-		self:setPoint(chunkBufferIndex, i, x, y, z, r, g, b, shapeTypeId, shapeSubtypeId, attenuationTypeId, attenuationSubtypeId)
+		shapeTypeSubtypeIdInfo[2 * i], shapeTypeSubtypeIdInfo[2 * i + 1] = shapeTypeId, shapeSubtypeId
+		attenuationShapeTypeSubtypeIdInfo[2 * i], attenuationShapeTypeSubtypeIdInfo[2 * i + 1] = attenuationShapeTypeId, attenuationShapeSubtypeId
+
+		self:setPoint(chunkBufferIndex, i, x, y, z, r, g, b)
 	end
 end
 
@@ -737,6 +748,7 @@ function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBu
 	tryFeature("luminousFlux", "floatvec3", "LUMINOUS_FLUX", "sent")
 	tryFeature("shapeTypeSubtypeIds", "uint32vec2", "SHAPE_TYPE_SUBTYPE")
 	tryFeature("attenuationShapeTypeSubtypeIds", "uint32vec2", "ATTENUATION_SHAPE_TYPE_SUBTYPE")
+	tryFeature("attenuationMultiplier", "float", "ATTENUATION_MULTIPLIER")
 	tryFeature("radii", "floatvec3", "RADII")
 	tryFeature("mass", "float", "MASS") -- For final layer (star systems)
 
@@ -1005,16 +1017,16 @@ function game:handlePointLayers()
 			if pointLayer.features.shapeTypeSubtypeIds then
 				if pointLayer.features.shapeTypeSubtypeIds == "sent" then
 					shapeTypeId, shapeSubtypeId = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "shapeTypeSubtypeIds", "uint32", 2)
-				elseif pointLayer.features.shapeTypeId == "unsent" then
-					shapeTypeId, shapeSubtypeId = chunkExtraInfo.shapeTypeId[closestIdInChunk * 2], chunkExtraInfo.shapeTypeId[closestIdInChunk * 2 + 1]
+				elseif pointLayer.features.shapeTypeSubtypeIds == "unsent" then
+					shapeTypeId, shapeSubtypeId = chunkExtraInfo.shapeTypeSubtypeIds[closestIdInChunk * 2], chunkExtraInfo.shapeTypeSubtypeIds[closestIdInChunk * 2 + 1]
 				end
 			end
 			local attenuationShapeTypeId, attenuationShapeSubtypeId
 			if pointLayer.features.attenuationShapeTypeSubtypeIds then
 				if pointLayer.features.attenuationShapeTypeSubtypeIds == "sent" then
 					attenuationShapeTypeId, attenuationShapeSubtypeId = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "attenuationShapeTypeSubtypeIds", "uint32", 2)
-				elseif pointLayer.features.attenuationShapeTypeId == "unsent" then
-					attenuationShapeTypeId, attenuationShapeSubtypeId = chunkExtraInfo.attenuationShapeTypeId[closestIdInChunk * 2], chunkExtraInfo.attenuationShapeTypeId[closestIdInChunk * 2 + 1]
+				elseif pointLayer.features.attenuationShapeTypeSubtypeIds == "unsent" then
+					attenuationShapeTypeId, attenuationShapeSubtypeId = chunkExtraInfo.attenuationShapeTypeSubtypeIds[closestIdInChunk * 2], chunkExtraInfo.attenuationShapeTypeSubtypeIds[closestIdInChunk * 2 + 1]
 				end
 			end
 			local xRadius, yRadius, zRadius
@@ -1127,6 +1139,15 @@ function game:handlePointLayers()
 						mass = chunkExtraInfo.mass[closestIdInChunk]
 					end
 					currentObject.mass = mass
+				end
+				if pointLayer.features.attenuationMultiplier then
+					local attenuationMultiplier
+					if pointLayer.features.attenuationMultiplier == "sent" then
+						attenuationMultiplier = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "attenuationMultiplier", "float", 1)
+					elseif pointLayer.features.attenuationMultiplier == "unsent" then
+						attenuationMultiplier = chunkExtraInfo.attenuationMultiplier[closestIdInChunk]
+					end
+					currentObject.attenuationMultiplier = attenuationMultiplier
 				end
 				-- Remaining features are generated (or fetched from extra info) in possibly layer-specific ways
 				self:seedCelestialRNG(self:getGlobalCelestialObjectIdNumbers(
@@ -1518,7 +1539,7 @@ function game:drawPointLayers()
 	love.graphics.setBlendMode("add")
 
 	for _, pointLayer in ipairs(self.pointLayers) do
-		local parentOrigin, parentObjectShapeTypeName, parentObjectShapeSubtypeId, parentObjectRadii, attenuationShapeTypeName, attenuationShapeSubtypeId
+		local parentOrigin, parentObjectShapeTypeName, parentObjectShapeSubtypeId, parentObjectRadii, attenuationShapeTypeName, attenuationShapeSubtypeId, attenuationMultiplier
 		if not pointLayer.parentPointLayer then
 			parentOrigin = pointLayer.fixedParentObjectPosition
 			parentObjectShapeTypeName = pointLayer.fixedParentObjectShapeTypeName
@@ -1526,6 +1547,7 @@ function game:drawPointLayers()
 			parentObjectRadii = pointLayer.fixedParentObjectRadii
 			attenuationShapeTypeName = pointLayer.fixedParentObjectAttenuationShapeTypeName
 			attenuationShapeSubtypeId = pointLayer.fixedParentObjectAttenuationShapeSubtypeId
+			attenuationMultiplier = pointLayer.fixedParentObjectAttenuationMultiplier or 0
 		else
 			if not pointLayer.parentPointLayer.currentObject then
 				break -- Outside of any objects below this scale
@@ -1536,6 +1558,7 @@ function game:drawPointLayers()
 			parentObjectRadii = pointLayer.parentPointLayer.currentObject.radii
 			attenuationShapeTypeName = pointLayer.parentPointLayer.currentObject.attenuationShapeTypeName
 			attenuationShapeSubtypeId = pointLayer.parentPointLayer.currentObject.attenuationShapeSubtypeId
+			attenuationMultiplier = pointLayer.parentPointLayer.currentObject.attenuationMultiplier or 0
 		end
 		local cameraPositionFullRelative = cameraPositionFull - parentOrigin
 		local cameraPosition = bm.vec3.toMathsiesVec3( -- Chunk sides have a length of 1
@@ -1621,12 +1644,12 @@ function game:drawPointLayers()
 		volumetricShader:send("maxRaySteps", consts.volumetricMaxRaySteps)
 		volumetricShader:send("shapeRadii", {mathsies.vec3.components(distanceUnitScale * parentObjectRadii)})
 		volumetricShader:send("baseEmission", {
-			-- TODO: Understand how these distanceUnitScale things work. I thought you multiplied in an amount with an exponent corresponding to the exponent on the distance dimension?
+			-- Density's distance dimension is -3, intensity's is 2, so the unit scale is raised to the -1
 			distanceUnitScale ^ -1 * pointLayer.maxPointDensity * pointLayer.averageLuminousFluxRPerPoint / (2 * consts.tau), -- TODO: This 4pi is definitely wrong... or something around it is
 			distanceUnitScale ^ -1 * pointLayer.maxPointDensity * pointLayer.averageLuminousFluxGPerPoint / (2 * consts.tau),
 			distanceUnitScale ^ -1 * pointLayer.maxPointDensity * pointLayer.averageLuminousFluxBPerPoint / (2 * consts.tau)
 		})
-		volumetricShader:send("baseAttenuation", 1e4) -- TODO
+		volumetricShader:send("baseAttenuation", attenuationMultiplier / distanceUnitScale)
 		-- volumetricShader:send("luminousIntensityPerPoint", {1, 1, 1})
 		-- volumetricShader:send("maxDensity", 1)
 		local w, h = volumetricShader:getLocalThreadgroupSize()

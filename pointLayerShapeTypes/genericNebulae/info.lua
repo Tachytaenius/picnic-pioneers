@@ -4,7 +4,7 @@ info.attenuation = true
 
 info.parameters = {
 	{
-		name = "noiseExponent",
+		name = "nebulaExponent",
 		steps = 3,
 		rangeMin = 5,
 		rangeMax = 7
@@ -14,6 +14,12 @@ info.parameters = {
 		steps = 3,
 		rangeMin = 0.8,
 		rangeMax = 1.2
+	},
+	{
+		name = "nebulaMultiplier",
+		steps = 6,
+		rangeMin = 1,
+		rangeMax = 400
 	}
 }
 
@@ -40,16 +46,22 @@ info.valueNoiseInfo = {
 	}
 }
 
+-- Attenuation shape density functions can return values greater than 1.
+-- The only reason emission shapes can't is that there is a maximum expected number of points per chunk (corresponding to a return value of 1).
+
 info.needsTrueRatio = true
-function info.getDensity(x, y, z, xTrueRatio, yTrueRatio, zTrueRatio, noiseExponent, distanceExponent)
+function info.getDensity(x, y, z, xTrueRatio, yTrueRatio, zTrueRatio, nebulaExponent, distanceExponent, nebulaMultiplier)
 	return
 		math.max(0, 1 - math.sqrt(x^2+y^2+z^2)) ^ distanceExponent * (
-			valueNoise(1, xTrueRatio, yTrueRatio, zTrueRatio) * (
-				valueNoise(2, xTrueRatio, yTrueRatio, zTrueRatio) +
-				valueNoise(3, xTrueRatio, yTrueRatio, zTrueRatio) +
-				valueNoise(4, xTrueRatio, yTrueRatio, zTrueRatio)
-			) / 3
-		) ^ noiseExponent
+			2 * valueNoise(1, xTrueRatio, yTrueRatio, zTrueRatio) + -- Multiply the noise by 2 to give an average of 1 so that the object's attenuation multiplier is more or less the average
+			nebulaMultiplier * (
+				(
+					valueNoise(2, xTrueRatio, yTrueRatio, zTrueRatio) +
+					valueNoise(3, xTrueRatio, yTrueRatio, zTrueRatio) +
+					valueNoise(4, xTrueRatio, yTrueRatio, zTrueRatio)
+				) / 3
+			) ^ nebulaExponent
+		)
 end
 
 return info

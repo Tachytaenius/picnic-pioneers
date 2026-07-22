@@ -3,7 +3,7 @@ local info = {}
 info.zScaleRatioMin = 0.08
 info.zScaleRatioMax = 0.2
 local average = (info.zScaleRatioMax + info.zScaleRatioMin) / 2
-local noiseDimension = 40
+local noiseDimension = 25
 
 info.valueNoiseInfo = {
 	{
