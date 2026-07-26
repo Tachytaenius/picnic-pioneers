@@ -898,7 +898,7 @@ function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBu
 
 	new.volumetricCanvas = love.graphics.newCanvas(self.volumetricCanvasWidth, self.volumetricCanvasHeight, {
 		debugname = debugName .. " Volumetric Canvas",
-		format = "rgba16f",
+		format = "rgba16f", -- RGB for luminance and A for opacity (1 - transmittance)
 		computewrite = true
 	})
 	new.volumetricAddCountCanvas = love.graphics.newCanvas(self.volumetricCanvasWidth, self.volumetricCanvasHeight, {
@@ -1660,9 +1660,13 @@ function game:drawPointLayers()
 		)
 
 		love.graphics.setShader(self.drawVolumetricShader)
+		love.graphics.setBlendMode("alpha", "premultiplied")
+		love.graphics.setColorMask(true, true, true, false)
 		self.drawVolumetricShader:send("additions", pointLayer.volumetricAddCountCanvas)
 		self.drawVolumetricShader:send("scale", consts.volumetricCanvasScale)
 		love.graphics.draw(pointLayer.volumetricCanvas, 0, 0, 0, 1 / consts.volumetricCanvasScale)
+		love.graphics.setColorMask()
+		love.graphics.setBlendMode("add")
 
 		-- Point attenuation
 

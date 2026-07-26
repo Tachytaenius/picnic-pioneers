@@ -31,7 +31,7 @@ VolumetricSample sampleVolumetrics(vec3 samplePosition) {
 	);
 }
 
-vec3 getRayColour(vec3 rayPosition, vec3 rayDirection, float sampleLerp) {
+vec4 getRayColourAndTransmittance(vec3 rayPosition, vec3 rayDirection, float sampleLerp) {
 	vec3 totalRayLuminance = vec3(0.0);
 	float totalTransmittance = 1.0;
 	// Ray moves backwards from end to camera
@@ -40,7 +40,7 @@ vec3 getRayColour(vec3 rayPosition, vec3 rayDirection, float sampleLerp) {
 
 	ConvexRaycastResult result = ellipsoidRaycast(vec3(0.0), shapeRadii, rayPosition, rayDirection);
 	if (!result.hit || result.t2 <= 0.0) {
-		return vec3(0.0);
+		return vec4(totalRayLuminance, totalTransmittance);
 	}
 
 	float rayOffset = max(0.0, result.t1);
@@ -75,7 +75,7 @@ vec3 getRayColour(vec3 rayPosition, vec3 rayDirection, float sampleLerp) {
 
 		segmentStart = segmentEnd;
 	}
-	return totalRayLuminance;
+	return vec4(totalRayLuminance, totalTransmittance);
 }
 
 layout (local_size_x = 16, local_size_y = 16) in;
@@ -109,13 +109,14 @@ void computemain() {
 	// if (rayChance == 1.0 || hash11(chanceSeed) < rayChance) {
 		uint variationSeed = (pixelId + w * h) ^ raySeed;
 		float stepVariation = (hash11(variationSeed) - 0.5) * rayStepVariance + 0.5;
-		vec3 outColour = getRayColour(cameraPosition, direction, stepVariation);
-		if (outColour == vec3(0.0)) {
-			return;
-		}
-		outColour *= brightnessMultiplier;
-		vec3 inColour = imageLoad(resultCanvas, coord).rgb;
-		vec4 toWrite = vec4(outColour + inColour, 1.0);
+	
+		vec4 outColour = getRayColourAndTransmittance(cameraPosition, direction, stepVariation);
+
+		outColour.a = 1.0 - outColour.a; // Turn transmittance into opacity
+		outColour.rgb *= brightnessMultiplier;
+
+		vec4 inColour = imageLoad(resultCanvas, coord);
+		vec4 toWrite = vec4(outColour + inColour);
 		imageStore(resultCanvas, coord, toWrite);
 	// }
 }

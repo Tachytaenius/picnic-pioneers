@@ -10,6 +10,5 @@ void pixelmain() {
 	if (count == 0u) {
 		discard;
 	}
-	vec3 outColour = texelFetch(MainTex, coord, 0).rgb / float(count);
-	fragmentColour = vec4(outColour, 1.0);
+	fragmentColour = texelFetch(MainTex, coord, 0) / float(count);
 }
