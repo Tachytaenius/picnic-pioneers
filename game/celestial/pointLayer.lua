@@ -35,7 +35,8 @@ local galaxyPointLayerInfo = {
 	fixedParentObjectShapeTypeName = consts.galaxyGroupShapeTypeName,
 	fixedParentObjectShapeSubtypeId = 0, -- TODO: Allow selecting from closest subtype to given parameters...?
 	fixedParentObjectAttenuationShapeTypeName = consts.galaxyGroupAttenuationShapeName,
-	fixedParentObjectAttenuationShapeSubtypeId = 0
+	fixedParentObjectAttenuationShapeSubtypeId = 0,
+	fixedParentObjectAttenuationMultiplier = consts.galaxyGroupAttenuationMultiplier
 }
 
 galaxyPointLayerInfo.features = {
@@ -1663,7 +1664,42 @@ function game:drawPointLayers()
 		self.drawVolumetricShader:send("scale", consts.volumetricCanvasScale)
 		love.graphics.draw(pointLayer.volumetricCanvas, 0, 0, 0, 1 / consts.volumetricCanvasScale)
 
-		-- TODO: Point attenuation
+		-- Point attenuation
+
+		local pointAttenuationTexture
+		if attenuationShapeType.name == consts.noAttenuationShapeTypeName then
+			pointAttenuationTexture = self.clearPointAttenuationTexture
+		else
+			pointAttenuationTexture = self.pointAttenuationTexture
+			local pointAttenuationShader = attenuationShapeType.pointAttenuationShader
+
+			local densityParametersScratchTable = self:decodeShapeSubtypeIntoScratchTable(attenuationShapeType, attenuationShapeSubtypeId)
+			for i, parameter in ipairs(attenuationShapeType.parameters) do
+				pointAttenuationShader:send("attenuationShape_" .. parameter.name, densityParametersScratchTable[i])
+			end
+
+			if pointLayer.hasNoiseAttenuation and attenuationShapeType.noiseInfo then
+				pointAttenuationShader:send("AttenuationNoiseValues", pointLayer.valueNoiseBufferAttenuation)
+			end
+
+			pointAttenuationShader:send("shapeRadii", {mathsies.vec3.components(distanceUnitScale * parentObjectRadii)})
+			pointAttenuationShader:send("baseAttenuation", attenuationMultiplier / distanceUnitScale)
+			pointAttenuationShader:send("rayLength", fullyVolumetricRadiusProperUnits * distanceUnitScale)
+			pointAttenuationShader:send("textureSize", {
+				pointAttenuationTexture:getWidth(),
+				pointAttenuationTexture:getHeight(),
+				pointAttenuationTexture:getDepth()
+			})
+			pointAttenuationShader:send("clipToSky", {mathsies.mat4.components(clipToSky)})
+			pointAttenuationShader:send("cameraPosition", {mathsies.vec3.components(bm.vec3.toMathsiesVec3(cameraPositionFullRelative * distanceUnitScale))})
+			pointAttenuationShader:send("resultTexture", pointAttenuationTexture)
+
+			local xSize, ySize = pointAttenuationShader:getLocalThreadgroupSize()
+			local w, h = pointAttenuationTexture:getDimensions()
+			local xCount = math.ceil(w / xSize)
+			local yCount = math.ceil(h / ySize)
+			love.graphics.dispatchThreadgroups(pointAttenuationShader, xCount, yCount, 1)
+		end
 
 		-- Points
 
@@ -1704,6 +1740,13 @@ function game:drawPointLayers()
 				distance = bm.mapm.tonumber(distance)
 				local r, g, b = pointLayer:getPointVars(object.chunkBufferIndex, object.pointId, "luminousFlux", "float", 3)
 				local luminance = mathsies.vec3(r, g, b) / distance ^ 2 * luminanceCalcConst
+				self.individualPointShader:send("pointAttenuationTexture", pointAttenuationTexture) -- Might be the clear texture
+				local clipSpacePos = skyToClip * direction -- "Perspective divide" is already done (xyz is divided by w, and w isn't even stored since these are vec3s)
+				self.individualPointShader:send("attenuationTextureCoords", {
+					clipSpacePos.x * 0.5 + 0.5,
+					clipSpacePos.y * 0.5 + 0.5,
+					distance / fullyVolumetricRadius
+				})
 				self.individualPointShader:send("diskDistanceToSphere", diskDistanceToSphere)
 				self.individualPointShader:send("scale", scaleToGetAngularRadius)
 				self.individualPointShader:send("skyToClip", {mathsies.mat4.components(skyToClip)})
@@ -1717,6 +1760,7 @@ function game:drawPointLayers()
 		end
 
 		local preparationShader = pointLayer.pointPreparationShader
+		preparationShader:send("pointAttenuationTexture", pointAttenuationTexture)
 		preparationShader:send("luminanceCalcConst", luminanceCalcConst)
 		preparationShader:send("chunkBufferSideLength", pointLayer.chunkBufferSideLength)
 		preparationShader:send("viewMinPosInChunkBuffer", {
@@ -1734,7 +1778,7 @@ function game:drawPointLayers()
 		preparationShader:send("fadeInRadius", fullyPointRadius)
 		preparationShader:send("fadeOutRadius", fullyVolumetricRadius)
 		preparationShader:send("fadeExponent", consts.pointFadeExponent)
-		-- preparationShader:send("skyToClip", {mathsies.mat4.components(skyToClip)}) -- TODO (this is for attenuation)
+		preparationShader:send("skyToClip", {mathsies.mat4.components(skyToClip)})
 		preparationShader:send("skipIndex", skipIndex)
 		preparationShader:send("maxPointsPerChunk", pointLayer.maxPointsPerChunk)
 		preparationShader:send("IndirectDrawBuffer", self.pointIndirectDrawArgsBuffer)

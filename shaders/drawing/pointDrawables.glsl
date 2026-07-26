@@ -24,6 +24,8 @@ readonly buffer PointDrawables {
 #else
 uniform vec3 direction;
 uniform vec3 luminance;
+uniform sampler3D pointAttenuationTexture;
+uniform vec3 attenuationTextureCoords;
 #endif
 
 uniform vec3 cameraUp;
@@ -42,7 +44,8 @@ void vertexmain() {
 	colour = pointDrawable.luminance;
 	vec3 direction = pointDrawable.direction;
 #else
-	colour = luminance;
+	float transmittance = texture(pointAttenuationTexture, attenuationTextureCoords).r;
+	colour = luminance * transmittance;
 #endif
 
 	vec3 billboardRight = cross(cameraUp, direction);

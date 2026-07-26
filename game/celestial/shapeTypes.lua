@@ -122,6 +122,43 @@ local function getShapeTypeParamUniforms(prefix, shapeType)
 	return table.concat(lines)
 end
 
+local function getAttenuationShaderCode(shapeType)
+	return
+		"#define SHAPE_DENSITY_SAMPLE_TYPE sampleAttenuationShapeDensity\n" ..
+		"#define VALUE_NOISE attenuationValueNoise\n" ..
+		"#define PARAM(name) attenuationShape_##name\n" ..
+		getShapeTypeParamUniforms("attenuationShape_", shapeType) ..
+		"#line 1\n" .. love.filesystem.read(shapeType.shaderPath)
+end
+
+local function getIncludesFromShapeTypes(shapeTypes)
+	local seenIncludes = {}
+	for _, shapeType in ipairs(shapeTypes) do
+		if shapeType.shaderIncludes then
+			for _, includePath in ipairs(shapeType.shaderIncludes) do
+				if not seenIncludes[includePath] then
+					seenIncludes[includePath] = true
+					seenIncludes[#seenIncludes+1] = includePath
+				end
+			end
+		end
+	end
+	return seenIncludes
+end
+
+local function loadShaderIncludes(seenIncludes)
+	local includeStrings = {}
+	for _, includePath in ipairs(seenIncludes) do
+		local filePath = "shaders/include/" .. includePath .. ".glsl"
+		local fileCode = love.filesystem.read(filePath)
+		if not fileCode then
+			error("Can't find shape type file " .. filePath)
+		end
+		table.insert(includeStrings, "#line 1\n" .. fileCode)
+	end
+	return seenIncludes
+end
+
 function game:loadShapeTypes()
 	local maxRequiredNoiseValues = 0
 
@@ -288,24 +325,8 @@ function game:loadShapeTypes()
 			if not otherShapeType.attenuation then
 				goto continue
 			end
-			local seenIncludes = {}
-			if shapeType.shaderIncludes then
-				for _, includePath in ipairs(shapeType.shaderIncludes) do
-					if not seenIncludes[includePath] then
-						seenIncludes[includePath] = true
-						seenIncludes[#seenIncludes+1] = includePath
-					end
-				end
-			end
-			local includeStrings = {}
-			for _, includePath in ipairs(seenIncludes) do
-				local filePath = "shaders/include/" .. includePath .. ".glsl"
-				local fileCode = love.filesystem.read(filePath)
-				if not fileCode then
-					error("Can't find shape type file " .. filePath)
-				end
-				table.insert(includeStrings, "#line 1\n" .. fileCode)
-			end
+
+			local includeStrings = loadShaderIncludes(getIncludesFromShapeTypes({shapeType, otherShapeType}))
 
 			local emissionNoiseString = getShaderNoiseString(shapeType, false)
 			local attenuationNoiseString = getShaderNoiseString(otherShapeType, true)
@@ -321,11 +342,7 @@ function game:loadShapeTypes()
 				"#undef VALUE_NOISE\n" ..
 				"#undef PARAM\n" ..
 				-- Attenuation
-				"#define SHAPE_DENSITY_SAMPLE_TYPE sampleAttenuationShapeDensity\n" ..
-				"#define VALUE_NOISE attenuationValueNoise\n" ..
-				"#define PARAM(name) attenuationShape_##name\n" ..
-				getShapeTypeParamUniforms("attenuationShape_", otherShapeType) ..
-				"#line 1\n" .. love.filesystem.read(otherShapeType.shaderPath)
+				getAttenuationShaderCode(otherShapeType)
 
 			shapeVolumeShaders[shapeType.name][otherShapeType.name] = love.graphics.newComputeShader(
 				"#pragma language glsl4\n" ..
@@ -337,7 +354,6 @@ function game:loadShapeTypes()
 				"#line 1\n" .. love.filesystem.read("shaders/include/raycasts.glsl") ..
 				table.concat(includeStrings) ..
 				shapeTypeCode ..
-				"#line 1\n" .. love.filesystem.read("shaders/include/skyDirection.glsl") ..
 				"#line 1\n" .. love.filesystem.read("shaders/drawing/layerVolumetrics.glsl"),
 				{
 					debugname = "Vol. Shader for Emi. " .. shapeType.name .. ", Att. " .. otherShapeType.name,
@@ -348,6 +364,32 @@ function game:loadShapeTypes()
 			)
 		    ::continue::
 		end
+	    ::continue::
+	end
+
+	for i = 0, count - 1 do
+		local shapeType = pointLayerShapeTypes[i]
+		if not shapeType.attenuation then
+			goto continue
+		end
+
+		local includeStrings = loadShaderIncludes(getIncludesFromShapeTypes({shapeType}))
+
+		shapeType.pointAttenuationShader = love.graphics.newComputeShader(
+			"#pragma language glsl4\n" ..
+			"#line 1\n" .. love.filesystem.read("shaders/include/lib/random.glsl") ..
+			"#line 1\n" .. love.filesystem.read("shaders/include/structs.glsl") ..
+			"#line 1\n" .. love.filesystem.read("shaders/include/trilinearMix.glsl") ..
+			getShaderNoiseString(shapeType, true) ..
+			-- Note that there is no raycasts.glsl. Attenuation shape type sampling may go outside the sphere and even the box that shape types are sampled in, so ensure that all shape types won't break (i.e. will always return 0) in those cases
+			table.concat(includeStrings) ..
+			getAttenuationShaderCode(shapeType) ..
+			"#line 1\n" .. love.filesystem.read("shaders/drawing/pointAttenuation.glsl"),
+			{
+				debugname = "Point Attenuation Shader for " .. shapeType.name
+			}
+		)
+
 	    ::continue::
 	end
 

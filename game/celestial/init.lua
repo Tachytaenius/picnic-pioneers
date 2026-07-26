@@ -50,6 +50,27 @@ function game:initCelestial()
 		debugname = "Celestial Output Canvas"
 	})
 
+	self.pointAttenuationTexture = love.graphics.newCanvas(
+		math.ceil(width * consts.pointAttenuationTextureScale),
+		math.ceil(height * consts.pointAttenuationTextureScale),
+		consts.pointAttenuationTextureSteps,
+		{
+			type = "volume",
+			format = "r16f",
+			computewrite = true
+		}
+	)
+	self.pointAttenuationTexture:setFilter("linear")
+	self.pointAttenuationTexture:setWrap("clamp", "clamp", "clamp")
+
+	local clearPointAttenuationTexture = love.image.newImageData(1, 1, "r16f")
+	clearPointAttenuationTexture:setPixel(0, 0, 1, 0, 0, 1)
+	self.clearPointAttenuationTexture = love.graphics.newVolumeImage({clearPointAttenuationTexture}, {
+		linear = true -- Shouldn't make any difference for a value of 1, though
+	})
+	self.clearPointAttenuationTexture:setFilter("nearest") -- No need to increase sampling cost (if linear even does for a 1x1x1 texture clamped on all axes)
+	self.clearPointAttenuationTexture:setWrap("clamp", "clamp", "clamp")
+
 	-- Place ship
 	self.ship = {
 		position = bm.vec3(0, 0, 0), -- Arbitrary precision, used to define position with enough information at each size scale

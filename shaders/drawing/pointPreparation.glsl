@@ -24,7 +24,7 @@ buffer IndirectDrawBuffer {
 uniform uint skipIndex;
 uniform vec3 cameraPosition;
 uniform mat4 skyToClip;
-// uniform sampler3D pointAttenuationTexture; // TODO
+uniform sampler3D pointAttenuationTexture;
 uniform int chunkBufferSideLength;
 uniform vec3 viewMinPosInChunkBuffer;
 uniform float luminanceCalcConst;
@@ -93,12 +93,13 @@ void computemain() {
 			), fadeExponent);
 			float dist2 = dist * dist;
 			vec3 luminance = point.luminousFlux / dist2 * luminanceCalcConst; // Luminance within the light source's spherical cap on the celestial sphere. All combined, it should be flux / (dist^2 * 4pi * diskSolidAngle), where flux / (dist^2 * 4pi) takes it from luminous flux to luminous exitance and then the exitance divided by the disk solid angle gets you the luminance. Should be right, even if some of the names are wrong. TODO: We have learned more, so make sure this is true!
+
 			vec3 clipSpacePos = perspectiveDivide(skyToClip * vec4(direction, 1.0));
-			vec3 textureSamplePos = clipSpacePos;
-			textureSamplePos.xy = textureSamplePos.xy * 0.5 + 0.5;
-			textureSamplePos.z = dist / fadeOutRadius;
-			// float transmittance = Texel(starAttenuationTexture, textureSamplePos).r;
-			float transmittance = 1.0; // TEMP/TODO
+			vec3 textureSamplePos = vec3(
+				clipSpacePos.xy * 0.5 + 0.5,
+				dist / fadeOutRadius
+			);
+			float transmittance = Texel(pointAttenuationTexture, textureSamplePos).r;
 
 			pointDrawable = PointDrawable (
 				direction,

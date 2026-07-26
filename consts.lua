@@ -112,10 +112,15 @@ function consts.load()
 	consts.galaxyGroupZScaleRatio = 1
 	consts.galaxyGroupShapeTypeName = "universeFilaments"
 	consts.galaxyGroupAttenuationShapeName = consts.noAttenuationShapeTypeName
+	consts.galaxyGroupAttenuationMultiplier = 0
 
 	consts.slowdownDistanceExponent = -6
 	consts.gravityFactorExponent = 1/6
 	consts.gravityMovementRate = 4e3
+
+	consts.pointAttenuationTextureScale = 0.2
+	consts.pointAttenuationTextureSteps = 6
+	assert(consts.pointAttenuationTextureSteps > 1, "A pointAttenuationTextureSteps count of 1 would mean no point attenuation since the first layer in the point attenuation texture is always 1")
 
 	consts.diskMeshVertices = 5
 	consts.pointAngularRadius = 0.006
