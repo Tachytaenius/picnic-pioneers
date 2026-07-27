@@ -30,6 +30,7 @@ function game:initCelestial()
 	self.individualPointShader = love.graphics.newShader("shaders/drawing/pointDrawables.glsl")
 
 	self.drawVolumetricShader = love.graphics.newShader("shaders/drawing/drawVolumetric.glsl")
+	self.attenuationAccumulationShader = love.graphics.newShader("shaders/drawing/attenuationAccumulation.glsl")
 
 	self.brightnessMultiplyShader = love.graphics.newShader("shaders/drawing/brightnessMultiply.glsl")
 
@@ -40,11 +41,10 @@ function game:initCelestial()
 	)
 
 	local width, height = self.screenWidth, self.screenHeight
-	-- This isn't actually faster, it seems:
-	-- self.screenCanvasses.pointCanvas = love.graphics.newCanvas(width, height, {
-	-- 	format = "rgba8", -- For faster additive blending
-	-- 	debugname = "Point Canvas"
-	-- })
+	self.screenCanvasses.pointTotalTransmittanceCanvas = love.graphics.newCanvas(width, height, { -- Gets multiplied down as the camera progresses out from the smallest layer to the largest. Distinct from the point attenuation texture because that is recalculated per-layer
+		format = "r16f",
+		debugname = "Point Total Transmittance Canvas"
+	})
 	self.screenCanvasses.celestialOutputCanvas = love.graphics.newCanvas(width, height, {
 		format = "rgba16f",
 		debugname = "Celestial Output Canvas"

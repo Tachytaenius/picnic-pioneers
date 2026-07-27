@@ -25,6 +25,7 @@ readonly buffer PointDrawables {
 uniform vec3 direction;
 uniform vec3 luminance;
 uniform sampler3D pointAttenuationTexture;
+uniform sampler2D totalTransmittanceCanvas;
 uniform vec3 attenuationTextureCoords;
 #endif
 
@@ -44,7 +45,10 @@ void vertexmain() {
 	colour = pointDrawable.luminance;
 	vec3 direction = pointDrawable.direction;
 #else
-	float transmittance = texture(pointAttenuationTexture, attenuationTextureCoords).r;
+	vec2 totalTransmittanceCoord = vec2(attenuationTextureCoords.x, 1.0 - attenuationTextureCoords.y);
+	float transmittance =
+		texture(pointAttenuationTexture, attenuationTextureCoords).r *
+		texture(totalTransmittanceCanvas, totalTransmittanceCoord).r;
 	colour = luminance * transmittance;
 #endif
 

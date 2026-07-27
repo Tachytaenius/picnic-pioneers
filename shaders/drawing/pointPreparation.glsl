@@ -24,7 +24,8 @@ buffer IndirectDrawBuffer {
 uniform uint skipIndex;
 uniform vec3 cameraPosition;
 uniform mat4 skyToClip;
-uniform sampler3D pointAttenuationTexture;
+uniform sampler3D pointAttenuationTexture; // Only considering the current layer and only up to the point end distance.
+uniform sampler2D totalTransmittanceCanvas; // Same as above. Has no depth information. Is multiplied down by closer nebulae from layers smaller than the current one. Essentially the "starting point" for the above texture.
 uniform int chunkBufferSideLength;
 uniform vec3 viewMinPosInChunkBuffer;
 uniform float luminanceCalcConst;
@@ -99,7 +100,10 @@ void computemain() {
 				clipSpacePos.xy * 0.5 + 0.5,
 				dist / fadeOutRadius
 			);
-			float transmittance = Texel(pointAttenuationTexture, textureSamplePos).r;
+			vec2 totalTransmittanceCoord = vec2(textureSamplePos.x, 1.0 - textureSamplePos.y); // TODO: Why did this (and pointDrawables' version) need to y flip???
+			float transmittance =
+				texture(pointAttenuationTexture, textureSamplePos).r *
+				texture(totalTransmittanceCanvas, totalTransmittanceCoord).r;
 
 			pointDrawable = PointDrawable (
 				direction,

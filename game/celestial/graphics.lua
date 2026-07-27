@@ -1,17 +1,418 @@
-local util = require("util")
+local mathsies = require("lib.mathsies")
+local bm = require("bigmaths")
 local consts = require("consts")
 
 local game = {}
 
 function game:drawCelestial()
-	love.graphics.setCanvas(self.screenCanvasses.celestialOutputCanvas)
+	local outputCanvas = self.screenCanvasses.celestialOutputCanvas
+	love.graphics.setCanvas(outputCanvas)
 	love.graphics.clear(0, 0, 0, 1)
-	love.graphics.setCanvas()
 
-	self:drawPointLayers()
-	self:drawStarSystem()
+	local aspectRatio = outputCanvas:getWidth() / outputCanvas:getHeight()
+
+	local luminanceMultiplier = consts.celestialLuminanceMultiplier
+
+	local cameraPositionFull = self.ship.position
+	local cameraOrientation = self.ship.orientation
+	local cameraVerticalFOV = self.ship.verticalFOV
+	local diagonalFOV = 2 * math.atan(math.sqrt(1 ^ 2 + aspectRatio ^ 2) * math.tan(cameraVerticalFOV / 2))
+
+	local cameraForwards = mathsies.vec3.rotate(consts.forwardVector, cameraOrientation)
+	local cameraUp = mathsies.vec3.rotate(consts.upVector, cameraOrientation)
+	local cameraRight = mathsies.vec3.rotate(consts.rightVector, cameraOrientation)
+	local vertexZAtFurthestAngle = math.cos(diagonalFOV / 2)
+	local cameraToClip = mathsies.mat4.perspectiveLeftHanded(
+		aspectRatio,
+		cameraVerticalFOV,
+		-- 1, -- Only a point disk vertex right in the centre of the screen has any chance of being clipped, and it will just be pushed slightly away from the centre. I don't see how any holes could form.
+		1.01, -- But whatever lol
+		-- vertexZAtFurthestAngle
+		vertexZAtFurthestAngle * 0.99
+	)
+	local worldToCameraStationary = mathsies.mat4.camera(mathsies.vec3(), cameraOrientation)
+	local skyToClip = cameraToClip * worldToCameraStationary
+	local clipToSky = mathsies.mat4.inverse(skyToClip)
+
+	-- local vec = mathsies.vec3(1, 1, 1) -- 1, 1 for top right. Z doesn't matter because of normalisation below.
+	-- vec = clipToSky * vec
+	-- local angle = math.acos(mathsies.vec3.dot(mathsies.vec3.normalise(vec), mathsies.vec3(0, 0, 1)))
+	-- print(angle - diagonalFOV / 2) -- Very very very close to 0. This means that the diagonal FOV calculation is correct.
+
+	local function drawLayer(pointLayer, pointMode)
+		local parentOrigin, parentObjectShapeTypeName, parentObjectShapeSubtypeId, parentObjectRadii, attenuationShapeTypeName, attenuationShapeSubtypeId, attenuationMultiplier
+		if not pointLayer.parentPointLayer then
+			parentOrigin = pointLayer.fixedParentObjectPosition
+			parentObjectShapeTypeName = pointLayer.fixedParentObjectShapeTypeName
+			parentObjectShapeSubtypeId = pointLayer.fixedParentObjectShapeSubtypeId
+			parentObjectRadii = pointLayer.fixedParentObjectRadii
+			attenuationShapeTypeName = pointLayer.fixedParentObjectAttenuationShapeTypeName
+			attenuationShapeSubtypeId = pointLayer.fixedParentObjectAttenuationShapeSubtypeId
+			attenuationMultiplier = pointLayer.fixedParentObjectAttenuationMultiplier or 0
+		else
+			parentOrigin = pointLayer.parentPointLayer.currentObject.position
+			parentObjectShapeTypeName = pointLayer.parentPointLayer.currentObject.shapeTypeName
+			parentObjectShapeSubtypeId = pointLayer.parentPointLayer.currentObject.shapeSubtypeId
+			parentObjectRadii = pointLayer.parentPointLayer.currentObject.radii
+			attenuationShapeTypeName = pointLayer.parentPointLayer.currentObject.attenuationShapeTypeName
+			attenuationShapeSubtypeId = pointLayer.parentPointLayer.currentObject.attenuationShapeSubtypeId
+			attenuationMultiplier = pointLayer.parentPointLayer.currentObject.attenuationMultiplier or 0
+		end
+		local cameraPositionFullRelative = cameraPositionFull - parentOrigin
+		local cameraPosition = bm.vec3.toMathsiesVec3( -- Chunk sides have a length of 1
+			cameraPositionFullRelative / pointLayer.chunkSize
+		)
+
+		-- Fade in/out roles are swapped between volumetric and point
+		local fullyPointRadius = (pointLayer.chunkBufferSideLength / 2 - 0.5) * consts.pointFadeStart
+		local fullyVolumetricRadius = pointLayer.chunkBufferSideLength / 2 - 0.5
+		-- In terms of proper units and not chunks
+		local fullyPointRadiusProperUnits = fullyPointRadius * pointLayer.chunkSize
+		local fullyVolumetricRadiusProperUnits = fullyVolumetricRadius * pointLayer.chunkSize
+
+		local distanceUnitScale = 1 / math.max(parentObjectRadii.x, parentObjectRadii.y, parentObjectRadii.z)
+		local shapeType = self.pointLayerShapeTypes[parentObjectShapeTypeName]
+		local attenuationShapeType = self.pointLayerShapeTypes[attenuationShapeTypeName]
+		local volumetricShader = self.shapeVolumeShaders[parentObjectShapeTypeName][attenuationShapeTypeName or consts.noAttenuationShapeTypeName]
+
+		if not pointMode then
+			-- Volumetrics
+
+			if pointLayer.volumetricCanvasCameraInfo then
+				if
+					pointLayer.volumetricCanvasCameraInfo.position ~= cameraPositionFull or
+					pointLayer.volumetricCanvasCameraInfo.orientation ~= cameraOrientation or
+					pointLayer.volumetricCanvasCameraInfo.brightnessMultiplier ~= luminanceMultiplier
+				then
+					-- TODO: Reprojection
+					local original = love.graphics.getCanvas()
+					love.graphics.setCanvas(pointLayer.volumetricCanvas)
+					love.graphics.clear()
+					love.graphics.setCanvas(pointLayer.volumetricAddCountCanvas)
+					love.graphics.clear()
+					love.graphics.setCanvas(original)
+				end
+			end
+			pointLayer.volumetricCanvasCameraInfo = {
+				position = bm.vec3.clone(cameraPositionFull),
+				orientation = mathsies.quat.clone(cameraOrientation),
+				brightnessMultiplier = luminanceMultiplier
+			}
+
+			-- Send shape params for point density (aka emission)
+			local densityParametersScratchTable = self:decodeShapeSubtypeIntoScratchTable(shapeType, parentObjectShapeSubtypeId)
+			for i, parameter in ipairs(shapeType.parameters) do
+				volumetricShader:send("emissionShape_" .. parameter.name, densityParametersScratchTable[i])
+			end
+			-- And for attenuation
+			local densityParametersScratchTable = self:decodeShapeSubtypeIntoScratchTable(attenuationShapeType, attenuationShapeSubtypeId)
+			for i, parameter in ipairs(attenuationShapeType.parameters) do
+				volumetricShader:send("attenuationShape_" .. parameter.name, densityParametersScratchTable[i])
+			end
+
+			if pointLayer.hasNoiseEmission and shapeType.noiseInfo then
+				volumetricShader:send("EmissionNoiseValues", pointLayer.valueNoiseBufferEmission)
+			end
+			if pointLayer.hasNoiseAttenuation and attenuationShapeType.noiseInfo then
+				volumetricShader:send("AttenuationNoiseValues", pointLayer.valueNoiseBufferAttenuation)
+			end
+
+			local cornerDirs = {}
+			for y = 1, -1, -2 do
+				for x = -1, 1, 2 do
+					local clipSpacePos = mathsies.vec3(x, y, -1) -- -1 for near plane but it makes no difference one everything is normalised in the compute shader. It may need to be consistent per-corner, though
+					local result = clipToSky * clipSpacePos
+					-- table.insert(cornerDirs, result.x)
+					-- table.insert(cornerDirs, result.y)
+					-- table.insert(cornerDirs, result.z)
+					table.insert(cornerDirs, {mathsies.vec3.components(result)})
+				end
+			end
+			volumetricShader:send("brightnessMultiplier", luminanceMultiplier)
+			volumetricShader:send("preNormaliseCornerDirs", unpack(cornerDirs))
+			volumetricShader:send("size", {pointLayer.volumetricCanvas:getDimensions()})
+			volumetricShader:send("resultCanvas", pointLayer.volumetricCanvas)
+			volumetricShader:send("additionCountCanvas", pointLayer.volumetricAddCountCanvas)
+			volumetricShader:send("rayStepVariance", 1)
+			volumetricShader:send("raySeed", love.math.random(0, 2 ^ 32 - 1))
+			volumetricShader:send("fadeInRadius", fullyVolumetricRadiusProperUnits * distanceUnitScale)
+			volumetricShader:send("fadeOutRadius", fullyPointRadiusProperUnits * distanceUnitScale)
+			volumetricShader:send("fadeExponent", consts.pointFadeExponent)
+			-- volumetricShader:send("clipToSky", {mathsies.mat4.components(clipToSky)})
+			volumetricShader:send("cameraPosition", {mathsies.vec3.components(bm.vec3.toMathsiesVec3(cameraPositionFullRelative * distanceUnitScale))})
+			volumetricShader:send("maxRaySteps", consts.volumetricMaxRaySteps)
+			volumetricShader:send("shapeRadii", {mathsies.vec3.components(distanceUnitScale * parentObjectRadii)})
+			if volumetricShader:hasUniform("baseEmission") then
+				volumetricShader:send("baseEmission", {
+					-- Density's distance dimension is -3, intensity's is 2, so the unit scale is raised to the -1
+					distanceUnitScale ^ -1 * pointLayer.maxPointDensity * pointLayer.averageLuminousFluxRPerPoint / (2 * consts.tau), -- TODO: This 4pi is definitely wrong... or something around it is
+					distanceUnitScale ^ -1 * pointLayer.maxPointDensity * pointLayer.averageLuminousFluxGPerPoint / (2 * consts.tau),
+					distanceUnitScale ^ -1 * pointLayer.maxPointDensity * pointLayer.averageLuminousFluxBPerPoint / (2 * consts.tau)
+				})
+			end
+			if volumetricShader:hasUniform("baseAttenuation") then
+				volumetricShader:send("baseAttenuation", attenuationMultiplier / distanceUnitScale)
+			end
+			-- volumetricShader:send("luminousIntensityPerPoint", {1, 1, 1})
+			-- volumetricShader:send("maxDensity", 1)
+			local w, h = volumetricShader:getLocalThreadgroupSize()
+			love.graphics.dispatchThreadgroups(volumetricShader,
+				math.ceil(pointLayer.volumetricCanvas:getWidth() / w),
+				math.ceil(pointLayer.volumetricCanvas:getHeight() / h)
+			)
+
+			love.graphics.setShader(self.drawVolumetricShader)
+			love.graphics.setBlendMode("alpha", "premultiplied")
+			love.graphics.setColorMask(true, true, true, false)
+			self.drawVolumetricShader:send("additions", pointLayer.volumetricAddCountCanvas)
+			self.drawVolumetricShader:send("scale", consts.volumetricCanvasScale)
+			love.graphics.draw(pointLayer.volumetricCanvas, 0, 0, 0, 1 / consts.volumetricCanvasScale)
+			love.graphics.setColorMask()
+		else
+			love.graphics.setBlendMode("add")
+			love.graphics.setCanvas(outputCanvas) -- Drawing after volumetrics and solid bodies etc
+
+			-- Point attenuation
+
+			local pointAttenuationTexture
+			if attenuationShapeType.name == consts.noAttenuationShapeTypeName then
+				pointAttenuationTexture = self.clearPointAttenuationTexture
+			else
+				pointAttenuationTexture = self.pointAttenuationTexture
+				local pointAttenuationShader = attenuationShapeType.pointAttenuationShader
+
+				local densityParametersScratchTable = self:decodeShapeSubtypeIntoScratchTable(attenuationShapeType, attenuationShapeSubtypeId)
+				for i, parameter in ipairs(attenuationShapeType.parameters) do
+					pointAttenuationShader:send("attenuationShape_" .. parameter.name, densityParametersScratchTable[i])
+				end
+
+				if pointLayer.hasNoiseAttenuation and attenuationShapeType.noiseInfo then
+					pointAttenuationShader:send("AttenuationNoiseValues", pointLayer.valueNoiseBufferAttenuation)
+				end
+
+				pointAttenuationShader:send("shapeRadii", {mathsies.vec3.components(distanceUnitScale * parentObjectRadii)})
+				if pointAttenuationShader:hasUniform("baseAttenuation") then
+					pointAttenuationShader:send("baseAttenuation", attenuationMultiplier / distanceUnitScale)
+				end
+				pointAttenuationShader:send("rayLength", fullyVolumetricRadiusProperUnits * distanceUnitScale)
+				pointAttenuationShader:send("textureSize", {
+					pointAttenuationTexture:getWidth(),
+					pointAttenuationTexture:getHeight(),
+					pointAttenuationTexture:getDepth()
+				})
+				pointAttenuationShader:send("clipToSky", {mathsies.mat4.components(clipToSky)})
+				pointAttenuationShader:send("cameraPosition", {mathsies.vec3.components(bm.vec3.toMathsiesVec3(cameraPositionFullRelative * distanceUnitScale))})
+				pointAttenuationShader:send("resultTexture", pointAttenuationTexture)
+
+				local xSize, ySize = pointAttenuationShader:getLocalThreadgroupSize()
+				local w, h = pointAttenuationTexture:getDimensions()
+				local xCount = math.ceil(w / xSize)
+				local yCount = math.ceil(h / ySize)
+				love.graphics.dispatchThreadgroups(pointAttenuationShader, xCount, yCount, 1)
+			end
+
+			-- Points
+
+			self.pointIndirectDrawArgsBuffer:setArrayData({
+				self.pointDiskMesh:getVertexCount(),
+				0, -- This gets incremented (on the GPU)
+				0,
+				0
+			})
+
+			local diskDistanceToSphere = 1 - math.cos(consts.pointAngularRadius) -- Unit sphere spherical cap height from angular radius
+			local diskSolidAngle = consts.tau * diskDistanceToSphere
+			local scaleToGetAngularRadius = math.tan(consts.pointAngularRadius)
+			local luminanceCalcConst = luminanceMultiplier / (diskSolidAngle * 2 * consts.tau)
+
+			local maxAngleFromCentre = diagonalFOV / 2 + consts.pointAngularRadius
+			local minDot = math.cos(maxAngleFromCentre)
+			local currentObjectInfo = pointLayer.currentObject or pointLayer.currentPotentialObject
+			local skipIndex =
+				currentObjectInfo and (
+					currentObjectInfo.chunkBufferIndex * pointLayer.maxPointsPerChunk + currentObjectInfo.pointId
+				) or pointLayer.maxPoints -- Use unreachable skip index
+			if pointLayer.currentPotentialObject and not pointLayer.currentObject then
+				-- Draw in a CPU-calculated direction to fix precision issues when on the approach to small galaxies
+				local object = pointLayer.currentPotentialObject
+				local x, y, z = pointLayer:getPointVars(object.chunkBufferIndex, object.pointId, "position", "float", 3)
+				local position = bm.vec3(object.chunkX + x, object.chunkY + y, object.chunkZ + z)
+				local difference = position - cameraPositionFullRelative / pointLayer.chunkSize
+				local distance = bm.vec3.length(difference)
+				if distance == 0 then
+					skipIndex = pointLayer.maxPoints -- Use unreachable skip index
+				else
+					local direction = difference / distance
+					direction = bm.vec3.toMathsiesVec3(direction)
+					distance = bm.mapm.tonumber(distance)
+					local r, g, b = pointLayer:getPointVars(object.chunkBufferIndex, object.pointId, "luminousFlux", "float", 3)
+					local luminance = mathsies.vec3(r, g, b) / distance ^ 2 * luminanceCalcConst
+					self.individualPointShader:send("pointAttenuationTexture", pointAttenuationTexture) -- Might be the clear texture
+					local clipSpacePos = skyToClip * direction -- "Perspective divide" is already done (xyz is divided by w, and w isn't even stored since these are vec3s)
+					self.individualPointShader:send("attenuationTextureCoords", {
+						clipSpacePos.x * 0.5 + 0.5,
+						clipSpacePos.y * 0.5 + 0.5,
+						distance / fullyVolumetricRadius
+					})
+					self.individualPointShader:send("totalTransmittanceCanvas", self.screenCanvasses.pointTotalTransmittanceCanvas)
+
+					self.individualPointShader:send("diskDistanceToSphere", diskDistanceToSphere)
+					self.individualPointShader:send("scale", scaleToGetAngularRadius)
+					self.individualPointShader:send("skyToClip", {mathsies.mat4.components(skyToClip)})
+					self.individualPointShader:send("cameraUp", {mathsies.vec3.components(cameraUp)})
+					self.individualPointShader:send("cameraRight", {mathsies.vec3.components(cameraRight)})
+					self.individualPointShader:send("direction", {mathsies.vec3.components(direction)})
+					self.individualPointShader:send("luminance", {mathsies.vec3.components(luminance)})
+					love.graphics.setShader(self.individualPointShader)
+					love.graphics.draw(self.pointDiskMesh)
+				end
+			end
+
+			local preparationShader = pointLayer.pointPreparationShader
+			preparationShader:send("totalTransmittanceCanvas", self.screenCanvasses.pointTotalTransmittanceCanvas)
+			preparationShader:send("pointAttenuationTexture", pointAttenuationTexture)
+			preparationShader:send("luminanceCalcConst", luminanceCalcConst)
+			preparationShader:send("chunkBufferSideLength", pointLayer.chunkBufferSideLength)
+			preparationShader:send("viewMinPosInChunkBuffer", {
+				(cameraPosition.x - pointLayer.chunkBufferSideLength / 2) % pointLayer.chunkBufferSideLength,
+				(cameraPosition.y - pointLayer.chunkBufferSideLength / 2) % pointLayer.chunkBufferSideLength,
+				(cameraPosition.z - pointLayer.chunkBufferSideLength / 2) % pointLayer.chunkBufferSideLength
+			})
+			preparationShader:send("cameraPosition", {
+				(cameraPosition.x + pointLayer.chunkBufferSideLength / 2) % pointLayer.chunkBufferSideLength + pointLayer.chunkBufferSideLength / 2,
+				(cameraPosition.y + pointLayer.chunkBufferSideLength / 2) % pointLayer.chunkBufferSideLength + pointLayer.chunkBufferSideLength / 2,
+				(cameraPosition.z + pointLayer.chunkBufferSideLength / 2) % pointLayer.chunkBufferSideLength + pointLayer.chunkBufferSideLength / 2
+			})
+			preparationShader:send("minDot", minDot)
+			preparationShader:send("cameraForwards", {mathsies.vec3.components(cameraForwards)})
+			preparationShader:send("fadeInRadius", fullyPointRadius)
+			preparationShader:send("fadeOutRadius", fullyVolumetricRadius)
+			preparationShader:send("fadeExponent", consts.pointFadeExponent)
+			preparationShader:send("skyToClip", {mathsies.mat4.components(skyToClip)})
+			preparationShader:send("skipIndex", skipIndex)
+			preparationShader:send("maxPointsPerChunk", pointLayer.maxPointsPerChunk)
+			preparationShader:send("IndirectDrawBuffer", self.pointIndirectDrawArgsBuffer)
+			preparationShader:send("Points", pointLayer.pointBuffer)
+			preparationShader:send("PointDrawables", self.pointDrawableBuffer)
+			preparationShader:send("ChunkPointCounts", pointLayer.chunkPointCountBuffer)
+			local threadgroupCount = math.ceil(pointLayer.maxPoints / preparationShader:getLocalThreadgroupSize())
+			love.graphics.dispatchThreadgroups(preparationShader, threadgroupCount)
+
+			local drawShader = self.pointDrawablesShader
+			love.graphics.setShader(drawShader)
+			drawShader:send("PointDrawables", self.pointDrawableBuffer)
+			drawShader:send("diskDistanceToSphere", diskDistanceToSphere)
+			drawShader:send("scale", scaleToGetAngularRadius)
+			drawShader:send("cameraUp", {mathsies.vec3.components(cameraUp)})
+			drawShader:send("cameraRight", {mathsies.vec3.components(cameraRight)})
+			drawShader:send("skyToClip", {mathsies.mat4.components(skyToClip)})
+			-- current shader should be drawShader
+			love.graphics.drawIndirect(self.pointDiskMesh, self.pointIndirectDrawArgsBuffer, 1)
+		end
+
+		love.graphics.setShader()
+		love.graphics.setBlendMode("alpha")
+	end
+
+	local function drawStarSystem()
+		love.graphics.setCanvas(outputCanvas)
+
+		local lastPointLayer = self.pointLayers[#self.pointLayers]
+		local starSystemPointLayerObject = lastPointLayer.currentObject
+		if not starSystemPointLayerObject then
+			return
+		end
+		local bodies = starSystemPointLayerObject.bodies
+
+		local cameraPositionRelative = bm.vec3.toMathsiesVec3(self.ship.position - starSystemPointLayerObject.position)
+
+		local diskDistanceToSphere = 1 - math.cos(consts.pointAngularRadius) -- Unit sphere spherical cap height from angular radius
+		local diskSolidAngle = consts.tau * diskDistanceToSphere
+		local scaleToGetAngularRadius = math.tan(consts.pointAngularRadius)
+		local luminanceCalcConst = 1 / (diskSolidAngle * 2 * consts.tau)
+
+		self.individualPointShader:send("diskDistanceToSphere", diskDistanceToSphere)
+		self.individualPointShader:send("scale", scaleToGetAngularRadius)
+		self.individualPointShader:send("skyToClip", {mathsies.mat4.components(skyToClip)})
+		self.individualPointShader:send("cameraUp", {mathsies.vec3.components(cameraUp)})
+		self.individualPointShader:send("cameraRight", {mathsies.vec3.components(cameraRight)})
+
+		for _, body in ipairs(bodies) do
+			local difference = body.position - cameraPositionRelative
+			local distance = #difference
+			local direction = difference / distance
+			local resolvable = distance <= self:getSphereResolvableDistance(body.radius)
+
+			if not resolvable then
+				love.graphics.setBlendMode("add")
+				local luminance
+				if body.type == "star" then
+					luminance = body.luminousFlux / distance ^ 2 * luminanceCalcConst
+				end
+				self.individualPointShader:send("direction", {mathsies.vec3.components(direction)})
+				self.individualPointShader:send("luminance", {mathsies.vec3.components(luminance * luminanceMultiplier)})
+				love.graphics.setShader(self.individualPointShader)
+				love.graphics.draw(self.pointDiskMesh)
+				love.graphics.setBlendMode("alpha")
+			else
+				if body.type == "star" then
+					love.graphics.setShader(self.starShader)
+					local surfaceArea = 2 * consts.tau * body.radius ^ 2
+					local surfaceLuminousExitance = body.luminousFlux / surfaceArea
+					local surfaceLuminance = surfaceLuminousExitance / (consts.tau / 2) -- Lambertian emitter
+					self.starShader:send("outputMultiplier", luminanceMultiplier)
+					self.starShader:send("surfaceLuminance", {mathsies.vec3.components(surfaceLuminance)})
+					self.starShader:send("bodyPosition", {mathsies.vec3.components(body.position)}) -- TEMP
+					self.starShader:send("bodyRadius", body.radius)
+					self.starShader:send("clipToSky", {mathsies.mat4.components(clipToSky)})
+					self.starShader:send("cameraPosition", {mathsies.vec3.components(cameraPositionRelative)}) -- TEMP
+					love.graphics.draw(self.dummyTexture, 0, 0, 0, outputCanvas:getDimensions())
+				end
+			end
+		end
+		love.graphics.setShader()
+	end
+
+	-- TODO: Reorganise and reconsolidate graphics state changes!
+
+	-- NOTE: Since attenuation coefficients are expected to be much much lower in larger layers than they are in smaller layers,
+	-- and objects (and so raymarching path lengths) in smaller layers are expected to be much much smaller than they are in larger layers,
+	-- any inaccuracies around not considering the adding of attenuation coefficients where layer attenuations intersect are considered negligible.
+
+	local smallestActiveLayer = self.pointLayers[1]
+	for _, pointLayer in ipairs(self.pointLayers) do
+		if pointLayer.parentPointLayer and not pointLayer.parentPointLayer.currentObject then
+			break -- Outside of any objects below this scale
+		end
+		smallestActiveLayer = pointLayer
+		drawLayer(pointLayer, false)
+	end
+
+	love.graphics.setCanvas(self.screenCanvasses.pointTotalTransmittanceCanvas)
+	love.graphics.clear(1, 0, 0, 1)
 
 	love.graphics.setCanvas()
+	love.graphics.setShader()
+	love.graphics.setBlendMode("alpha")
+
+	drawStarSystem()
+
+	if #self.pointLayers > 0 then
+		for i = smallestActiveLayer.index, 1, -1 do
+			local pointLayer = self.pointLayers[i]
+			drawLayer(pointLayer, true) -- Sets canvas to output canvas
+			love.graphics.setCanvas(self.screenCanvasses.pointTotalTransmittanceCanvas)
+			love.graphics.setBlendMode("multiply", "premultiplied")
+			love.graphics.setShader(self.attenuationAccumulationShader) -- Outputs alpha into red after dividing by additions
+			self.attenuationAccumulationShader:send("additionCanvas", pointLayer.volumetricAddCountCanvas)
+			self.attenuationAccumulationShader:send("canvasSize", {pointLayer.volumetricCanvas:getDimensions()})
+			love.graphics.draw(pointLayer.volumetricCanvas, 0, 0, 0, 1 / consts.volumetricCanvasScale)
+			love.graphics.setShader()
+		end
+	end
+	love.graphics.setShader()
+	love.graphics.setCanvas()
+	love.graphics.setBlendMode("alpha")
 end
 
 return game

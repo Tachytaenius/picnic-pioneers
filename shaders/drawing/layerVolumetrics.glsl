@@ -16,7 +16,7 @@ uniform float rayStepVariance;
 
 uniform float brightnessMultiplier;
 uniform ivec2 size;
-uniform layout(rgba16f) image2D resultCanvas;
+uniform layout(rgba32f) image2D resultCanvas;
 uniform layout(r8ui) uimage2D additionCountCanvas;
 
 uniform vec3[4] preNormaliseCornerDirs;
