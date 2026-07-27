@@ -37,7 +37,19 @@ function game:drawCelestial()
 	-- local vec = mathsies.vec3(1, 1, 1) -- 1, 1 for top right. Z doesn't matter because of normalisation below.
 	-- vec = clipToSky * vec
 	-- local angle = math.acos(mathsies.vec3.dot(mathsies.vec3.normalise(vec), mathsies.vec3(0, 0, 1)))
-	-- print(angle - diagonalFOV / 2) -- Very very very close to 0. This means that the diagonal FOV calculation is correct.
+	-- print(angle - diagonalFOV / 2) -- Very very very close to 0. This feels like confirmation that the diagonal FOV calculation is correct.
+
+	local cornerDirs = {}
+	for y = 1, -1, -2 do
+		for x = -1, 1, 2 do
+			local clipSpacePos = mathsies.vec3(x, y, -1) -- -1 for near plane but it makes no difference one everything is normalised in the compute shader(s). It may need to be consistent per-corner, though
+			local result = clipToSky * clipSpacePos
+			-- table.insert(cornerDirs, result.x)
+			-- table.insert(cornerDirs, result.y)
+			-- table.insert(cornerDirs, result.z)
+			table.insert(cornerDirs, {mathsies.vec3.components(result)})
+		end
+	end
 
 	local function drawLayer(pointLayer, pointMode)
 		local parentOrigin, parentObjectShapeTypeName, parentObjectShapeSubtypeId, parentObjectRadii, attenuationShapeTypeName, attenuationShapeSubtypeId, attenuationMultiplier
@@ -117,17 +129,6 @@ function game:drawCelestial()
 				volumetricShader:send("AttenuationNoiseValues", pointLayer.valueNoiseBufferAttenuation)
 			end
 
-			local cornerDirs = {}
-			for y = 1, -1, -2 do
-				for x = -1, 1, 2 do
-					local clipSpacePos = mathsies.vec3(x, y, -1) -- -1 for near plane but it makes no difference one everything is normalised in the compute shader. It may need to be consistent per-corner, though
-					local result = clipToSky * clipSpacePos
-					-- table.insert(cornerDirs, result.x)
-					-- table.insert(cornerDirs, result.y)
-					-- table.insert(cornerDirs, result.z)
-					table.insert(cornerDirs, {mathsies.vec3.components(result)})
-				end
-			end
 			volumetricShader:send("brightnessMultiplier", luminanceMultiplier)
 			volumetricShader:send("preNormaliseCornerDirs", unpack(cornerDirs))
 			volumetricShader:send("size", {pointLayer.volumetricCanvas:getDimensions()})
@@ -337,38 +338,60 @@ function game:drawCelestial()
 		self.individualPointShader:send("cameraUp", {mathsies.vec3.components(cameraUp)})
 		self.individualPointShader:send("cameraRight", {mathsies.vec3.components(cameraRight)})
 
+		local bodiesToDrawWhole = {} -- Gets sorted so that the furthest of these bodies is drawn first
+		local bodiesToDrawAsPoints = {} -- All of these are drawn (in whatever order) after the total transmittance canvas has been multiplied down by the presence of celestial bodies (and their atmospheres) so that they may be properly attenuated.
 		for _, body in ipairs(bodies) do
 			local difference = body.position - cameraPositionRelative
 			local distance = #difference
-			local direction = difference / distance
 			local resolvable = distance <= self:getSphereResolvableDistance(body.radius)
 
-			if not resolvable then
-				love.graphics.setBlendMode("add")
-				local luminance
-				if body.type == "star" then
-					luminance = body.luminousFlux / distance ^ 2 * luminanceCalcConst
-				end
-				self.individualPointShader:send("direction", {mathsies.vec3.components(direction)})
-				self.individualPointShader:send("luminance", {mathsies.vec3.components(luminance * luminanceMultiplier)})
-				love.graphics.setShader(self.individualPointShader)
-				love.graphics.draw(self.pointDiskMesh)
-				love.graphics.setBlendMode("alpha")
-			else
-				if body.type == "star" then
-					love.graphics.setShader(self.starShader)
-					local surfaceArea = 2 * consts.tau * body.radius ^ 2
-					local surfaceLuminousExitance = body.luminousFlux / surfaceArea
-					local surfaceLuminance = surfaceLuminousExitance / (consts.tau / 2) -- Lambertian emitter
-					self.starShader:send("outputMultiplier", luminanceMultiplier)
-					self.starShader:send("surfaceLuminance", {mathsies.vec3.components(surfaceLuminance)})
-					self.starShader:send("bodyPosition", {mathsies.vec3.components(body.position)}) -- TEMP
-					self.starShader:send("bodyRadius", body.radius)
-					self.starShader:send("clipToSky", {mathsies.mat4.components(clipToSky)})
-					self.starShader:send("cameraPosition", {mathsies.vec3.components(cameraPositionRelative)}) -- TEMP
-					love.graphics.draw(self.dummyTexture, 0, 0, 0, outputCanvas:getDimensions())
-				end
+			table.insert(resolvable and bodiesToDrawWhole or bodiesToDrawAsPoints, body)
+		end
+		table.sort(bodiesToDrawWhole, function(a, b)
+			-- If A is further than B, then it is drawn first
+			return mathsies.vec3.distance(cameraPositionRelative, a.position) > mathsies.vec3.distance(cameraPositionRelative, b.position)
+		end)
+		for _, body in ipairs(bodiesToDrawWhole) do
+			local bodyShader
+			if body.type == "star" then
+				bodyShader = self.starShader
+				local surfaceArea = 2 * consts.tau * body.radius ^ 2
+				local surfaceLuminousExitance = body.luminousFlux / surfaceArea
+				local surfaceLuminance = surfaceLuminousExitance / (consts.tau / 2) -- Lambertian emitter (TEMP?)
+				bodyShader:send("surfaceLuminance", {mathsies.vec3.components(surfaceLuminance)})
 			end
+			love.graphics.setShader(bodyShader)
+			bodyShader:send("preNormaliseCornerDirs", unpack(cornerDirs))
+			bodyShader:send("size", {outputCanvas:getDimensions()})
+			bodyShader:send("outputMultiplier", luminanceMultiplier)
+			bodyShader:send("bodyPosition", {mathsies.vec3.components(body.position)}) -- TEMP
+			bodyShader:send("bodyRadius", body.radius)
+			-- bodyShader:send("clipToSky", {mathsies.mat4.components(clipToSky)})
+			bodyShader:send("cameraPosition", {mathsies.vec3.components(cameraPositionRelative)}) -- TEMP
+			bodyShader:send("totalTransmittanceCanvas", self.screenCanvasses.pointTotalTransmittanceCanvas)
+			bodyShader:send("outputCanvas", outputCanvas)
+
+			local w, h = bodyShader:getLocalThreadgroupSize()
+			love.graphics.dispatchThreadgroups(bodyShader,
+				math.ceil(outputCanvas:getWidth() / w),
+				math.ceil(outputCanvas:getHeight() / h)
+			)
+		end
+		for _, body in ipairs(bodiesToDrawAsPoints) do
+			local difference = body.position - cameraPositionRelative
+			local distance = #difference
+			local direction = difference / distance
+
+			love.graphics.setBlendMode("add")
+			local luminance
+			if body.type == "star" then -- TODO: Calculate luminance of distant planets (when we even have any)
+				luminance = body.luminousFlux / distance ^ 2 * luminanceCalcConst
+			end
+			self.individualPointShader:send("direction", {mathsies.vec3.components(direction)})
+			self.individualPointShader:send("luminance", {mathsies.vec3.components(luminance * luminanceMultiplier)})
+			love.graphics.setShader(self.individualPointShader)
+			love.graphics.draw(self.pointDiskMesh)
+			love.graphics.setBlendMode("alpha")
 		end
 		love.graphics.setShader()
 	end

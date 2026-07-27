@@ -34,20 +34,22 @@ function game:initCelestial()
 
 	self.brightnessMultiplyShader = love.graphics.newShader("shaders/drawing/brightnessMultiply.glsl")
 
-	self.starShader = love.graphics.newShader(
+	self.starShader = love.graphics.newComputeShader(
 		"#line 1\n" .. love.filesystem.read("shaders/include/raycasts.glsl") ..
-		"#line 1\n" .. love.filesystem.read("shaders/include/skyDirection.glsl") ..
-		"#line 1\n" .. love.filesystem.read("shaders/drawing/star.glsl")
+		"#line 1\n" .. love.filesystem.read("shaders/drawing/bodies/star.glsl") ..
+		"#line 1\n" .. love.filesystem.read("shaders/drawing/body.glsl")
 	)
 
 	local width, height = self.screenWidth, self.screenHeight
 	self.screenCanvasses.pointTotalTransmittanceCanvas = love.graphics.newCanvas(width, height, { -- Gets multiplied down as the camera progresses out from the smallest layer to the largest. Distinct from the point attenuation texture because that is recalculated per-layer
 		format = "r16f",
-		debugname = "Point Total Transmittance Canvas"
+		debugname = "Point Total Transmittance Canvas",
+		computewrite = true
 	})
 	self.screenCanvasses.celestialOutputCanvas = love.graphics.newCanvas(width, height, {
 		format = "rgba16f",
-		debugname = "Celestial Output Canvas"
+		debugname = "Celestial Output Canvas",
+		computewrite = true
 	})
 
 	self.pointAttenuationTexture = love.graphics.newCanvas(
