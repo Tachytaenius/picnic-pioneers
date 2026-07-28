@@ -1,6 +1,50 @@
 -- There are lots of different coordinate systems in this file...
 -- In general, anything that needs to be both large and precise has either been avoided (e.g. by scaling down), or arbitrary precision numbers have been used
 
+--- PointLayerFunctions are the functions implemented by every PointLayer.
+---@class PointLayerFunctions
+---@field generateChunkCommon fun(realX: number, realY: number, realZ: number, chunkId: number, chunkBufferIndex: number)
+---@field getBoundingBoxChunks fun(self: any): (minX: number, maxX: number, minY: number, maxY: number, minZ: number, maxZ: number)
+---@field getChunkPointCount fun(chunkBufferIndex: number): number
+---@field getClosestPointIn2x2x2 fun(self: any, referencePosition: any)
+---@field getDensity fun(self: any, realX: number, realY: number, realZ: number): number -- The position is in units where 1 is the side length of a chunk. Returned density is a proportion from 0 to 1, where 1 is the point layer's max density
+---@field getPointVars fun(chunkBufferIndex: number, pointId: number, name: string, type: string, count: number): ...
+--- Actions are "prepare" (when near to an object but not close enough to need the results yet),
+--- "expect" (when the results are needed), and
+--- "cancel" (when there is no longer an object nearby or the point layer is not active)
+--- RNG should be be seeded appropriately for value noise if action == "prepare".
+--- action being prepare or expect means the the other two arguments are needed.
+---@field handleThreadedShapeInit fun(self: any, action: string)
+---@field prepareValueNoiseFunction fun(self: any) -- This is per shape type, so in case multiple layers use the same shape type this must be set before every use of the density function
+---@field randomiseValueNoise fun(self: any, type: string): ...
+---@field setChunkEmpty fun(self: any, chunkBufferIndex: number)
+---@field setChunkPointCount fun(self: any, chunkBufferIndex: number, count: number)
+---@field setPoint fun(self: any, chunkBufferIndex: number, pointId: number, ...)
+--- some of these need to be changed from "..." to ...<type> or <type>..., but I dunno what the types are yet
+
+--- PointLayer holds world and rendering data/state for elements at a particular scale (e.g. stars, galaxies).
+---@class PointLayer : PointLayerFunctions
+---@field public volumetricCanvas love.Canvas
+---@field public volumetricAddCountCanvas love.Canvas
+---@field public debugName string
+---@field chunkBufferSideLength number
+---@field chunkBufferTotalSize number
+---@field chunkExtraInfo table
+---@field chunkPointCountBuffer love.GraphicsBuffer
+---@field chunkPointCountData love.ByteData
+---@field chunkPointCountDataFFI ffi.cdata*
+---@field chunkSize number
+---@field chunkVolume number
+---@field ffiDataTypeFromPointVarIndex table
+---@field hasNoiseAttenuation boolean
+---@field hasNoiseEmission boolean
+---@field parentPointLayer PointLayer|nil
+---@field index number
+---@field childPointLayer PointLayer|nil
+---@field gameObject Gamestate self-proclaimed "HACK" :3
+--- not all fields added here yet...
+
+
 local ffi = require("ffi")
 local bm = require("bigmaths")
 local mathsies = require("lib.mathsies")
@@ -692,6 +736,12 @@ function game:clearPointLayers(startIndex)
 	end
 end
 
+---@param name string
+---@param debugName string
+---@param chunkSize number
+---@param maxPointDensity number
+---@param chunkBufferSideLength number
+---@param layerInfo table<string, any>
 function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBufferSideLength, layerInfo)
 	local new = {}
 

@@ -2,6 +2,7 @@ local bm = require("bigmaths")
 local consts = require("consts")
 local game = require("game")
 
+---@type Gamestate
 local state
 
 function love.load()
@@ -39,4 +40,8 @@ function love.draw()
 		"\"luminance\" multiplier order: " .. math.floor(math.log10(consts.celestialLuminanceMultiplier)) .. "\n" ..
 		"\"luminance\" multiplier: " .. consts.celestialLuminanceMultiplier
 	)
+end
+
+function love.resize(w, h)
+	state:resizeCanvas(w, h)
 end
