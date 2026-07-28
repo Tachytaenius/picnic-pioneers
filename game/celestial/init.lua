@@ -16,29 +16,35 @@ local game = {}
 
 ---@param width number
 ---@param height number
---- resizeCanvas sets game.screenWidth and game.screenHeight.
+--- resizeCelestialScreen sets game.screenWidth and game.screenHeight.
 --- It also recreates each canvas in screenCanvasses and the canvasses for each PointLayer with the updated dimensions, if necessary.
-function game:resizeCanvas(width, height)
-    local changed = width ~= self.screenWidth or height ~= self.screenHeight
-    if not changed then
-        return
-    end
+function game:resizeCelestialScreen(width, height)
+	local changed = width ~= self.screenWidth or height ~= self.screenHeight
+	if not changed then
+		return
+	end
 
-    self.screenWidth = width
-    self.screenHeight = height
-    self.volumetricCanvasWidth = math.ceil(consts.volumetricCanvasScale * self.screenWidth)
-   	self.volumetricCanvasHeight = math.ceil(consts.volumetricCanvasScale * self.screenHeight)
-    self.screenCanvasses.pointTotalTransmittanceCanvas = love.graphics.newCanvas(width, height, { -- Gets multiplied down as the camera progresses out from the smallest layer to the largest. Distinct from the point attenuation texture because that is recalculated per-layer
-  		format = "r16f",
-  		debugname = "Point Total Transmittance Canvas",
-  		computewrite = true
-   	})
-   	self.screenCanvasses.celestialOutputCanvas = love.graphics.newCanvas(width, height, {
-  		format = "rgba16f",
-  		debugname = "Celestial Output Canvas",
-  		computewrite = true
-   	})
-    self.pointAttenuationTexture = love.graphics.newCanvas(
+	for _, canvas in ipairs(self.screenCanvasses) do
+		canvas:release()
+	end
+
+	self.screenWidth = width
+	self.screenHeight = height
+	self.volumetricCanvasWidth = math.ceil(consts.volumetricCanvasScale * self.screenWidth)
+	self.volumetricCanvasHeight = math.ceil(consts.volumetricCanvasScale * self.screenHeight)
+
+	self.screenCanvasses.pointTotalTransmittanceCanvas = love.graphics.newCanvas(width, height, { -- Gets multiplied down as the camera progresses out from the smallest layer to the largest. Distinct from the point attenuation texture because that is recalculated per-layer
+		format = "r16f",
+		debugname = "Point Total Transmittance Canvas",
+		computewrite = true
+	})
+	self.screenCanvasses.celestialOutputCanvas = love.graphics.newCanvas(width, height, {
+		format = "rgba16f",
+		debugname = "Celestial Output Canvas",
+		computewrite = true
+	})
+
+	self.pointAttenuationTexture = love.graphics.newCanvas(
 		math.ceil(width * consts.pointAttenuationTextureScale),
 		math.ceil(height * consts.pointAttenuationTextureScale),
 		consts.pointAttenuationTextureSteps,
@@ -50,8 +56,17 @@ function game:resizeCanvas(width, height)
 	)
 	self.pointAttenuationTexture:setFilter("linear")
 	self.pointAttenuationTexture:setWrap("clamp", "clamp", "clamp")
+
 	for _, pointLayer in ipairs(self.pointLayers) do
-	    pointLayer.volumetricCanvas = love.graphics.newCanvas(self.volumetricCanvasWidth, self.volumetricCanvasHeight, {
+		if pointLayer.volumetricCanvas then
+			pointLayer.volumetricCanvas:release()
+		end
+		if pointLayer.volumetricAddCountCanvas then
+			pointLayer.volumetricAddCountCanvas:release()
+		end
+
+		-- pointLayer.volumetricCanvasCameraInfo = nil -- Not needed since the new canvas is ready for new rays to add in
+		pointLayer.volumetricCanvas = love.graphics.newCanvas(self.volumetricCanvasWidth, self.volumetricCanvasHeight, {
 			debugname = pointLayer.debugName .. " Volumetric Canvas",
 			format = "rgba32f", -- RGB for luminance and A for opacity (1 - transmittance). 32 bits to maintain precision when adding up. When drawing the value of the point total transmittance canvas, it was shown to become imprecise (banding and other artifacts) after a while with 16 bits.
 			computewrite = true
@@ -97,30 +112,7 @@ function game:initCelestial()
 		"#line 1\n" .. love.filesystem.read("shaders/drawing/body.glsl")
 	)
 
-	local width, height = self.screenWidth, self.screenHeight
-	self.screenCanvasses.pointTotalTransmittanceCanvas = love.graphics.newCanvas(width, height, { -- Gets multiplied down as the camera progresses out from the smallest layer to the largest. Distinct from the point attenuation texture because that is recalculated per-layer
-		format = "r16f",
-		debugname = "Point Total Transmittance Canvas",
-		computewrite = true
-	})
-	self.screenCanvasses.celestialOutputCanvas = love.graphics.newCanvas(width, height, {
-		format = "rgba16f",
-		debugname = "Celestial Output Canvas",
-		computewrite = true
-	})
-
-	self.pointAttenuationTexture = love.graphics.newCanvas(
-		math.ceil(width * consts.pointAttenuationTextureScale),
-		math.ceil(height * consts.pointAttenuationTextureScale),
-		consts.pointAttenuationTextureSteps,
-		{
-			type = "volume",
-			format = "r16f",
-			computewrite = true
-		}
-	)
-	self.pointAttenuationTexture:setFilter("linear")
-	self.pointAttenuationTexture:setWrap("clamp", "clamp", "clamp")
+	self:resizeCelestialScreen(self.screenWidth, self.screenHeight)
 
 	local clearPointAttenuationTexture = love.image.newImageData(1, 1, "r16f")
 	clearPointAttenuationTexture:setPixel(0, 0, 1, 0, 0, 1)

@@ -26,6 +26,7 @@
 ---@class PointLayer : PointLayerFunctions
 ---@field public volumetricCanvas love.Canvas
 ---@field public volumetricAddCountCanvas love.Canvas
+---@field public volumetricCanvasCameraInfo table
 ---@field public debugName string
 ---@field chunkBufferSideLength number
 ---@field chunkBufferTotalSize number
@@ -946,16 +947,7 @@ function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBu
 	new.shapeMassData = love.data.newByteData(bytesPerFloat * consts.shapeSlowdownIntegralDataCount)
 	new.shapeMassDataFFI = ffi.cast("float*", new.shapeMassData:getFFIPointer())
 
-	new.volumetricCanvas = love.graphics.newCanvas(self.volumetricCanvasWidth, self.volumetricCanvasHeight, {
-		debugname = debugName .. " Volumetric Canvas",
-		format = "rgba32f", -- RGB for luminance and A for opacity (1 - transmittance). 32 bits to maintain precision when adding up. When drawing the value of the point total transmittance canvas, it was shown to become imprecise (banding and other artifacts) after a while with 16 bits.
-		computewrite = true
-	})
-	new.volumetricAddCountCanvas = love.graphics.newCanvas(self.volumetricCanvasWidth, self.volumetricCanvasHeight, {
-		debugname = debugName .. " Volumetric Addition Count Canvas",
-		format = "r8ui",
-		computewrite = true
-	})
+	-- volumetricCanvas and volumetricAddCountCanvas are added after initPointLayers in resizeCelestialScreen (called by initCelestial)
 
 	return new
 end

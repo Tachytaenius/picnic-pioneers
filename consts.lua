@@ -135,7 +135,7 @@ function consts.load()
 	consts.pointLayerShapeTypeAmountIntegralMaxThreads = 7
 	consts.shapeIntegralThreadTimeout = 1
 
-	consts.pointLayerShapeTypeAmountIntegralSteps = 4
+	consts.pointLayerShapeTypeAmountIntegralSteps = 80
 	consts.pointLayerShapeTypeAmountIntegralAverageRepeatCount = 8 -- Skips noiseless shape types
 
 	consts.lodBoxRange = 2

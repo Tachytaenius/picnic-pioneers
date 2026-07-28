@@ -43,5 +43,5 @@ function love.draw()
 end
 
 function love.resize(w, h)
-	state:resizeCanvas(w, h)
+	state:resizeCelestialScreen(w, h)
 end

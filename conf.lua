@@ -9,5 +9,6 @@ function love.conf(t)
 	t.window.title = consts.windowTitle
 	t.window.width = consts.windowWidth
 	t.window.height = consts.windowHeight
+	t.window.resizable = true
 	t.graphics.gammacorrect = true
 end
