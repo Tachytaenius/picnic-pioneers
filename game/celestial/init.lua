@@ -18,9 +18,9 @@ local game = {}
 ---@param height number
 --- resizeCelestialScreen sets game.screenWidth and game.screenHeight.
 --- It also recreates each canvas in screenCanvasses and the canvasses for each PointLayer with the updated dimensions, if necessary.
-function game:resizeCelestialScreen(width, height)
+function game:resizeCelestialScreen(width, height, forceRecreate)
 	local changed = width ~= self.screenWidth or height ~= self.screenHeight
-	if not changed then
+	if not changed and not forceRecreate then
 		return
 	end
 
@@ -112,7 +112,7 @@ function game:initCelestial()
 		"#line 1\n" .. love.filesystem.read("shaders/drawing/body.glsl")
 	)
 
-	self:resizeCelestialScreen(self.screenWidth, self.screenHeight)
+	self:resizeCelestialScreen(self.screenWidth, self.screenHeight, true)
 
 	local clearPointAttenuationTexture = love.image.newImageData(1, 1, "r16f")
 	clearPointAttenuationTexture:setPixel(0, 0, 1, 0, 0, 1)
