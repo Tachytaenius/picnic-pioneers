@@ -1,3 +1,91 @@
+---@class bm.vec3
+---@field x mapm.number
+---@field y mapm.number
+---@field z mapm.number
+
+---@class mathsies.vec3
+---@field x number
+---@field y number
+---@field z number
+
+---@class BufferFormat
+---@field name string
+---@field format string
+---@field location number|nil
+
+---@class Consts
+---@field identity string
+---@field loveVersion string
+---@field windowTitle string
+---@field windowWidth number
+---@field windowHeight number
+---@field tau number
+---@field maxDeltaTime number
+---@field rightVector mathsies.vec3
+---@field upVector mathsies.vec3
+---@field forwardVector mathsies.vec3
+---@field mapmDigits number
+---@field bytesPerGPUVar number
+---@field pointMinDistanceInChunk number
+---@field pointAsyncSetupDistanceMultiplier number
+---@field idObjectTypes table<string, number>
+---@field objectGenerationStages table<string, number>
+---@field noAttenuationShapeTypeName string
+---@field controls table<string, string>
+---@field intBufferFormat BufferFormat[]
+---@field uintBufferFormat BufferFormat[]
+---@field floatBufferFormat BufferFormat[]
+---@field indirectDrawBufferFormat BufferFormat[]
+---@field pointDrawableBufferFormat BufferFormat[]
+---@field pointDiskVertexFormat BufferFormat[]
+---@field gravitationalConstant number
+---@field planckConstant number
+---@field speedOfLight number
+---@field stefanBoltzmannConstant number
+---@field starLayerChunkSize number
+---@field maxStellarDensity number
+---@field galaxyLayerChunkSize number
+---@field maxGalacticDensity number
+---@field galaxyGroupPosition bm.vec3
+---@field galaxyGroupScale number
+---@field galaxyGroupZScaleRatio number
+---@field galaxyGroupShapeTypeName string
+---@field galaxyGroupAttenuationShapeName string
+---@field galaxyGroupAttenuationMultiplier number
+---@field slowdownDistanceExponent number
+---@field gravityFactorExponent number
+---@field gravityMovementRate number
+---@field pointAttenuationTextureScale number
+---@field pointAttenuationTextureSteps number
+---@field diskMeshVertices number
+---@field pointAngularRadius number
+---@field pointFadeStart number
+---@field pointFadeExponent number
+---@field celestialLuminanceMultiplier number
+---@field pointPreparationThreadgroupSize number
+---@field pointLayerShapeTypeAmountIntegralMaxThreads number
+---@field shapeIntegralThreadTimeout number
+---@field pointLayerShapeTypeAmountIntegralSteps number
+---@field pointLayerShapeTypeAmountIntegralAverageRepeatCount number
+---@field lodBoxRange number
+---@field shapeSlowdownIntegralDetail number
+---@field shapeSlowdownIntegralHighestStepCount number
+---@field shapeSlowdownIntegralDataStarts number[]
+---@field shapeSlowdownIntegralDataCount number
+---@field volumetricMaxRaySteps number
+---@field volumetricCanvasScale number
+---@field volumetricMaxPixelAdditions number
+---@field starDensity number
+---@field starEffectiveTemperature number
+---@field starMassRandomTerm1Weight number
+---@field starMassRandomTerm1Exponent number
+---@field starMassExponentRangeLow number
+---@field starMassExponentRangeHigh number
+---@field starMassMultiplier number
+---@field averageStarMass number
+---@field averageStarLuminousFluxR number
+---@field averageStarLuminousFluxG number
+---@field averageStarLuminousFluxB number
 local consts = {}
 
 function consts.load()
