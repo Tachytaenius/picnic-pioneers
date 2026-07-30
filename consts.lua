@@ -195,8 +195,8 @@ function consts.load()
 	consts.galaxyLayerChunkSize = 1e25
 	consts.maxGalacticDensity = 1e-73
 	consts.galaxyGroupPosition = bm.vec3(0, 0, 0)
-	-- Object radii do not need to be precise like positions do
-	consts.galaxyGroupScale = 5e27
+	consts.galaxyGroupOrientation = mathsies.quat()
+	consts.galaxyGroupScale = 5e27 -- Object radii do not need to be precise like positions do
 	consts.galaxyGroupZScaleRatio = 1
 	consts.galaxyGroupShapeTypeName = "universeFilaments"
 	consts.galaxyGroupAttenuationShapeName = consts.noAttenuationShapeTypeName

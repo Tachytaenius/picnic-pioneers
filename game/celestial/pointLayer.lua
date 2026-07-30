@@ -65,6 +65,71 @@ end
 local function randomRangeTODO(lower, upper)
 	return lower + love.math.random() * (upper - lower)
 end
+local function randomOrientationTODO()
+	-- Angles
+	local phi = love.math.random() * consts.tau
+	local cosTheta = love.math.random() * 2 - 1
+	local theta = math.acos(cosTheta)
+	-- Get a random roll angle with the probability density function 2 / pi * sin(x / 2) ^ 2 where x is in [0, pi)
+	-- Source for above is https://math.stackexchange.com/questions/442418/random-generation-of-rotation-matrices#comment7610329_442423
+	-- The integral of that function is (x - sin(x)) / pi, which... can't be inverted analytically, it seems
+	-- So we're going to use a numerical method.
+	local function newtonRaphson(f, fDeriv, input, initOutputGuess, iters)
+		local output = initOutputGuess
+		for _=1, iters do
+			output = output - (f(output) - input) / fDeriv(output)
+		end
+		return output
+	end
+	local function f(x)
+		return (x - math.sin(x)) / math.pi
+	end
+	local function fDeriv(x)
+		return 2 / math.pi * math.sin(x / 2) ^ 2
+	end
+	local rollRand = love.math.random()
+	local roll = rollRand == 0 and 0 or newtonRaphson(f, fDeriv, rollRand, math.pi * rollRand, 16)
+	-- Sphere point (rotation axis)
+	local st, sp, ct, cp = math.sin(theta), math.sin(phi), math.cos(theta), math.cos(phi)
+	local sphereX = st*sp
+	local sphereY = ct
+	local sphereZ = st*cp
+	-- Make quaternion
+	local s, c = math.sin(roll / 2), math.cos(roll / 2)
+	local x, y, z, w = sphereX * s, sphereY * s, sphereZ * s, c
+	local len = math.sqrt(x^2 + y^2 + z^2 + w^2)
+	x = x / len
+	y = y / len
+	z = z / len
+	w = w / len
+	return x, y, z, w
+end
+
+-- Testing rotation uniformity
+-- local samplepositions = {
+-- 	{c=0,v=consts.rightVector},
+-- 	{c=0,v=consts.upVector},
+-- 	{c=0,v=consts.forwardVector}
+-- }
+-- local count = 100000
+-- for _=1, count do
+-- 	local rot = mathsies.quat(randomOrientationTODO())
+-- 	local vec = mathsies.vec3.rotate(consts.forwardVector, rot)
+-- 	local mind, minv = math.huge, nil
+-- 	for _, v in ipairs(samplepositions) do
+-- 		local d = mathsies.vec3.distance(vec, v.v)
+-- 		if d < mind then
+-- 			mind = d
+-- 			minv = v
+-- 		end
+-- 	end
+-- 	if minv then
+-- 		minv.c=minv.c+1
+-- 	end
+-- end
+-- for _, v in ipairs(samplepositions) do
+-- 	print(v.c, v.v)
+-- end
 
 local function getBoundingBoxChunksForSize(chunkSize, x, y, z)
 	-- TODO: I think this and the code using it breaks (slightly) when size[x/y/z] / chunkSize is an integer
@@ -75,13 +140,16 @@ local function getBoundingBoxChunksForSize(chunkSize, x, y, z)
 end
 
 local galaxyPointLayerInfo = {
-	fixedParentObjectPosition = consts.galaxyGroupPosition,
-	fixedParentObjectRadii = consts.galaxyGroupScale * mathsies.vec3(1, 1, consts.galaxyGroupZScaleRatio),
-	fixedParentObjectShapeTypeName = consts.galaxyGroupShapeTypeName,
-	fixedParentObjectShapeSubtypeId = 0, -- TODO: Allow selecting from closest subtype to given parameters...?
-	fixedParentObjectAttenuationShapeTypeName = consts.galaxyGroupAttenuationShapeName,
-	fixedParentObjectAttenuationShapeSubtypeId = 0,
-	fixedParentObjectAttenuationMultiplier = consts.galaxyGroupAttenuationMultiplier
+	fixedParentObject = {
+		position = consts.galaxyGroupPosition,
+		radii = consts.galaxyGroupScale * mathsies.vec3(1, 1, consts.galaxyGroupZScaleRatio),
+		orientation = consts.galaxyGroupOrientation,
+		shapeTypeName = consts.galaxyGroupShapeTypeName,
+		shapeSubtypeId = 0, -- TODO: Allow selecting from closest subtype to given parameters...?
+		attenuationShapeTypeName = consts.galaxyGroupAttenuationShapeName,
+		attenuationShapeSubtypeId = 0,
+		attenuationMultiplier = consts.galaxyGroupAttenuationMultiplier
+	}
 }
 
 galaxyPointLayerInfo.features = {
@@ -90,6 +158,7 @@ galaxyPointLayerInfo.features = {
 	attenuationShapeTypeSubtypeIds = "unsent",
 	attenuationMultiplier = "unsent",
 	radii = "unsent",
+	orientation = "unsent",
 	mass = "unsent",
 
 	shapeTypeSet = {
@@ -135,6 +204,7 @@ function galaxyPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, chunkB
 	local shapeTypeSubtypeIdInfo = extraInfo.shapeTypeSubtypeIds
 	local attenuationShapeTypeSubtypeIdInfo = extraInfo.attenuationShapeTypeSubtypeIds
 	local attenuationMultiplierInfo = extraInfo.attenuationMultiplier
+	local orientationInfo = extraInfo.orientation
 
 	local nextLayerMaxDensity = self.childPointLayer.maxPointDensity
 	local nextLayerAverageMassPerPoint = self.childPointLayer.averageMassPerPoint
@@ -168,6 +238,13 @@ function galaxyPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, chunkB
 		radiiInfo[i * 3] = xRadius
 		radiiInfo[i * 3 + 1] = yRadius
 		radiiInfo[i * 3 + 2] = zRadius
+
+		-- Get orientation
+		local ox, oy, oz, ow = randomOrientationTODO(randomGeneratorTODO)
+		orientationInfo[i * 4] = ox
+		orientationInfo[i * 4 + 1] = oy
+		orientationInfo[i * 4 + 2] = oz
+		orientationInfo[i * 4 + 3] = ow
 
 		local baseAmount
 		if shapeType.needsTrueRatio then
@@ -277,10 +354,6 @@ function game:initPointLayers()
 
 	self.valueNoiseDataReusableForPointLayers = nil -- If no point layers took this then it now no longer will be used
 
-	-- Find distance at which top layer shape has the same angular radius as points
-	local topRadius = math.max(topLayer.fixedParentObjectRadii.x, topLayer.fixedParentObjectRadii.y, topLayer.fixedParentObjectRadii.z)
-	topLayer.fixedParentObjectPointDistance = self:getSphereResolvableDistance(topRadius)
-
 	self:seedCelestialRNG(self:getGlobalCelestialObjectIdNumbers(
 		consts.idObjectTypes.universe,
 		consts.objectGenerationStages.noiseValues
@@ -302,13 +375,13 @@ function game:initPointLayers()
 
 	-- Checks
 
-	local topLayerShapeType = self.pointLayerShapeTypes[topLayer.fixedParentObjectShapeTypeName]
+	local topLayerShapeType = self.pointLayerShapeTypes[topLayer.fixedParentObject.shapeTypeName]
 	if topLayerShapeType.needsTrueRatio then
-		assert(topLayer.fixedParentObjectRadii.x == topLayer.fixedParentObjectRadii.y,
+		assert(topLayer.fixedParentObject.radii.x == topLayer.fixedParentObject.radii.y,
 			"Bad radii for top point layer. x and y must be the same for shape types that have needsTrueRatio. Objects with those shape types can only be lengthened/shortened relative to other axes on the z axis for now. Spheres or oblate/prolate spheroids, no triaxial ellipsoids."
 		)
-		local xyScale = topLayer.fixedParentObjectRadii.x -- x equals y was asserted
-		local zScaleRatio = topLayer.fixedParentObjectRadii.z / xyScale
+		local xyScale = topLayer.fixedParentObject.radii.x -- x equals y was asserted
+		local zScaleRatio = topLayer.fixedParentObject.radii.z / xyScale
 		if not (topLayerShapeType.zScaleRatioMin <= zScaleRatio and zScaleRatio <= topLayerShapeType.zScaleRatioMax) then
 			error("Top point layer's z scale ratio is " .. zScaleRatio .. " but must be between " .. topLayerShapeType.zScaleRatioMin .. " and " .. topLayerShapeType.zScaleRatioMax)
 		end
@@ -422,18 +495,18 @@ end
 local pointLayerFunctions = {}
 
 function pointLayerFunctions:getDensity(realX, realY, realZ) -- The position is in units where 1 is the side length of a chunk. Returned density is a proportion from 0 to 1, where 1 is the point layer's max density
-	local shapeTypeName, shapeSubtypeId, size
+	-- Position must be already in the object's own local reference frame (i.e. rotated by orientation)
+	local currentObject
 	if self.parentPointLayer then
-		local currentObject = self.parentPointLayer.currentObject
+		currentObject = self.parentPointLayer.currentObject
 		assert(currentObject, "Should not be calling getDensity on a point layer if its parent doesn't have a current object")
-		shapeTypeName = currentObject.shapeTypeName
-		shapeSubtypeId = currentObject.shapeSubtypeId
-		size = currentObject.radii
 	else
-		shapeTypeName = self.fixedParentObjectShapeTypeName
-		shapeSubtypeId = self.fixedParentObjectShapeSubtypeId
-		size = self.fixedParentObjectRadii
+		currentObject = self.fixedParentObject
 	end
+	local shapeTypeName = currentObject.shapeTypeName
+	local shapeSubtypeId = currentObject.shapeSubtypeId
+	local size = currentObject.radii
+
 	local shapeType = self.gameObject.pointLayerShapeTypes[shapeTypeName]
 	local densityFunction = shapeType.getDensity
 	local densityParametersScratchTable = self.gameObject:decodeShapeSubtypeIntoScratchTable(shapeType, shapeSubtypeId)
@@ -464,12 +537,16 @@ function pointLayerFunctions:randomiseValueNoise(type)
 	local relevantShapeTypeName
 	if type == "emission" then
 		relevantShapeTypeName =
-			self.parentPointLayer and (self.parentPointLayer.currentObject or self.parentPointLayer.currentPotentialObject).shapeTypeName
-			or self.fixedParentObjectShapeTypeName
+			(self.parentPointLayer and (
+				self.parentPointLayer.currentObject or
+				self.parentPointLayer.currentPotentialObject
+			) or self.fixedParentObject).shapeTypeName
 	elseif type == "attenuation" then
 		relevantShapeTypeName =
-			self.parentPointLayer and (self.parentPointLayer.currentObject or self.parentPointLayer.currentPotentialObject).attenuationShapeTypeName
-			or self.fixedParentObjectAttenuationShapeTypeName
+			(self.parentPointLayer and (
+				self.parentPointLayer.currentObject or
+				self.parentPointLayer.currentPotentialObject
+			) or self.fixedParentObject).attenuationShapeTypeName
 	end
 	if not relevantShapeTypeName then
 		return
@@ -493,7 +570,7 @@ function pointLayerFunctions:prepareValueNoiseFunction() -- This is per shape ty
 	-- For point density (emission) only, not for attenuation
 	local relevantShapeTypeName =
 		self.parentPointLayer and self.parentPointLayer.currentObject.shapeTypeName
-		or self.fixedParentObjectShapeTypeName
+		or self.fixedParentObject.shapeTypeName
 	local shapeType = self.gameObject.pointLayerShapeTypes[relevantShapeTypeName]
 	if not shapeType.noiseInfo then
 		return
@@ -510,7 +587,7 @@ function pointLayerFunctions:getBoundingBoxChunks()
 		assert(currentObject, "Should not be calling getBoundingBoxChunks on a point layer if its parent doesn't have a current object")
 		size = currentObject.radii
 	else
-		size = self.fixedParentObjectRadii
+		size = self.fixedParentObject.radii
 	end
 	return getBoundingBoxChunksForSize(self.chunkSize, mathsies.vec3.components(size))
 end
@@ -589,18 +666,7 @@ function pointLayerFunctions:setChunkEmpty(chunkBufferIndex)
 	self:setChunkPointCount(chunkBufferIndex, 0)
 end
 
-function pointLayerFunctions:getClosestPointIn2x2x2(referencePosition)
-	local parentOrigin
-	if not self.parentPointLayer then
-		parentOrigin = self.fixedParentObjectPosition
-	else
-		assert(self.parentPointLayer.currentObject, "Can't call getClosestPointIn2x2x2 on a pointLayer that isn't loaded")
-		parentOrigin = self.parentPointLayer.currentObject.position
-	end
-	local positionRelative = bm.vec3.toMathsiesVec3( -- Chunk sides have a length of 1
-		(referencePosition - parentOrigin) / self.chunkSize
-	)
-
+function pointLayerFunctions:getClosestPointIn2x2x2(positionRelative)
 	local closestChunkX
 	local closestChunkY
 	local closestChunkZ
@@ -673,17 +739,16 @@ function pointLayerFunctions:handleThreadedShapeInit(action)
 			resultChannelSuffix = "Layer" .. self.index
 		}
 
-		local shapeTypeName, shapeSubtypeId, radii
+		local currentObject
 		if self.parentPointLayer then
-			local currentObject = self.parentPointLayer.currentObject or self.parentPointLayer.currentPotentialObject
-			shapeTypeName = currentObject.shapeTypeName
-			shapeSubtypeId = currentObject.shapeSubtypeId
-			radii = currentObject.radii
+			currentObject = self.parentPointLayer.currentObject or self.parentPointLayer.currentPotentialObject
 		else
-			shapeTypeName = self.fixedParentObjectShapeTypeName
-			shapeSubtypeId = self.fixedParentObjectShapeSubtypeId
-			radii = self.fixedParentObjectRadii
+			currentObject = self.fixedParentObject
 		end
+		local shapeTypeName = currentObject.shapeTypeName
+		local shapeSubtypeId = currentObject.shapeSubtypeId
+		local radii = currentObject.radii
+
 		local shapeType = self.gameObject.pointLayerShapeTypes[shapeTypeName]
 		local scratch = self.gameObject:decodeShapeSubtypeIntoScratchTable(shapeType, shapeSubtypeId)
 
@@ -802,7 +867,8 @@ function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBu
 	tryFeature("attenuationShapeTypeSubtypeIds", "uint32vec2", "ATTENUATION_SHAPE_TYPE_SUBTYPE")
 	tryFeature("attenuationMultiplier", "float", "ATTENUATION_MULTIPLIER")
 	tryFeature("radii", "floatvec3", "RADII")
-	tryFeature("mass", "float", "MASS") -- For final layer (star systems)
+	tryFeature("orientation", "floatvec4", "ORIENTATION")
+	tryFeature("mass", "float", "MASS")
 
 	new.pointBuffer = love.graphics.newBuffer(new.pointBufferFormat, new.maxPoints, {
 		shaderstorage = true,
@@ -865,13 +931,13 @@ function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBu
 	local relevantShapeTypeSet = new.parentPointLayer and new.parentPointLayer.features.shapeTypeSet
 	if not relevantShapeTypeSet then
 		assert(new.index == 1, "Only the top layer should not have a parent layer")
-		local shapeType = self.pointLayerShapeTypes[new.fixedParentObjectShapeTypeName]
+		local shapeType = self.pointLayerShapeTypes[new.fixedParentObject.shapeTypeName]
 		if shapeType.noiseInfo then
 			hasNoiseEmission = true
 			maxNoiseValuesEmission = math.max(maxNoiseValuesEmission, shapeType.noiseInfo.requiredValueCount)
 		end
 
-		local shapeType = self.pointLayerShapeTypes[new.fixedParentObjectAttenuationShapeTypeName]
+		local shapeType = self.pointLayerShapeTypes[new.fixedParentObject.attenuationShapeTypeName]
 		if shapeType and shapeType.noiseInfo then
 			hasNoiseAttenuation = true
 			maxNoiseValuesAttenuation = math.max(maxNoiseValuesAttenuation, shapeType.noiseInfo.requiredValueCount)
@@ -962,16 +1028,18 @@ function game:handlePointLayers()
 	for pointLayerIndex, pointLayer in ipairs(self.pointLayers) do
 		local updateChunkCountBuffer = false
 
-		local parentOrigin
+		local parentOrigin, parentOrientation
 		if not pointLayer.parentPointLayer then
-			parentOrigin = pointLayer.fixedParentObjectPosition
+			parentOrigin = pointLayer.fixedParentObject.position
+			parentOrientation = pointLayer.fixedParentObject.orientation
 		else
 			assert(pointLayer.parentPointLayer.currentObject, "handlePointLayers loop has run into a point layer that shouldn't be being handled")
 			parentOrigin = pointLayer.parentPointLayer.currentObject.position
+			parentOrientation = pointLayer.parentPointLayer.currentObject.orientation
 		end
-		local positionRelative = bm.vec3.toMathsiesVec3( -- Chunk sides have a length of 1
+		local positionRelative = mathsies.vec3.rotate(bm.vec3.toMathsiesVec3( -- Chunk sides have a length of 1
 			(self.ship.position - parentOrigin) / pointLayer.chunkSize
-		)
+		), parentOrientation)
 
 		local minX, maxX, minY, maxY, minZ, maxZ = pointLayer:getBoundingBoxChunks()
 		local widthChunks = maxX - minX + 1
@@ -1043,7 +1111,7 @@ function game:handlePointLayers()
 				pointLayer.topLayerOutOfRange = false
 			end
 		end
-		local closestChunkX, closestChunkY, closestChunkZ, closestIdInChunk, closestDistance = pointLayer:getClosestPointIn2x2x2(self.ship.position)
+		local closestChunkX, closestChunkY, closestChunkZ, closestIdInChunk, closestDistance = pointLayer:getClosestPointIn2x2x2(positionRelative)
 		if closestIdInChunk and closestDistance < consts.pointMinDistanceInChunk / 2 then
 			local x2, y2, z2 = closestChunkX - minX, closestChunkY - minY, closestChunkZ - minZ
 			local chunkId = x2 + y2 * widthChunks + z2 * widthChunks * heightChunks
@@ -1062,14 +1130,6 @@ function game:handlePointLayers()
 					shapeTypeId, shapeSubtypeId = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "shapeTypeSubtypeIds", "uint32", 2)
 				elseif pointLayer.features.shapeTypeSubtypeIds == "unsent" then
 					shapeTypeId, shapeSubtypeId = chunkExtraInfo.shapeTypeSubtypeIds[closestIdInChunk * 2], chunkExtraInfo.shapeTypeSubtypeIds[closestIdInChunk * 2 + 1]
-				end
-			end
-			local attenuationShapeTypeId, attenuationShapeSubtypeId
-			if pointLayer.features.attenuationShapeTypeSubtypeIds then
-				if pointLayer.features.attenuationShapeTypeSubtypeIds == "sent" then
-					attenuationShapeTypeId, attenuationShapeSubtypeId = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "attenuationShapeTypeSubtypeIds", "uint32", 2)
-				elseif pointLayer.features.attenuationShapeTypeSubtypeIds == "unsent" then
-					attenuationShapeTypeId, attenuationShapeSubtypeId = chunkExtraInfo.attenuationShapeTypeSubtypeIds[closestIdInChunk * 2], chunkExtraInfo.attenuationShapeTypeSubtypeIds[closestIdInChunk * 2 + 1]
 				end
 			end
 			local xRadius, yRadius, zRadius
@@ -1104,8 +1164,6 @@ function game:handlePointLayers()
 
 					shapeTypeName = self.pointLayerShapeTypes[shapeTypeId].name,
 					shapeSubtypeId = shapeSubtypeId,
-					attenuationShapeTypeName = self.pointLayerShapeTypes[attenuationShapeTypeId].name,
-					attenuationShapeSubtypeId = attenuationShapeSubtypeId,
 					radii = xRadius and mathsies.vec3(xRadius, yRadius, zRadius) or nil
 				}
 				self:seedCelestialRNG(self:getGlobalCelestialObjectIdNumbers(
@@ -1127,7 +1185,6 @@ function game:handlePointLayers()
 				end
 				assert(xRadius and yRadius and zRadius, "Missing radii")
 				local maxRadius = math.max(xRadius, yRadius, zRadius)
-				-- local trueDistance = bm.mapm.tonumber(bm.vec3.distance(self.ship.position, objectPosition))
 				local trueDistance = pointLayer.chunkSize * closestDistance
 				resolvable = trueDistance <= self:getSphereResolvableDistance(maxRadius)
 			end
@@ -1160,7 +1217,12 @@ function game:handlePointLayers()
 				local currentObject = pointLayer.currentObject
 				-- Features with consistent ways of calculating
 				local x, y, z = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "position", "float", 3)
-				local objectPosition = parentOrigin + pointLayer.chunkSize * bm.vec3(closestChunkX + x, closestChunkY + y, closestChunkZ + z)
+				local objectPosition = parentOrigin + pointLayer.chunkSize * bm.vec3(mathsies.vec3.components(
+					mathsies.vec3.rotate(
+						mathsies.vec3(closestChunkX + x, closestChunkY + y, closestChunkZ + z),
+						mathsies.quat.inverse(parentOrientation)
+					)
+				))
 				currentObject.position = objectPosition
 				currentObject.luminousFlux = mathsies.vec3(r, g, b) * pointLayer.chunkSize ^ 2 -- Bring back to proper units
 				if pointLayer.features.shapeTypeSubtypeIds then
@@ -1168,11 +1230,29 @@ function game:handlePointLayers()
 					currentObject.shapeSubtypeId = shapeSubtypeId
 				end
 				if pointLayer.features.attenuationShapeTypeSubtypeIds then
+					local attenuationShapeTypeId, attenuationShapeSubtypeId
+					if pointLayer.features.attenuationShapeTypeSubtypeIds == "sent" then
+						attenuationShapeTypeId, attenuationShapeSubtypeId = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "attenuationShapeTypeSubtypeIds", "uint32", 2)
+					elseif pointLayer.features.attenuationShapeTypeSubtypeIds == "unsent" then
+						attenuationShapeTypeId, attenuationShapeSubtypeId = chunkExtraInfo.attenuationShapeTypeSubtypeIds[closestIdInChunk * 2], chunkExtraInfo.attenuationShapeTypeSubtypeIds[closestIdInChunk * 2 + 1]
+					end
 					currentObject.attenuationShapeTypeName = self.pointLayerShapeTypes[attenuationShapeTypeId].name
 					currentObject.attenuationShapeSubtypeId = attenuationShapeSubtypeId
 				end
 				if pointLayer.features.radii then
 					currentObject.radii = mathsies.vec3(xRadius, yRadius, zRadius)
+				end
+				if pointLayer.features.orientation then
+					local ox, oy, oz, ow
+					if pointLayer.features.radii == "sent" then
+						ox, oy, oz, ow = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "orientation", "float", 4)
+					elseif pointLayer.features.radii == "unsent" then
+						ox = chunkExtraInfo.orientation[closestIdInChunk * 4]
+						oy = chunkExtraInfo.orientation[closestIdInChunk * 4 + 1]
+						oz = chunkExtraInfo.orientation[closestIdInChunk * 4 + 2]
+						ow = chunkExtraInfo.orientation[closestIdInChunk * 4 + 3]
+					end
+					currentObject.orientation = mathsies.quat(ox, oy, oz, ow)
 				end
 				if pointLayer.features.mass then
 					local mass
@@ -1217,22 +1297,6 @@ function game:getPointLayerGravityWellSlowdownFactor()
 
 	local exponent = consts.slowdownDistanceExponent
 
-	-- Not needed since the top point layer remains loaded and the calculations work fine
-	-- local topLayer = self.pointLayers[1]
-	-- local distToTopLayer = bm.mapm.tonumber(bm.vec3.distance(topLayer.fixedParentObjectPosition, referencePosition))
-	-- if distToTopLayer >= topLayer.fixedParentObjectPointDistance then
-	-- 	local shapeType = self.pointLayerShapeTypes[topLayer.fixedParentObjectShapeTypeName]
-	-- 	local shapeSubtypeId = topLayer.fixedParentObjectShapeSubtypeId
-	-- 	local mass = -- Estimate
-	-- 		shapeType.subtypeBaseObjectAmounts[shapeSubtypeId] * -- NOTE: if this block is ever uncommented, this needs to account for shape types with needsTrueRatio
-	-- 		topLayer.fixedParentObjectRadii.x *
-	-- 		topLayer.fixedParentObjectRadii.y *
-	-- 		topLayer.fixedParentObjectRadii.z *
-	-- 		topLayer.maxPointDensity *
-	-- 		topLayer.averageMassPerPoint
-	-- 	return mass * distToTopLayer ^ exponent
-	-- end
-
 	for pointLayerIndex, pointLayer in ipairs(self.pointLayers) do
 		local massSent
 		if pointLayer.features.mass == "sent" then
@@ -1243,24 +1307,22 @@ function game:getPointLayerGravityWellSlowdownFactor()
 			goto continue
 		end
 
-		local parentOrigin, parentRadii, parentShapeTypeName, parentShapeSubtypeId
+		local currentObject
 		if not pointLayer.parentPointLayer then
-			parentOrigin = pointLayer.fixedParentObjectPosition
-			parentRadii = pointLayer.fixedParentObjectRadii
-			parentShapeTypeName = pointLayer.fixedParentObjectShapeTypeName
-			parentShapeSubtypeId = pointLayer.fixedParentObjectShapeSubtypeId
+			currentObject = pointLayer.fixedParentObject
 		elseif pointLayer.parentPointLayer.currentObject then
-			parentOrigin = pointLayer.parentPointLayer.currentObject.position
-			parentRadii = pointLayer.parentPointLayer.currentObject.radii
-			parentShapeTypeName = pointLayer.parentPointLayer.currentObject.shapeTypeName
-			parentShapeSubtypeId = pointLayer.parentPointLayer.currentObject.shapeSubtypeId
+			currentObject = pointLayer.parentPointLayer.currentObject
 		else
 			break
 		end
-		local positionRelativeFull = bm.vec3.toMathsiesVec3(referencePosition - parentOrigin)
-		local positionRelative = bm.vec3.toMathsiesVec3( -- Chunk sides have a length of 1
-			(referencePosition - parentOrigin) / pointLayer.chunkSize
-		)
+		local parentOrigin = currentObject.position
+		local parentRadii = currentObject.radii
+		local parentOrientation = currentObject.orientation
+		local parentShapeTypeName = currentObject.shapeTypeName
+		local parentShapeSubtypeId = currentObject.shapeSubtypeId
+
+		local positionRelativeFull = mathsies.vec3.rotate(bm.vec3.toMathsiesVec3(referencePosition - parentOrigin), parentOrientation)
+		local positionRelative = positionRelativeFull / pointLayer.chunkSize
 
 		local totalThisLayer = 0
 

@@ -17,6 +17,9 @@ struct Point {
 #ifdef FEATURE_RADII
 	vec3 radii;
 #endif
+#ifdef FEATURE_ORIENTATION
+	vec4 orientation; // Quaternion
+#endif
 #ifdef FEATURE_MASS
 	float mass;
 #endif

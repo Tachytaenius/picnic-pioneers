@@ -18,9 +18,6 @@ function game:drawCelestial()
 	local cameraVerticalFOV = self.ship.verticalFOV
 	local diagonalFOV = 2 * math.atan(math.sqrt(1 ^ 2 + aspectRatio ^ 2) * math.tan(cameraVerticalFOV / 2))
 
-	local cameraForwards = mathsies.vec3.rotate(consts.forwardVector, cameraOrientation)
-	local cameraUp = mathsies.vec3.rotate(consts.upVector, cameraOrientation)
-	local cameraRight = mathsies.vec3.rotate(consts.rightVector, cameraOrientation)
 	local vertexZAtFurthestAngle = math.cos(diagonalFOV / 2)
 	local cameraToClip = mathsies.mat4.perspectiveLeftHanded(
 		aspectRatio,
@@ -30,50 +27,55 @@ function game:drawCelestial()
 		-- vertexZAtFurthestAngle
 		vertexZAtFurthestAngle * 0.99
 	)
-	local worldToCameraStationary = mathsies.mat4.camera(mathsies.vec3(), cameraOrientation)
-	local skyToClip = cameraToClip * worldToCameraStationary
-	local clipToSky = mathsies.mat4.inverse(skyToClip)
+
+	local cameraForwards, cameraUp, cameraRight, worldToCameraStationary, skyToClip, clipToSky, cornerDirs
+
+	local function setupCameraVars(layerOrientation)
+		local layerTotalOrientation = layerOrientation * cameraOrientation
+
+		cameraForwards = mathsies.vec3.rotate(consts.forwardVector, layerTotalOrientation)
+		cameraUp = mathsies.vec3.rotate(consts.upVector, layerTotalOrientation)
+		cameraRight = mathsies.vec3.rotate(consts.rightVector, layerTotalOrientation)
+		worldToCameraStationary = mathsies.mat4.camera(mathsies.vec3(), layerTotalOrientation)
+		skyToClip = cameraToClip * worldToCameraStationary
+		clipToSky = mathsies.mat4.inverse(skyToClip)
+
+		cornerDirs = {}
+		for y = 1, -1, -2 do
+			for x = -1, 1, 2 do
+				local clipSpacePos = mathsies.vec3(x, y, -1) -- -1 for near plane but it makes no difference one everything is normalised in the compute shader(s). It may need to be consistent per-corner, though
+				local result = clipToSky * clipSpacePos
+				table.insert(cornerDirs, {mathsies.vec3.components(result)})
+			end
+		end
+	end
 
 	-- local vec = mathsies.vec3(1, 1, 1) -- 1, 1 for top right. Z doesn't matter because of normalisation below.
 	-- vec = clipToSky * vec
 	-- local angle = math.acos(mathsies.vec3.dot(mathsies.vec3.normalise(vec), mathsies.vec3(0, 0, 1)))
 	-- print(angle - diagonalFOV / 2) -- Very very very close to 0. This feels like confirmation that the diagonal FOV calculation is correct.
 
-	local cornerDirs = {}
-	for y = 1, -1, -2 do
-		for x = -1, 1, 2 do
-			local clipSpacePos = mathsies.vec3(x, y, -1) -- -1 for near plane but it makes no difference one everything is normalised in the compute shader(s). It may need to be consistent per-corner, though
-			local result = clipToSky * clipSpacePos
-			-- table.insert(cornerDirs, result.x)
-			-- table.insert(cornerDirs, result.y)
-			-- table.insert(cornerDirs, result.z)
-			table.insert(cornerDirs, {mathsies.vec3.components(result)})
-		end
-	end
-
 	local function drawLayer(pointLayer, pointMode)
-		local parentOrigin, parentObjectShapeTypeName, parentObjectShapeSubtypeId, parentObjectRadii, attenuationShapeTypeName, attenuationShapeSubtypeId, attenuationMultiplier
+		local currentObject
 		if not pointLayer.parentPointLayer then
-			parentOrigin = pointLayer.fixedParentObjectPosition
-			parentObjectShapeTypeName = pointLayer.fixedParentObjectShapeTypeName
-			parentObjectShapeSubtypeId = pointLayer.fixedParentObjectShapeSubtypeId
-			parentObjectRadii = pointLayer.fixedParentObjectRadii
-			attenuationShapeTypeName = pointLayer.fixedParentObjectAttenuationShapeTypeName
-			attenuationShapeSubtypeId = pointLayer.fixedParentObjectAttenuationShapeSubtypeId
-			attenuationMultiplier = pointLayer.fixedParentObjectAttenuationMultiplier or 0
-		else
-			parentOrigin = pointLayer.parentPointLayer.currentObject.position
-			parentObjectShapeTypeName = pointLayer.parentPointLayer.currentObject.shapeTypeName
-			parentObjectShapeSubtypeId = pointLayer.parentPointLayer.currentObject.shapeSubtypeId
-			parentObjectRadii = pointLayer.parentPointLayer.currentObject.radii
-			attenuationShapeTypeName = pointLayer.parentPointLayer.currentObject.attenuationShapeTypeName
-			attenuationShapeSubtypeId = pointLayer.parentPointLayer.currentObject.attenuationShapeSubtypeId
-			attenuationMultiplier = pointLayer.parentPointLayer.currentObject.attenuationMultiplier or 0
+			currentObject = pointLayer.fixedParentObject
+		elseif pointLayer.parentPointLayer.currentObject then
+			currentObject = pointLayer.parentPointLayer.currentObject
 		end
+		local parentOrigin = currentObject.position
+		local parentObjectShapeTypeName = currentObject.shapeTypeName
+		local parentObjectShapeSubtypeId = currentObject.shapeSubtypeId
+		local parentObjectRadii = currentObject.radii
+		local parentOrientation = currentObject.orientation
+		local attenuationShapeTypeName = currentObject.attenuationShapeTypeName
+		local attenuationShapeSubtypeId = currentObject.attenuationShapeSubtypeId
+		local attenuationMultiplier = currentObject.attenuationMultiplier or 0
+
 		local cameraPositionFullRelative = cameraPositionFull - parentOrigin
-		local cameraPosition = bm.vec3.toMathsiesVec3( -- Chunk sides have a length of 1
+		local cameraPosition = mathsies.vec3.rotate(bm.vec3.toMathsiesVec3( -- Chunk sides have a length of 1
 			cameraPositionFullRelative / pointLayer.chunkSize
-		)
+		), parentOrientation)
+		setupCameraVars(parentOrientation)
 
 		-- Fade in/out roles are swapped between volumetric and point
 		local fullyPointRadius = (pointLayer.chunkBufferSideLength / 2 - 0.5) * consts.pointFadeStart
@@ -140,7 +142,12 @@ function game:drawCelestial()
 			volumetricShader:send("fadeOutRadius", fullyPointRadiusProperUnits * distanceUnitScale)
 			volumetricShader:send("fadeExponent", consts.pointFadeExponent)
 			-- volumetricShader:send("clipToSky", {mathsies.mat4.components(clipToSky)})
-			volumetricShader:send("cameraPosition", {mathsies.vec3.components(bm.vec3.toMathsiesVec3(cameraPositionFullRelative * distanceUnitScale))})
+			volumetricShader:send("cameraPosition", {mathsies.vec3.components(
+				mathsies.vec3.rotate(
+					bm.vec3.toMathsiesVec3(cameraPositionFullRelative * distanceUnitScale),
+					parentOrientation
+				)
+			)})
 			volumetricShader:send("maxRaySteps", consts.volumetricMaxRaySteps)
 			volumetricShader:send("shapeRadii", {mathsies.vec3.components(distanceUnitScale * parentObjectRadii)})
 			if volumetricShader:hasUniform("baseEmission") then
@@ -202,7 +209,12 @@ function game:drawCelestial()
 					pointAttenuationTexture:getDepth()
 				})
 				pointAttenuationShader:send("clipToSky", {mathsies.mat4.components(clipToSky)})
-				pointAttenuationShader:send("cameraPosition", {mathsies.vec3.components(bm.vec3.toMathsiesVec3(cameraPositionFullRelative * distanceUnitScale))})
+				pointAttenuationShader:send("cameraPosition", {mathsies.vec3.components(
+					mathsies.vec3.rotate(
+						bm.vec3.toMathsiesVec3(cameraPositionFullRelative * distanceUnitScale),
+						parentOrientation
+					)
+				)})
 				pointAttenuationShader:send("resultTexture", pointAttenuationTexture)
 
 				local xSize, ySize = pointAttenuationShader:getLocalThreadgroupSize()
@@ -238,7 +250,12 @@ function game:drawCelestial()
 				local object = pointLayer.currentPotentialObject
 				local x, y, z = pointLayer:getPointVars(object.chunkBufferIndex, object.pointId, "position", "float", 3)
 				local position = bm.vec3(object.chunkX + x, object.chunkY + y, object.chunkZ + z)
-				local difference = position - cameraPositionFullRelative / pointLayer.chunkSize
+				local difference =
+					position -
+					bm.vec3.rotate(
+						cameraPositionFullRelative / pointLayer.chunkSize,
+						parentOrientation
+					)
 				local distance = bm.vec3.length(difference)
 				if distance == 0 then
 					skipIndex = pointLayer.maxPoints -- Use unreachable skip index
@@ -318,6 +335,8 @@ function game:drawCelestial()
 	local function drawStarSystem()
 		love.graphics.setCanvas(outputCanvas)
 
+		setupCameraVars(mathsies.quat())
+
 		local lastPointLayer = self.pointLayers[#self.pointLayers]
 		local starSystemPointLayerObject = lastPointLayer.currentObject
 		if not starSystemPointLayerObject then
@@ -325,7 +344,7 @@ function game:drawCelestial()
 		end
 		local bodies = starSystemPointLayerObject.bodies
 
-		local cameraPositionRelative = bm.vec3.toMathsiesVec3(self.ship.position - starSystemPointLayerObject.position)
+		local cameraPositionRelative = bm.vec3.toMathsiesVec3(cameraPositionFull - starSystemPointLayerObject.position)
 
 		local diskDistanceToSphere = 1 - math.cos(consts.pointAngularRadius) -- Unit sphere spherical cap height from angular radius
 		local diskSolidAngle = consts.tau * diskDistanceToSphere
