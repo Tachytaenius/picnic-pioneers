@@ -1013,7 +1013,7 @@ function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBu
 	new.shapeMassData = love.data.newByteData(bytesPerFloat * consts.shapeSlowdownIntegralDataCount)
 	new.shapeMassDataFFI = ffi.cast("float*", new.shapeMassData:getFFIPointer())
 
-	-- volumetricCanvas and volumetricAddCountCanvas are added after initPointLayers in resizeCelestialScreen (called by initCelestial)
+	-- volumetricCanvas and volumetricAddCountCanvas are added after initPointLayers in resizeGameScreen (called by initCelestial)
 
 	return new
 end

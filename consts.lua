@@ -183,6 +183,13 @@ function consts.load()
 		{name = "VertexFade", location = 1, format = "float"}
 	}
 
+	consts.entityVertexFormat = {
+		{name = "VertexPosition", location = 0, format = "floatvec3"},
+		{name = "VertexTexCoord", location = 1, format = "floatvec2"},
+		{name = "VertexNormal", location = 2, format = "floatvec3"}
+	}
+	consts.entityLoadObjZMultiplier = -1 -- Notably not a vertex format :3
+
 	-- Simulation/graphics parameters
 
 	consts.gravitationalConstant = 6.6743e-11
@@ -214,6 +221,9 @@ function consts.load()
 	consts.pointAngularRadius = 0.006
 	consts.pointFadeStart = 1 / 3
 	consts.pointFadeExponent = 1 -- TODO: Ensure fair tradeoff between point and volumetric
+
+	consts.POVFarDistance = 10000
+	consts.POVNearDistance = 0.01
 
 	consts.celestialLuminanceMultiplier = 1e14
 

@@ -4,10 +4,9 @@ local consts = require("consts")
 
 local game = {}
 
-function game:drawCelestial()
-	local outputCanvas = self.screenCanvasses.celestialOutputCanvas
+function game:drawCelestial(POVEntity)
+	local outputCanvas = self.screenCanvasses.outputCanvas
 	love.graphics.setCanvas(outputCanvas)
-	love.graphics.clear(0, 0, 0, 1)
 
 	local aspectRatio = outputCanvas:getWidth() / outputCanvas:getHeight()
 
@@ -15,7 +14,7 @@ function game:drawCelestial()
 
 	local cameraPositionFull = self.ship.position
 	local cameraOrientation = self.ship.orientation
-	local cameraVerticalFOV = self.ship.verticalFOV
+	local cameraVerticalFOV = POVEntity.verticalFOV
 	local diagonalFOV = 2 * math.atan(math.sqrt(1 ^ 2 + aspectRatio ^ 2) * math.tan(cameraVerticalFOV / 2))
 
 	local vertexZAtFurthestAngle = math.cos(diagonalFOV / 2)
@@ -96,6 +95,7 @@ function game:drawCelestial()
 				if
 					pointLayer.volumetricCanvasCameraInfo.position ~= cameraPositionFull or
 					pointLayer.volumetricCanvasCameraInfo.orientation ~= cameraOrientation or
+					pointLayer.volumetricCanvasCameraInfo.verticalFOV ~= cameraVerticalFOV or
 					pointLayer.volumetricCanvasCameraInfo.brightnessMultiplier ~= luminanceMultiplier
 				then
 					-- TODO: Reprojection
@@ -110,6 +110,7 @@ function game:drawCelestial()
 			pointLayer.volumetricCanvasCameraInfo = {
 				position = bm.vec3.clone(cameraPositionFull),
 				orientation = mathsies.quat.clone(cameraOrientation),
+				verticalFOV = cameraVerticalFOV,
 				brightnessMultiplier = luminanceMultiplier
 			}
 
@@ -430,8 +431,10 @@ function game:drawCelestial()
 		drawLayer(pointLayer, false)
 	end
 
-	love.graphics.setCanvas(self.screenCanvasses.pointTotalTransmittanceCanvas)
-	love.graphics.clear(1, 0, 0, 1)
+	love.graphics.setShader(self.transmittanceOutputMultiplierShader)
+	love.graphics.setBlendMode("multiply", "premultiplied")
+	love.graphics.setCanvas(outputCanvas)
+	love.graphics.draw(self.screenCanvasses.pointTotalTransmittanceCanvas) -- At this point the only thing that will have drawn into this is the entities on the ship
 
 	love.graphics.setCanvas()
 	love.graphics.setShader()
