@@ -42,7 +42,7 @@ function game:drawCelestial(POVEntity)
 		cornerDirs = {}
 		for y = 1, -1, -2 do
 			for x = -1, 1, 2 do
-				local clipSpacePos = mathsies.vec3(x, y, -1) -- -1 for near plane but it makes no difference one everything is normalised in the compute shader(s). It may need to be consistent per-corner, though
+				local clipSpacePos = mathsies.vec3(x, y, -1) -- -1 for near plane but it makes no difference once everything is normalised in the compute shader(s). It may need to be consistent per-corner, though
 				local result = clipToSky * clipSpacePos
 				table.insert(cornerDirs, {mathsies.vec3.components(result)})
 			end

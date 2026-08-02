@@ -54,7 +54,7 @@ vec4 getRayColourAndTransmittance(vec3 rayPosition, vec3 rayDirection, float sam
 		float t = 1.0 - float(rayStep) / float(rayStepCount - 1);
 		t = t * t; // Increase detail towards camera (without using pow)
 		float segmentEnd = rayOffset + rayLength * t;
-		float rayStepSize = segmentStart - segmentEnd; // Start is greater than end
+		float rayStepSize = segmentStart - segmentEnd; // Start is greater than end (TODO: RenderDoc showed that this is 0 on first step)
 		float sampleT = mix(segmentEnd, segmentStart, sampleLerp);
 		vec3 samplePosition = (rayPosition + rayDirection * sampleT) / shapeRadii;
 

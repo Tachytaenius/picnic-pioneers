@@ -17,8 +17,14 @@ float NOISE_FUNCTION_NAME(int layerIndex, vec3 pos) {
 	ivec3 size = layer.valueSize;
 
 	vec3 cellSize = 1.0 / vec3(size - 1);
-	vec3 mixFactor = mod(pos, cellSize) / cellSize;
-	ivec3 cell = ivec3(pos / cellSize);
+	vec3 cellFloat = floor(pos / cellSize);
+	vec3 mixFactor = pos / cellSize - cellFloat;
+	// Previous code would get mixFactor as mod(pos, cellSize) / cellSize,
+	// but doing it this way avoids a (usually) extremely rare float imprecision bug
+	// where the modulo result is near 1 but the cell position doesn't match,
+	// causing sampling from a whole cell away.
+	// Though rare, the bug manifested all the way across the middle of the screen in certain circumstances, leading to the fix.
+	ivec3 cell = ivec3(cellFloat);
 	cell = clamp(cell, ivec3(0), size - 2);
 	return trilinearMix(
 		GET_FUNCTION_NAME(start, size, cell + ivec3(0, 0, 0)),
