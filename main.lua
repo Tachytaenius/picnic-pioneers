@@ -1,6 +1,7 @@
 local bm = require("bigmaths")
 local consts = require("consts")
 local game = require("game")
+local settings = require("settings")
 
 ---@type Gamestate
 local state
@@ -10,6 +11,7 @@ function love.load()
 	love.graphics.setDefaultFilter("nearest", "nearest")
 	state = game:newState()
 	state:initState()
+	settings:load()
 end
 
 function love.update(dt)
