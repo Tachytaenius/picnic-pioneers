@@ -5,9 +5,22 @@ local mathsies = require("lib.mathsies")
 local consts = require("consts")
 local util = require("util")
 
+---@class ScreenCanvasses
+---@field public outputCanvas love.Canvas
+---@field public pointTotalTransmittanceCanvas love.Canvas
+
 ---@class Gamestate
 ---@field public screenCanvasses ScreenCanvasses
 ---@field public pointLayers table<string|number, PointLayer>
+---@field public state fun(self: Gamestate, dt: number)
+---@field public drawCelestial fun(self: Gamestate)
+---@field public getGravityWellSlowdownFactor fun(self: Gamestate): number
+---@field public getMaxMovementSpeed fun(self: Gamestate): number
+---@field public handleShipMovement fun(self: Gamestate, dt: number)
+---@field public handlePointLayers fun(self: Gamestate)
+---@field public initPointLayers fun(self: Gamestate)
+---@field public initCelestialRNG fun(self: Gamestate)
+---@field public loadShapeTypes fun(self: Gamestate)
 local game = {}
 
 function game:initCelestial()

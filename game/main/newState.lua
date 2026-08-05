@@ -23,12 +23,9 @@ function game:initState()
 	self:resizeGameScreen(self.screenWidth, self.screenHeight, true)
 end
 
----@class ScreenCanvasses
----@field public outputCanvas love.Canvas
----@field public pointTotalTransmittanceCanvas love.Canvas
-
 ---@param width number
 ---@param height number
+---@param forceRecreate boolean
 --- resizeGameScreen sets game.screenWidth and game.screenHeight.
 --- It also recreates each canvas in screenCanvasses and the canvasses for each PointLayer with the updated dimensions, if necessary.
 function game:resizeGameScreen(width, height, forceRecreate)
