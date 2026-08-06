@@ -5,19 +5,19 @@ info.attenuation = true
 info.parameters = {
 	{
 		name = "nebulaExponent",
-		steps = 3,
+		samples = 3,
 		rangeMin = 5,
 		rangeMax = 7
 	},
 	{
 		name = "distanceExponent",
-		steps = 3,
+		samples = 3,
 		rangeMin = 0.8,
 		rangeMax = 1.2
 	},
 	{
 		name = "nebulaMultiplier",
-		steps = 6,
+		samples = 6,
 		rangeMin = 1,
 		rangeMax = 400
 	}

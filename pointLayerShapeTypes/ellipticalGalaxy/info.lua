@@ -11,7 +11,7 @@ info.valueNoiseInfo = {
 info.parameters = {
 	{
 		name = "densityExponent",
-		steps = 3,
+		samples = 3,
 		rangeMin = 0.25,
 		rangeMax = 3
 	}

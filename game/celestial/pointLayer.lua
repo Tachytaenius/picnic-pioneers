@@ -248,16 +248,9 @@ function galaxyPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, chunkB
 
 		local baseAmount
 		if shapeType.needsTrueRatio then
-			-- Interpolate between samples
-			local where = shapeType.zScaleRatioSamples * (zScaleRatio - shapeType.zScaleRatioMin) / (shapeType.zScaleRatioMax - shapeType.zScaleRatioMin)
-			local prevSample = math.max(0, math.min(1, math.floor(where))) -- Clamp for safety
-			local whereAfterPrevious = where - prevSample -- Should be (more or less) between 0 and 1
-			local samples = shapeType.subtypeBaseObjectAmounts[shapeSubtypeId]
-			local sampleA = samples[prevSample]
-			local sampleB = samples[math.min(shapeType.zScaleRatioSamples - 1, prevSample + 1)]
-			baseAmount = sampleA + whereAfterPrevious * (sampleB - sampleA)
+			baseAmount = self.gameObject:getSubtypeBaseAmountWithSamples(shapeType, shapeSubtypeId, zScaleRatio)
 		else
-			baseAmount = shapeType.subtypeBaseObjectAmounts[shapeSubtypeId]
+			baseAmount = self.gameObject:getSubtypeBaseAmountWithSamples(shapeType, shapeSubtypeId)
 		end
 		local amountWithin = baseAmount * xRadius * yRadius * zRadius * nextLayerMaxDensity -- Estimate
 		massInfo[i] = amountWithin * nextLayerAverageMassPerPoint
@@ -427,15 +420,15 @@ function game:initPointLayers()
 
 				local total = 0
 				assert(not shapeType.attenuation, "Attenuation shape types cannot be used for point density")
-				for subtypeId = 0, shapeType.subtypeCount - 1 do
+				for samplingId = 0, shapeType.sampleCount - 1 do
 					local subtypeBaseAmount
 					if shapeType.needsTrueRatio then
 						subtypeBaseAmount = 0
 						for zSample = 0, shapeType.zScaleRatioSamples - 1 do
-							subtypeBaseAmount = subtypeBaseAmount + shapeType.subtypeBaseObjectAmounts[subtypeId][zSample]
+							subtypeBaseAmount = subtypeBaseAmount + shapeType.sampleBaseObjectAmounts[samplingId][zSample]
 						end
 					else
-						subtypeBaseAmount = shapeType.subtypeBaseObjectAmounts[subtypeId]
+						subtypeBaseAmount = shapeType.sampleBaseObjectAmounts[samplingId]
 					end
 					total = total +
 						subtypeBaseAmount *
@@ -443,7 +436,7 @@ function game:initPointLayers()
 						childPointLayer.maxPointDensity
 				end
 				local countMultiplier = shapeType.needsTrueRatio and shapeType.zScaleRatioSamples or 1
-				local averageAmountThisShapeTypeInfo = total / (shapeType.subtypeCount * countMultiplier)
+				local averageAmountThisShapeTypeInfo = total / (shapeType.sampleCount * countMultiplier)
 
 				averageAmountPreDivide = averageAmountPreDivide + averageAmountThisShapeTypeInfo
 				totalWeight = totalWeight + shapeTypeInfo.weight

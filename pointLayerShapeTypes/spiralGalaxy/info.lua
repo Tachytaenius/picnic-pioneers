@@ -26,19 +26,20 @@ info.valueNoiseInfo = {
 info.parameters = {
 	{
 		name = "densityExponent",
-		steps = 2,
+		samples = 2,
 		rangeMin = 1.5,
 		rangeMax = 4
 	},
 	{
 		name = "armCount",
+		discrete = true,
 		steps = 6,
 		rangeMin = 2,
 		rangeMax = 7
 	},
 	{
 		name = "armEndRotation", -- Overall orientation of the galaxy should account for some notion of clockwise/anticlockwise
-		steps = 4,
+		samples = 4,
 		rangeMin = 2.5,
 		rangeMax = 7
 	}

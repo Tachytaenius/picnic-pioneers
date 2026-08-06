@@ -1,14 +1,16 @@
 local ffi = require("ffi")
+local json = require("lib.json")
+
+local util = require("util")
+local consts = require("consts")
 
 local processShapeNoiseLayerInfo = require("threadCode.common.processShapeNoiseLayerInfo")
 local setValueNoiseForShapeTypeDensityFunc = require("threadCode.common.setValueNoiseForShapeTypeDensityFunc")
 local initSampleDistribution = require("threadCode.common.initSampleDistribution")
 
-local consts = require("consts")
-
 local game = {}
 
-local decodeShapeSubtypeScratchTable = {}
+local decodeShapeSubtypeScratchTable = {} -- Actual parameters
 function game:decodeShapeSubtypeIntoScratchTable(type, subtypeId)
 	assert(subtypeId < type.subtypeCount, "Shape subtype id is too large")
 
@@ -18,13 +20,95 @@ function game:decodeShapeSubtypeIntoScratchTable(type, subtypeId)
 
 	local temp = subtypeId
 	for parameterIndex, parameter in ipairs(type.parameters) do
+		if parameter.steps == 1 then
+			goto continue
+		end
 		local stepThisParam = temp % parameter.steps
 		local lerpI = stepThisParam / (parameter.steps - 1)
 		local valueThisParam = parameter.rangeMin + (parameter.rangeMax - parameter.rangeMin) * lerpI
 		decodeShapeSubtypeScratchTable[parameterIndex] = valueThisParam
 		temp = math.floor(temp / parameter.steps)
+		::continue::
 	end
 	return decodeShapeSubtypeScratchTable
+end
+
+function game:subtypeFromSamplingId(shapeType, samplingId)
+	assert(samplingId < shapeType.sampleCount, "Shape sampling id is too large")
+
+	-- I just really wanted to make this work without any extra tables for some reason
+
+	local remainingInformation = samplingId -- Whatever occupied the least significant side of the encoding (i.e. changed with every increment) for subtype ids is on the other side (i.e. changes least often when incrementing)
+	local constructedSubtype = 0
+
+	for parameterIndex = #shapeType.parameters, 1, -1 do
+		local parameter = shapeType.parameters[parameterIndex]
+
+		local sampleThisParam = remainingInformation % parameter.samples
+		local sampleLerp = parameter.samples == 1 and 0.5 or sampleThisParam / (parameter.samples - 1)
+		local stepThisParam = parameter.steps == 1 and 0 or math.floor(sampleLerp * (parameter.steps - 1) + 0.5)
+		constructedSubtype = constructedSubtype * parameter.steps + stepThisParam
+
+		remainingInformation = math.floor(remainingInformation / parameter.samples)
+	end
+	return constructedSubtype
+end
+
+function game:getSubtypeBaseAmountWithSamples(shapeType, shapeSubtypeId, zScaleRatio)
+	local zSampleLerp, zSampleAIdx, zSampleBIdx
+	if shapeType.needsTrueRatio then
+		local where = shapeType.zScaleRatioSamples * (zScaleRatio - shapeType.zScaleRatioMin) / (shapeType.zScaleRatioMax - shapeType.zScaleRatioMin)
+		local prevSample = math.max(0, math.min(1, math.floor(where))) -- Clamp for safety
+		zSampleLerp = where - prevSample -- Should be (more or less) between 0 and 1
+		zSampleAIdx = prevSample
+		zSampleBIdx = math.min(shapeType.zScaleRatioSamples - 1, prevSample + 1)
+	else
+		-- Should be no zScaleRatio passed in
+	end
+
+	local lerpFactors = {}
+	local leftSamples = {}
+	local rightSamples = {}
+	local temp = shapeSubtypeId
+	for parameterIndex, parameter in ipairs(shapeType.parameters) do
+		local stepThisParam = temp % parameter.steps
+		local stepLerp = parameter.steps == 1 and 0.5 or stepThisParam / (parameter.steps - 1) -- From parameter min to parameter max
+		local leftSample = parameter.samples == 1 and 0 or math.min(parameter.samples - 2, math.floor(stepLerp * (parameter.samples - 1)))
+
+		local rightSample = leftSample + 1
+		local samplingLerp = stepLerp * (parameter.samples - 1) - leftSample
+		rightSample = math.min(parameter.samples - 1, rightSample) -- Enforce maximum after calculating lerp factor to avoid division by 0
+
+		lerpFactors[#shapeType.parameters - parameterIndex + 1] = samplingLerp -- Flipped because lerp factors are popped from the top in mixN
+		leftSamples[parameterIndex] = leftSample
+		rightSamples[parameterIndex] = rightSample
+
+		temp = math.floor(temp / parameter.steps)
+	end
+
+	local mixNSampleArgs = {}
+	-- The sample base amounts form an n-dimensional grid of hypercubes :3
+	for gridSides = 0, 2 ^ #shapeType.parameters - 1 do
+		local samplingId = 0
+		for parameterIndex, parameter in ipairs(shapeType.parameters) do
+			local bit = parameterIndex - 1
+			local doLeft = math.floor(gridSides / 2 ^ bit) % 2 == 0
+			local paramSample = (doLeft and leftSamples or rightSamples)[parameterIndex]
+			samplingId = samplingId * parameter.samples + paramSample
+		end
+		local baseAmountThisSample
+		if shapeType.needsTrueRatio then
+			local zSamples = shapeType.sampleBaseObjectAmounts[samplingId]
+			local a = zSamples[zSampleAIdx]
+			local b = zSamples[zSampleBIdx]
+			baseAmountThisSample = a + zSampleLerp * (b - a)
+		else
+			baseAmountThisSample = shapeType.sampleBaseObjectAmounts[samplingId]
+		end
+		table.insert(mixNSampleArgs, baseAmountThisSample)
+	end
+
+	return util.mixN(lerpFactors, unpack(mixNSampleArgs))
 end
 
 -- Multiply by object's real radii to estimate object count
@@ -159,6 +243,148 @@ local function loadShaderIncludes(seenIncludes)
 	return seenIncludes
 end
 
+-- :)
+-- 100% bit-for-bit exact, which is probably what we want.
+-- Maybe hex floats (%a) have some nasty surprises wrt determinism. Denormal numbers?
+ffi.cdef([=[
+    typedef struct {
+        uint32_t lo;
+        uint32_t hi;
+    } intPair;
+    typedef union {
+        double x;
+        intPair raw;
+    } numConverter;
+]=])
+local converter = ffi.new("numConverter")
+local function encodeDouble(x)
+    converter.x = x
+    return string.format("%08x%08x", converter.raw.hi, converter.raw.lo)
+end
+local function decodeDouble(code)
+    local hiStr = string.sub(code, 1, 8)
+    local loStr = string.sub(code, 9, 16)
+    converter.raw.hi = tonumber(hiStr, 16)
+    converter.raw.lo = tonumber(loStr, 16)
+    return converter.x
+end
+local function checkCode(code)
+	if type(code) ~= "string" then
+		return false
+	end
+	if #code ~= 16 then
+		return false
+	end
+	if string.match(code, "[^%x]") then -- If there are any non-hexadecimal chars
+		return false
+	end
+	return true
+end
+
+local function cacheShapeType(shapeType, code, resolution, noiseAveraging)
+	local dirPath = "cache/shapeTypes/"
+	love.filesystem.createDirectory(dirPath)
+
+	local resultsToEncode = {}
+	for i = 0, shapeType.sampleCount - 1 do
+		if shapeType.needsTrueRatio then
+			resultsToEncode[i + 1] = {}
+			for j = 0, shapeType.zScaleRatioSamples - 1 do
+				resultsToEncode[i + 1][j + 1] = encodeDouble(shapeType.sampleBaseObjectAmounts[i][j])
+			end
+		else
+			resultsToEncode[i + 1] = encodeDouble(shapeType.sampleBaseObjectAmounts[i])
+		end
+	end
+
+	local contents = json.encode({
+		code = code,
+		resolution = resolution,
+		noiseRepeat = noiseAveraging,
+		results = resultsToEncode
+	})
+
+	love.filesystem.write(dirPath .. shapeType.name .. ".json", contents)
+end
+local function handleCache(shapeType, code, resolution, noiseAveraging)
+	local dirPath = "cache/shapeTypes/"
+	love.filesystem.createDirectory(dirPath)
+
+	local cachedInfoString = love.filesystem.read(dirPath .. shapeType.name .. ".json")
+	if not cachedInfoString then
+		return false
+	end
+
+	local cachedInfo = util.safeJsonDecode(cachedInfoString)
+	if not cachedInfo then
+		return false
+	end
+
+	-- Information about the shape type must not depend on any values outside of the lua file if they can change!
+	if cachedInfo.code ~= code then
+		return false
+	end
+	if shapeType.noiseInfo then -- Since the code is the same, we assume that what was stored also does/doesn't have noiseInfo etc
+		if cachedInfo.noiseRepeat ~= noiseAveraging then
+			return false
+		end
+	else
+		if cachedInfo.noiseRepeat then
+			-- ???
+			return false
+		end
+	end
+
+	if cachedInfo.resolution ~= resolution then
+		return false
+	end
+
+	assert(cachedInfo.results, "Cached info for shape type " .. shapeType.name .. " has no results data?")
+
+	-- TODO: Version info? a) what about unknown versions and b) what about *not* recreating all unnecessarily every update?
+	-- Force regenerate cache option?
+
+	if shapeType.needsTrueRatio then
+		local results = {}
+		if #cachedInfo.results ~= shapeType.sampleCount then
+			return false
+		end
+		for samplingId = 0, shapeType.sampleCount - 1 do
+			local sampleResults = cachedInfo.results[samplingId + 1]
+			if type(sampleResults) ~= "table" then
+				return false
+			end
+
+			local resultsInner = {}
+			results[samplingId] = resultsInner
+			if #sampleResults ~= shapeType.zScaleRatioSamples then
+				return false
+			end
+			for zSample = 0, shapeType.zScaleRatioSamples - 1 do
+				local code = sampleResults[samplingId + 1]
+				if not checkCode(code) then
+					return false
+				end
+				resultsInner[zSample] = decodeDouble(code)
+			end
+		end
+		return results
+	else
+		local results = {}
+		if #cachedInfo.results ~= shapeType.sampleCount then
+			return false
+		end
+		for samplingId = 0, shapeType.sampleCount - 1 do
+			local code = cachedInfo.results[samplingId + 1]
+			if not checkCode(code) then -- Will return if code is not present
+				return false
+			end
+			results[samplingId] = decodeDouble(code)
+		end
+		return results
+	end
+end
+
 function game:loadShapeTypes()
 	local maxRequiredNoiseValues = 0
 
@@ -173,7 +399,9 @@ function game:loadShapeTypes()
 			table.insert(pointLayerShapeTypes, shapeType)
 			shapeType.name = itemName
 
-			local info = require(itemPath:gsub("/", ".") .. ".info")
+			local code = love.filesystem.read(itemPath .. "/info.lua")
+			local info = load(code)()
+			shapeType.code = code
 
 			shapeType.constants = info.constants
 			shapeType.parameters = info.parameters or {}
@@ -206,12 +434,33 @@ function game:loadShapeTypes()
 			local amount = processShapeNoiseLayerInfo(shapeType, info) -- Adds info to shapeType
 			maxRequiredNoiseValues = math.max(amount, maxRequiredNoiseValues) -- Amount can be 0
 
+			-- Max subtype count is max uint32
+			-- The remaining portion of subtype count after discrete parameters have taken from it is given fairly to each continuous parameter.
+			-- Perhaps too fairly since sometimes there is some wasted space-- maybe let n of the continuous parameters' steps be incremented by 1 until just before n causes the subtype count to exceed 2^32
 			local subtypeCount = 1
+			local continuousParamCount = 0
 			for _, parameter in ipairs(shapeType.parameters) do
-				assert(math.floor(parameter.steps) == parameter.steps and parameter.steps >= 2, "Parameter step count must be an int and must be at least 2")
-				subtypeCount = subtypeCount * parameter.steps
+				if parameter.discrete then
+					subtypeCount = subtypeCount * parameter.steps
+					parameter.samples = parameter.steps
+				else
+					continuousParamCount = continuousParamCount + 1
+				end
+			end
+			local sampleCount = subtypeCount
+			if continuousParamCount > 0 then
+				local stepsForContinuousParams = math.floor((2^32 / subtypeCount) ^ (1 / continuousParamCount))
+				subtypeCount = subtypeCount * stepsForContinuousParams ^ continuousParamCount
+
+				for _, parameter in ipairs(shapeType.parameters) do
+					if not parameter.discrete then
+						parameter.steps = stepsForContinuousParams
+						sampleCount = sampleCount * parameter.samples
+					end
+				end
 			end
 			shapeType.subtypeCount = subtypeCount
+			shapeType.sampleCount = sampleCount -- For precalculation
 		end
 	end
 	-- Must match sorting in shapeAmounts.lua
@@ -234,14 +483,36 @@ function game:loadShapeTypes()
 		integralThreads[i]:start()
 	end
 	self:checkThreadsForErrors()
-	local sampleDistribution = initSampleDistribution(consts.pointLayerShapeTypeAmountIntegralSteps, consts.pointLayerShapeTypeAmountIntegralMaxThreads)
+	local resolution = consts.pointLayerShapeTypeAmountIntegralSteps
+	local noiseAveraging = consts.pointLayerShapeTypeAmountIntegralAverageRepeatCount
+	local sampleDistribution = initSampleDistribution(resolution, consts.pointLayerShapeTypeAmountIntegralMaxThreads)
 
 	local bytesPerFloat = 4
 	local valueNoiseData = love.data.newByteData(bytesPerFloat * maxRequiredNoiseValues)
 	local valueNoiseDataFFI = ffi.cast("float*", valueNoiseData:getFFIPointer())
 
+	local needsCalculatingCount = 0
+	for id = 0, count - 1 do
+		local shapeType = pointLayerShapeTypes[id]
+
+		if shapeType.attenuation then
+			goto continue
+		end
+
+		local code = shapeType.code
+		local result = handleCache(shapeType, code, resolution, noiseAveraging)
+		if result then
+			shapeType.sampleBaseObjectAmounts = result
+		else
+			shapeType.needsCalculating = true
+			needsCalculatingCount = needsCalculatingCount + 1
+		end
+
+	    ::continue::
+	end
+
 	local alreadyDoneNoiseless = false
-	for averagingIteration = 0, consts.pointLayerShapeTypeAmountIntegralAverageRepeatCount - 1 do
+	for averagingIteration = 0, noiseAveraging - 1 do
 		-- Init noise for the integrals. They are allowed to use the same value data
 		self:seedCelestialRNG(self:getShapeIntegralNoiseSeed(averagingIteration)) -- The code in there is TOOD
 		for i = 0, maxRequiredNoiseValues - 1 do
@@ -251,6 +522,10 @@ function game:loadShapeTypes()
 		for id = 0, count - 1 do
 			local shapeType = pointLayerShapeTypes[id]
 
+			if not shapeType.needsCalculating then
+				goto continue
+			end
+
 			if shapeType.attenuation then
 				goto continue
 			end
@@ -259,24 +534,25 @@ function game:loadShapeTypes()
 				goto continue
 			end
 
-			local subtypeBaseObjectAmounts = shapeType.subtypeBaseObjectAmounts or {}
-			for subtypeId = 0, shapeType.subtypeCount - 1 do
+			local sampleBaseObjectAmounts = shapeType.sampleBaseObjectAmounts or {}
+			for samplingId = 0, shapeType.sampleCount - 1 do
+				local subtypeId = self:subtypeFromSamplingId(shapeType, samplingId)
 				if shapeType.needsTrueRatio then
-					subtypeBaseObjectAmounts[subtypeId] = {}
+					sampleBaseObjectAmounts[samplingId] = {}
 					for zScaleStep = 0, shapeType.zScaleRatioSamples - 1 do
 						local ratioX = 1
 						local ratioY = 1
 						local lerpFactor = zScaleStep / (shapeType.zScaleRatioSamples - 1)
 						local ratioZ = shapeType.zScaleRatioMin + lerpFactor * (shapeType.zScaleRatioMax - shapeType.zScaleRatioMin)
 						local result = self:getShapeTypeBaseObjectAmount(sampleDistribution, integralThreads, shapeType, subtypeId, valueNoiseData, ratioX, ratioY, ratioZ)
-						subtypeBaseObjectAmounts[subtypeId][zScaleStep] = (subtypeBaseObjectAmounts[subtypeId][zScaleStep] or 0) + result
+						sampleBaseObjectAmounts[samplingId][zScaleStep] = (sampleBaseObjectAmounts[samplingId][zScaleStep] or 0) + result
 					end
 				else
 					local result = self:getShapeTypeBaseObjectAmount(sampleDistribution, integralThreads, shapeType, subtypeId, valueNoiseData, nil, nil, nil)
-					subtypeBaseObjectAmounts[subtypeId] = (subtypeBaseObjectAmounts[subtypeId] or 0) + result
+					sampleBaseObjectAmounts[samplingId] = (sampleBaseObjectAmounts[samplingId] or 0) + result
 				end
 			end
-			shapeType.subtypeBaseObjectAmounts = subtypeBaseObjectAmounts
+			shapeType.sampleBaseObjectAmounts = sampleBaseObjectAmounts
 
 		    ::continue::
 		end
@@ -288,23 +564,26 @@ function game:loadShapeTypes()
 	for id = 0, count - 1 do
 		local shapeType = pointLayerShapeTypes[id]
 
+		if not shapeType.needsCalculating then
+			goto continue
+		end
+
 		if shapeType.attenuation then
 			goto continue
 		end
 
 		if shapeType.noiseInfo then
-			-- subtypeBaseObjectAmounts' entries will have been added to multiple times to get an average
+			-- sampleBaseObjectAmounts' entries will have been added to multiple times to get an average
 			if shapeType.needsTrueRatio then
-				for subtypeId = 0, shapeType.subtypeCount - 1 do
-					local zSamples = shapeType.subtypeBaseObjectAmounts[subtypeId]
+				for samplingId = 0, shapeType.sampleCount - 1 do
+					local zSamples = shapeType.sampleBaseObjectAmounts[samplingId]
 					for i = 0, shapeType.zScaleRatioSamples - 1 do
-						zSamples[i] = zSamples[i] / consts.pointLayerShapeTypeAmountIntegralAverageRepeatCount
+						zSamples[i] = zSamples[i] / noiseAveraging
 					end
 				end
 			else
-				for subtypeId = 0, shapeType.subtypeCount - 1 do
-					shapeType.subtypeBaseObjectAmounts[subtypeId] = shapeType.subtypeBaseObjectAmounts[subtypeId] /
-						consts.pointLayerShapeTypeAmountIntegralAverageRepeatCount
+				for samplingId = 0, shapeType.sampleCount - 1 do
+					shapeType.sampleBaseObjectAmounts[samplingId] = shapeType.sampleBaseObjectAmounts[samplingId] / noiseAveraging
 				end
 			end
 		end
@@ -391,6 +670,15 @@ function game:loadShapeTypes()
 		)
 
 	    ::continue::
+	end
+
+	for id = 0, count - 1 do
+		local shapeType = pointLayerShapeTypes[id]
+		if shapeType.needsCalculating then
+			shapeType.needsCalculating = nil
+			cacheShapeType(shapeType, shapeType.code, resolution, noiseAveraging)
+		end
+		shapeType.code = nil
 	end
 
 	self.pointLayerShapeTypes = pointLayerShapeTypes
