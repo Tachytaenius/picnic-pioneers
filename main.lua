@@ -9,9 +9,10 @@ local state
 function love.load()
 	bm.mapm.digits(consts.mapmDigits)
 	love.graphics.setDefaultFilter("nearest", "nearest")
+	settings:load()
+	settings:save()
 	state = game:newState()
 	state:initState()
-	settings:load()
 end
 
 function love.update(dt)

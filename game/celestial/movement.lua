@@ -1,6 +1,7 @@
 local bm = require("bigmaths")
 local mathsies = require("lib.mathsies")
 
+local settings = require("settings")
 local util = require("util")
 local consts = require("consts")
 
@@ -32,23 +33,25 @@ function game:getMaxMovementSpeed()
 end
 
 function game:handleShipMovement(dt)
+	local controls = settings.controls
+
 	local translation = mathsies.vec3()
-	if love.keyboard.isDown(consts.controls.moveRight) then
+	if love.keyboard.isDown(controls.moveRight) then
 		translation = translation + consts.rightVector
 	end
-	if love.keyboard.isDown(consts.controls.moveLeft) then
+	if love.keyboard.isDown(controls.moveLeft) then
 		translation = translation - consts.rightVector
 	end
-	if love.keyboard.isDown(consts.controls.moveUp) then
+	if love.keyboard.isDown(controls.moveUp) then
 		translation = translation + consts.upVector
 	end
-	if love.keyboard.isDown(consts.controls.moveDown) then
+	if love.keyboard.isDown(controls.moveDown) then
 		translation = translation - consts.upVector
 	end
-	if love.keyboard.isDown(consts.controls.moveForwards) then
+	if love.keyboard.isDown(controls.moveForwards) then
 		translation = translation + consts.forwardVector
 	end
-	if love.keyboard.isDown(consts.controls.moveBackwards) then
+	if love.keyboard.isDown(controls.moveBackwards) then
 		translation = translation - consts.forwardVector
 	end
 	local maxSpeed = self:getMaxMovementSpeed()
@@ -61,22 +64,22 @@ function game:handleShipMovement(dt)
 	self.ship.position = self.ship.position + displacement
 
 	local rotation = mathsies.vec3()
-	if love.keyboard.isDown(consts.controls.pitchDown) then
+	if love.keyboard.isDown(controls.pitchDown) then
 		rotation = rotation + consts.rightVector
 	end
-	if love.keyboard.isDown(consts.controls.pitchUp) then
+	if love.keyboard.isDown(controls.pitchUp) then
 		rotation = rotation - consts.rightVector
 	end
-	if love.keyboard.isDown(consts.controls.yawRight) then
+	if love.keyboard.isDown(controls.yawRight) then
 		rotation = rotation + consts.upVector
 	end
-	if love.keyboard.isDown(consts.controls.yawLeft) then
+	if love.keyboard.isDown(controls.yawLeft) then
 		rotation = rotation - consts.upVector
 	end
-	if love.keyboard.isDown(consts.controls.rollAnticlockwise) then
+	if love.keyboard.isDown(controls.rollAnticlockwise) then
 		rotation = rotation + consts.forwardVector
 	end
-	if love.keyboard.isDown(consts.controls.rollClockwise) then
+	if love.keyboard.isDown(controls.rollClockwise) then
 		rotation = rotation - consts.forwardVector
 	end
 	local angularSpeed = 1 -- TODO
