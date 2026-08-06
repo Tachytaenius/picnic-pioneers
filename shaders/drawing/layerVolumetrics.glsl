@@ -58,8 +58,8 @@ vec4 getRayColourAndTransmittance(vec3 rayPosition, vec3 rayDirection, float sam
 		float sampleT = mix(segmentEnd, segmentStart, sampleLerp);
 		vec3 samplePosition = (rayPosition + rayDirection * sampleT) / shapeRadii;
 
-		float emissionFadeMultiplier = pow(clamp(
-			1.0 - (sampleT - fadeInRadius) / (fadeOutRadius - fadeInRadius),
+		float emissionFadeMultiplier = 1.0 - pow(clamp(
+			(sampleT - fadeInRadius) / (fadeOutRadius - fadeInRadius),
 			0.0, 1.0
 		), fadeExponent);
 

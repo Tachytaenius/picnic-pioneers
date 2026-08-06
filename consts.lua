@@ -220,7 +220,7 @@ function consts.load()
 	consts.diskMeshVertices = 5
 	consts.pointAngularRadius = 0.006
 	consts.pointFadeStart = 1 / 3
-	consts.pointFadeExponent = 1 -- TODO: Ensure fair tradeoff between point and volumetric
+	consts.pointFadeExponent = 1
 
 	consts.POVFarDistance = 10000
 	consts.POVNearDistance = 0.01
