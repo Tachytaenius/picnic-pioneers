@@ -97,12 +97,15 @@ function consts.load()
 	consts.loveVersion = "12.0"
 
 	consts.windowTitle = "Picnic Pioneers"
-	consts.windowWidth = 800
-	consts.windowHeight = 600
+	consts.defaultWindowWidth = 640
+	consts.defaultWindowHeight = 480
+	consts.iconPath = "icon.png"
+	consts.iconScale = 16
 
 	consts.tau = math.pi * 2
 
 	consts.maxDeltaTime = 0.1
+	consts.initMaxTickLength = 0.2
 
 	consts.rightVector = mathsies.vec3(1, 0, 0)
 	consts.upVector = mathsies.vec3(0, 1, 0)

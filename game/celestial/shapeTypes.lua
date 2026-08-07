@@ -491,7 +491,7 @@ function game:loadShapeTypes()
 	local valueNoiseData = love.data.newByteData(bytesPerFloat * maxRequiredNoiseValues)
 	local valueNoiseDataFFI = ffi.cast("float*", valueNoiseData:getFFIPointer())
 
-	local needsCalculatingCount = 0
+	local requiredIntegrals = 0
 	for id = 0, count - 1 do
 		local shapeType = pointLayerShapeTypes[id]
 
@@ -505,11 +505,17 @@ function game:loadShapeTypes()
 			shapeType.sampleBaseObjectAmounts = result
 		else
 			shapeType.needsCalculating = true
-			needsCalculatingCount = needsCalculatingCount + 1
+			local multiplier = shapeType.noiseInfo and noiseAveraging or 1
+			local multiplier2 = shapeType.zScaleRatioSamples or 1
+			requiredIntegrals = requiredIntegrals + shapeType.sampleCount * multiplier * multiplier2
 		end
 
 	    ::continue::
 	end
+
+	local loadInfo = self.loadInfo
+	loadInfo.shapeTypePrecalcIntegralsRequired = requiredIntegrals
+	loadInfo.shapeTypePrecalcIntegralsDone = 0
 
 	local alreadyDoneNoiseless = false
 	for averagingIteration = 0, noiseAveraging - 1 do
@@ -546,15 +552,21 @@ function game:loadShapeTypes()
 						local ratioZ = shapeType.zScaleRatioMin + lerpFactor * (shapeType.zScaleRatioMax - shapeType.zScaleRatioMin)
 						local result = self:getShapeTypeBaseObjectAmount(sampleDistribution, integralThreads, shapeType, subtypeId, valueNoiseData, ratioX, ratioY, ratioZ)
 						sampleBaseObjectAmounts[samplingId][zScaleStep] = (sampleBaseObjectAmounts[samplingId][zScaleStep] or 0) + result
+
+						loadInfo.shapeTypePrecalcIntegralsDone = loadInfo.shapeTypePrecalcIntegralsDone + 1
+						coroutine.yield()
 					end
 				else
 					local result = self:getShapeTypeBaseObjectAmount(sampleDistribution, integralThreads, shapeType, subtypeId, valueNoiseData, nil, nil, nil)
 					sampleBaseObjectAmounts[samplingId] = (sampleBaseObjectAmounts[samplingId] or 0) + result
+
+					loadInfo.shapeTypePrecalcIntegralsDone = loadInfo.shapeTypePrecalcIntegralsDone + 1
+					coroutine.yield()
 				end
 			end
 			shapeType.sampleBaseObjectAmounts = sampleBaseObjectAmounts
 
-		    ::continue::
+			::continue::
 		end
 
 		alreadyDoneNoiseless = true
@@ -588,7 +600,7 @@ function game:loadShapeTypes()
 			end
 		end
 
-	    ::continue::
+		::continue::
 	end
 
 	-- Get all needed shader combinations
@@ -672,6 +684,7 @@ function game:loadShapeTypes()
 	    ::continue::
 	end
 
+	-- NOTE: Would be better off doing each shape type one by one and caching after each one so's not to waste work if quitting mid-load
 	for id = 0, count - 1 do
 		local shapeType = pointLayerShapeTypes[id]
 		if shapeType.needsCalculating then

@@ -21,6 +21,7 @@ local json = require("lib.json")
 ---@field save fun(self: Settings)
 ---@field string fun(self: Settings): string
 ---@field controls Controls
+---@field fullscreen boolean
 local settings = {}
 
 ---@type Settings
@@ -42,6 +43,7 @@ local defaultConfig = {
     load = settings.load,
     save = settings.save,
     string = settings.string,
+    fullscreen = false
 }
 
 ---applyDefaultConfig sets every required field missing from config to its corresponding value in defaultConfig, returning the result.
@@ -52,7 +54,7 @@ local function applyDefaultConfig(config)
             goto continue
         end
 
-        if not config[k] then
+        if config[k] == nil then -- Explicit nil check because false is valid
             config[k] = v
         end
 
@@ -60,7 +62,7 @@ local function applyDefaultConfig(config)
     end
 
     for k, v in pairs(defaultConfig.controls) do
-        if not config.controls[k] then
+        if config.controls[k] == nil then
             config.controls[k] = v
         end
     end
