@@ -13,7 +13,7 @@ function game:newState()
 	return state
 end
 
-function game:initState()
+function game:initState(initParams)
 	-- Setup window
 	util.remakeWindow(consts.defaultWindowWidth, consts.defaultWindowHeight)
 
@@ -22,8 +22,8 @@ function game:initState()
 	self.screenWidth, self.screenHeight = love.graphics.getDimensions()
 	self.dummyTexture = love.graphics.newImage(love.image.newImageData(1, 1))
 
-	self:initShip()
-	self:initCelestial()
+	self:initShip(initParams)
+	self:initCelestial(initParams)
 	self:resizeGameScreen(self.screenWidth, self.screenHeight, true)
 end
 

@@ -45,7 +45,7 @@
 ---@field gameObject Gamestate self-proclaimed "HACK" :3
 --- not all fields added here yet...
 
-
+require("table.clear")
 local ffi = require("ffi")
 local bm = require("bigmaths")
 local mathsies = require("lib.mathsies")
@@ -58,79 +58,6 @@ local consts = require("consts")
 
 local game = {}
 
-local function randomTODO(...)
-	-- TODO: Not this!
-	return love.math.random(...)
-end
-local function randomRangeTODO(lower, upper)
-	return lower + love.math.random() * (upper - lower)
-end
-local function randomOrientationTODO()
-	-- Angles
-	local phi = love.math.random() * consts.tau
-	local cosTheta = love.math.random() * 2 - 1
-	local theta = math.acos(cosTheta)
-	-- Get a random roll angle with the probability density function 2 / pi * sin(x / 2) ^ 2 where x is in [0, pi)
-	-- Source for above is https://math.stackexchange.com/questions/442418/random-generation-of-rotation-matrices#comment7610329_442423
-	-- The integral of that function is (x - sin(x)) / pi, which... can't be inverted analytically, it seems
-	-- So we're going to use a numerical method.
-	local function newtonRaphson(f, fDeriv, input, initOutputGuess, iters)
-		local output = initOutputGuess
-		for _=1, iters do
-			output = output - (f(output) - input) / fDeriv(output)
-		end
-		return output
-	end
-	local function f(x)
-		return (x - math.sin(x)) / math.pi
-	end
-	local function fDeriv(x)
-		return 2 / math.pi * math.sin(x / 2) ^ 2
-	end
-	local rollRand = love.math.random()
-	local roll = rollRand == 0 and 0 or newtonRaphson(f, fDeriv, rollRand, math.pi * rollRand, 16)
-	-- Sphere point (rotation axis)
-	local st, sp, ct, cp = math.sin(theta), math.sin(phi), math.cos(theta), math.cos(phi)
-	local sphereX = st*sp
-	local sphereY = ct
-	local sphereZ = st*cp
-	-- Make quaternion
-	local s, c = math.sin(roll / 2), math.cos(roll / 2)
-	local x, y, z, w = sphereX * s, sphereY * s, sphereZ * s, c
-	local len = math.sqrt(x^2 + y^2 + z^2 + w^2)
-	x = x / len
-	y = y / len
-	z = z / len
-	w = w / len
-	return x, y, z, w
-end
-
--- Testing rotation uniformity
--- local samplepositions = {
--- 	{c=0,v=consts.rightVector},
--- 	{c=0,v=consts.upVector},
--- 	{c=0,v=consts.forwardVector}
--- }
--- local count = 100000
--- for _=1, count do
--- 	local rot = mathsies.quat(randomOrientationTODO())
--- 	local vec = mathsies.vec3.rotate(consts.forwardVector, rot)
--- 	local mind, minv = math.huge, nil
--- 	for _, v in ipairs(samplepositions) do
--- 		local d = mathsies.vec3.distance(vec, v.v)
--- 		if d < mind then
--- 			mind = d
--- 			minv = v
--- 		end
--- 	end
--- 	if minv then
--- 		minv.c=minv.c+1
--- 	end
--- end
--- for _, v in ipairs(samplepositions) do
--- 	print(v.c, v.v)
--- end
-
 local function getBoundingBoxChunksForSize(chunkSize, x, y, z)
 	-- TODO: I think this and the code using it breaks (slightly) when size[x/y/z] / chunkSize is an integer
 	local minX, maxX = math.floor(-x / chunkSize), math.floor(x / chunkSize)
@@ -140,6 +67,8 @@ local function getBoundingBoxChunksForSize(chunkSize, x, y, z)
 end
 
 local galaxyPointLayerInfo = {
+	chunkObjectType = "galaxyChunk",
+	pointObjectType = "galaxy",
 	fixedParentObject = {
 		position = consts.galaxyGroupPosition,
 		radii = consts.galaxyGroupScale * mathsies.vec3(1, 1, consts.galaxyGroupZScaleRatio),
@@ -213,24 +142,24 @@ function galaxyPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, chunkB
 	local nextLayerAverageLuminousFluxBPerPoint = self.childPointLayer.averageLuminousFluxBPerPoint
 	local luminousFluxScale = self.chunkSize ^ -2
 	for i = 0, count - 1 do
-		local x = randomTODO()
-		local y = randomTODO()
-		local z = randomTODO()
+		local x = self.gameObject:celestialRandom()
+		local y = self.gameObject:celestialRandom()
+		local z = self.gameObject:celestialRandom()
 
-		local choice = randomChoice(shapeTypeSet, randomGeneratorTODO)
+		local choice = self.gameObject:celestialRandomChoice(shapeTypeSet)
 		local shapeType = self.gameObject.pointLayerShapeTypes[choice.name]
 		local shapeTypeId = shapeType.id
-		local shapeSubtypeId = randomTODO(0, shapeType.subtypeCount - 1)
+		local shapeSubtypeId = self.gameObject:celestialRandomRangeInt(0, shapeType.subtypeCount)
 
-		local attenuationChoice = choice.attenuationShapeTypes and randomChoice(choice.attenuationShapeTypes, randomGeneratorTODO)
+		local attenuationChoice = choice.attenuationShapeTypes and self.gameObject:celestialRandomChoice(choice.attenuationShapeTypes)
 		local attenuationType = self.gameObject.pointLayerShapeTypes[attenuationChoice and attenuationChoice.name or consts.noAttenuationShapeTypeName]
 		local attenuationShapeTypeId = attenuationType.id
-		local attenuationShapeSubtypeId = randomTODO(0, attenuationType.subtypeCount - 1)
+		local attenuationShapeSubtypeId = self.gameObject:celestialRandomRangeInt(0, attenuationType.subtypeCount)
 
-		attenuationMultiplierInfo[i] = randomRangeTODO(attenuationChoice.mulRangeMin, attenuationChoice.mulRangeMax)
+		attenuationMultiplierInfo[i] = self.gameObject:celestialRandomRange(attenuationChoice.mulRangeMin, attenuationChoice.mulRangeMax)
 
-		local scale = randomRangeTODO(choice.scaleMin, choice.scaleMax)
-		local zScaleRatio = randomRangeTODO(shapeType.zScaleRatioMin, shapeType.zScaleRatioMax)
+		local scale = self.gameObject:celestialRandomRange(choice.scaleMin, choice.scaleMax)
+		local zScaleRatio = self.gameObject:celestialRandomRange(shapeType.zScaleRatioMin, shapeType.zScaleRatioMax)
 
 		local xRadius = scale
 		local yRadius = scale
@@ -240,7 +169,7 @@ function galaxyPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, chunkB
 		radiiInfo[i * 3 + 2] = zRadius
 
 		-- Get orientation
-		local ox, oy, oz, ow = randomOrientationTODO(randomGeneratorTODO)
+		local ox, oy, oz, ow = self.gameObject:celestialRandomOrientation()
 		orientationInfo[i * 4] = ox
 		orientationInfo[i * 4 + 1] = oy
 		orientationInfo[i * 4 + 2] = oz
@@ -270,18 +199,10 @@ function galaxyPointLayerInfo:generateRemainingCurrentObjectInfo()
 	local currentObject = self.currentObject
 end
 
-function galaxyPointLayerInfo:getGlobalCelestialObjectIdParameters(stage, forceFakeCurrentObject) -- Not quite the same as the 128-bit number split into four 32-bit numbers that this produces
-	local currentObject = forceFakeCurrentObject or self.currentObject
-	local objectType = consts.idObjectTypes.galaxy
-	local galaxyChunkId = currentObject.chunkId
-	local galaxyId = currentObject.pointId
-	-- local starChunkId
-	-- local starId
-	-- local systemBodyId
-	return objectType, stage, galaxyChunkId, galaxyId
-end
-
-local starSystemPointLayerInfo = {}
+local starSystemPointLayerInfo = {
+	chunkObjectType = "starChunk",
+	pointObjectType = "starSystem"
+}
 
 starSystemPointLayerInfo.features = {
 	mass = "unsent",
@@ -293,12 +214,12 @@ function starSystemPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, ch
 	local mass = extraInfo.mass
 	local luminousFluxScale = self.chunkSize ^ -2
 	for i = 0, count - 1 do
-		local x = randomTODO()
-		local y = randomTODO()
-		local z = randomTODO()
+		local x = self.gameObject:celestialRandom()
+		local y = self.gameObject:celestialRandom()
+		local z = self.gameObject:celestialRandom()
 
 		-- Copied in consts.lua (for now)
-		local randomValue = randomTODO()
+		local randomValue = self.gameObject:celestialRandom()
 		local exponentT = consts.starMassRandomTerm1Weight * randomValue ^ consts.starMassRandomTerm1Exponent + (1 - consts.starMassRandomTerm1Weight) * randomValue
 		local exponent = consts.starMassExponentRangeLow + exponentT * (consts.starMassExponentRangeHigh - consts.starMassExponentRangeLow)
 		local starMass = consts.starMassMultiplier * 10 ^ exponent
@@ -309,10 +230,10 @@ function starSystemPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, ch
 		local radius = (volume / (2 / 3 * consts.tau)) ^ (1 / 3)
 		local area = 2 * consts.tau * radius ^ 2
 		local luminousExitance = consts.stefanBoltzmannConstant * temperature ^ 4
-		local luminousFlux = luminousExitance * area -- TEMP, replace all the incorrect photometry terms with correct (spectral!) radiometric ones. and MAKE SURE that the vec3 spectral flux --> RGB is correct!!!!
-		local r = luminousFlux * luminousFluxScale * randomRangeTODO(0.5, 1.5)
-		local g = luminousFlux * luminousFluxScale * randomRangeTODO(0.5, 1.5)
-		local b = luminousFlux * luminousFluxScale * randomRangeTODO(0.5, 1.5)
+		local luminousFlux = luminousExitance * area -- TEMP, replace all the incorrect photometry terms with correct (spectral!) radiometric ones. and MAKE SURE that spectral flux --> RGB is correct!!!!
+		local r = luminousFlux * luminousFluxScale * self.gameObject:celestialRandomRange(0.5, 1.5)
+		local g = luminousFlux * luminousFluxScale * self.gameObject:celestialRandomRange(0.5, 1.5)
+		local b = luminousFlux * luminousFluxScale * self.gameObject:celestialRandomRange(0.5, 1.5)
 
 		self:setPoint(chunkBufferIndex, i, x, y, z, r, g, b)
 	end
@@ -321,18 +242,6 @@ end
 function starSystemPointLayerInfo:generateRemainingCurrentObjectInfo()
 	local currentObject = self.currentObject
 	self.gameObject:generateStarSystem(currentObject)
-end
-
-function starSystemPointLayerInfo:getGlobalCelestialObjectIdParameters(stage)
-	local parentObject = self.parentPointLayer.currentObject
-	local currentObject = self.currentObject
-	local objectType = consts.idObjectTypes.starSystem
-	local galaxyChunkId = parentObject.chunkId
-	local galaxyId = parentObject.pointId
-	local starChunkId = currentObject.chunkId
-	local starId = currentObject.pointId
-	-- local systemBodyId
-	return objectType, stage, galaxyChunkId, galaxyId, starChunkId, starId
 end
 
 function game:initPointLayers()
@@ -554,7 +463,7 @@ function pointLayerFunctions:randomiseValueNoise(type)
 	local data = self["valueNoiseData" .. suffix]
 	local dataFFI = self["valueNoiseDataFFI" .. suffix]
 	for i = 0, shapeType.noiseInfo.requiredValueCount - 1 do
-		dataFFI[i] = randomTODO()
+		dataFFI[i] = self.gameObject:celestialRandom()
 	end
 	buffer:setArrayData(data, 1, 1, shapeType.noiseInfo.requiredValueCount)
 end
@@ -629,6 +538,10 @@ function pointLayerFunctions:getPointVars(chunkBufferIndex, pointId, name, type,
 end
 
 function pointLayerFunctions:generateChunkCommon(realX, realY, realZ, chunkId, chunkBufferIndex)
+	self.gameObject:seedCelestialRNG(self.gameObject:getGlobalCelestialObjectIdNumbers(
+		self:getGlobalCelestialObjectIdParameters(consts.objectGenerationStages.main, chunkId)
+	))
+
 	local density = self:getDensity(
 		-- Density is sampled in middle of chunk
 		realX + 0.5,
@@ -637,7 +550,7 @@ function pointLayerFunctions:generateChunkCommon(realX, realY, realZ, chunkId, c
 	)
 	local amount = density * self.maxPointDensity * self.chunkVolume
 	local count = math.floor(amount)
-	if randomTODO() < amount % 1 then -- Use fractional part of amount as a probability
+	if self.gameObject:celestialRandom() < amount % 1 then -- Use fractional part of amount as a probability
 		count = count + 1
 	end
 	count = math.min(self.maxPointsPerChunk, count) -- Just in case
@@ -722,7 +635,6 @@ function pointLayerFunctions:handleThreadedShapeInit(action)
 			end
 			return
 		end
-		self.started = love.timer.getTime()
 
 		self:randomiseValueNoise("emission")
 		self:randomiseValueNoise("attenuation")
@@ -782,6 +694,29 @@ function pointLayerFunctions:handleThreadedShapeInit(action)
 	else
 		error("Unknown handleThreadedShapeInit action " .. action)
 	end
+end
+
+local paramScratch = {}
+function pointLayerFunctions:getGlobalCelestialObjectIdParameters(stage, thisLayerCurrentObject)
+	table.clear(paramScratch)
+
+	local objectType = consts.idObjectTypes[
+		type(thisLayerCurrentObject) == "number" and self.chunkObjectType or self.pointObjectType
+	]
+	for _, pointLayer in ipairs(self.gameObject.pointLayers) do
+		if pointLayer == self then
+			break
+		end
+		table.insert(paramScratch, pointLayer.currentObject.chunkId)
+		table.insert(paramScratch, pointLayer.currentObject.pointId)
+	end
+	if type(thisLayerCurrentObject) == "number" then
+		table.insert(paramScratch, thisLayerCurrentObject)
+	else
+		table.insert(paramScratch, thisLayerCurrentObject.chunkId)
+		table.insert(paramScratch, thisLayerCurrentObject.pointId)
+	end
+	return objectType, stage, unpack(paramScratch)
 end
 
 function game:clearPointLayers(startIndex)
@@ -1267,7 +1202,7 @@ function game:handlePointLayers()
 				end
 				-- Remaining features are generated (or fetched from extra info) in possibly layer-specific ways
 				self:seedCelestialRNG(self:getGlobalCelestialObjectIdNumbers(
-					pointLayer:getGlobalCelestialObjectIdParameters(consts.objectGenerationStages.main)
+					pointLayer:getGlobalCelestialObjectIdParameters(consts.objectGenerationStages.main, currentObject)
 				))
 				pointLayer:generateRemainingCurrentObjectInfo()
 

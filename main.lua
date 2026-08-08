@@ -20,12 +20,28 @@ local function clearCache()
 end
 
 function love.load(args)
-	for _, arg in ipairs(args) do
+	local startPosStrings = {}
+
+	local i = 1
+	while true do
+		local arg = args[i]
+		if not arg then
+			break
+		end
+		i = i + 1
 		if arg == "--clearCache" then
 			clearCache()
 		elseif arg == "--noRun" then
 			love.event.quit()
 			return
+		elseif arg == "--startPosition" then
+			startPosStrings[1] = args[i]
+			startPosStrings[2] = args[i + 1]
+			startPosStrings[3] = args[i + 2]
+			i = i + 3
+		elseif arg == "--brightnessMultiplier" then
+			consts.celestialLuminanceMultiplier = tonumber(args[i])
+			i = i + 1
 		else
 			error("Invalid argument \"" .. arg .. "\"")
 		end
@@ -37,7 +53,9 @@ function love.load(args)
 	settings:save()
 	state = game:newState()
 	state.loadInfo = {}
-	initCoroutine = coroutine.create(function() state:initState() end)
+	initCoroutine = coroutine.create(function() state:initState({
+		shipPosition = bm.vec3(unpack(startPosStrings))
+	}) end)
 
 	shouldResize = false
 end

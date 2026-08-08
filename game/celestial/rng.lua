@@ -1,4 +1,4 @@
--- TODO: Find suitable RNG
+local rngManager = require("rngManager")
 
 local mathsies = require("lib.mathsies")
 local consts = require("consts")
@@ -51,14 +51,15 @@ function game:getShapeIntegralNoiseSeed(averagingIteration) -- No need to even s
 end
 
 function game:initCelestialRNG()
-	-- TODO
+	-- Oh wait, there's nothing we need to put here...?
+	-- If that rngManager module that loads the rng shared library ends up being able to return multiple instances, I guess that would go here.
 
 	-- Debug...
-	-- self.isCelestialRNGSeeded = false
+	-- self.isCelestialRNGSeeded = debug
 end
 
 function game:seedCelestialRNG(a, b, c, d)
-	-- TODO
+	rngManager.seedRNGLua(a, b, c, d)
 
 	-- Debug...
 	-- self.isCelestialRNGSeeded = true
@@ -74,8 +75,7 @@ function game:celestialRandom()
 	-- assert(self.isCelestialRNGSeeded, "Celestial RNG cannot be called without initialising seed")
 	-- self.celestialRNGCallNumber = self.celestialRNGCallNumber + 1
 
-	-- TODO
-	return love.math.random() -- TEMP
+	return rngManager.rng.nextDouble()
 end
 
 function game:celestialRandomRange(lower, upper)
@@ -86,7 +86,7 @@ function game:celestialRandomInt(n) -- [0, n)
 	return math.floor(self:celestialRandom() * n)
 end
 
-function game:celestialRandomRangeInt(lower, upper) -- [0, n)
+function game:celestialRandomRangeInt(lower, upper) -- [lower, upper)
 	return lower + self:celestialRandomInt(upper - lower)
 end
 
@@ -108,5 +108,88 @@ function game:celestialRandomInSphereVolume(radius)
 
 	return r * mathsies.vec3.fromAngles(theta, phi)
 end
+
+function game:celestialRandomChoice(choices)
+	local random = self:celestialRandom()
+	local weightSum = 0
+	for _, choice in ipairs(choices) do
+		weightSum = weightSum + choice.weight
+	end
+	local x = random * weightSum
+	for _, choice in ipairs(choices) do
+		if x < choice.weight then
+			-- return choice.value
+			return choice
+		end
+		x = x - choice.weight
+	end
+	return nil
+end
+
+function game:celestialRandomOrientation()
+	-- Angles
+	local phi = self:celestialRandom() * consts.tau
+	local cosTheta = self:celestialRandom() * 2 - 1
+	local theta = math.acos(cosTheta)
+	-- Get a random roll angle with the probability density function 2 / pi * sin(x / 2) ^ 2 where x is in [0, pi)
+	-- Source for above is https://math.stackexchange.com/questions/442418/random-generation-of-rotation-matrices#comment7610329_442423
+	-- The integral of that function is (x - sin(x)) / pi, which... can't be inverted analytically, it seems
+	-- So we're going to use a numerical method.
+	local function newtonRaphson(f, fDeriv, input, initOutputGuess, iters)
+		local output = initOutputGuess
+		for _=1, iters do
+			output = output - (f(output) - input) / fDeriv(output)
+		end
+		return output
+	end
+	local function f(x)
+		return (x - math.sin(x)) / math.pi
+	end
+	local function fDeriv(x)
+		return 2 / math.pi * math.sin(x / 2) ^ 2
+	end
+	local rollRand = self:celestialRandom()
+	local roll = rollRand == 0 and 0 or newtonRaphson(f, fDeriv, rollRand, math.pi * rollRand, 16)
+	-- Sphere point (rotation axis)
+	local st, sp, ct, cp = math.sin(theta), math.sin(phi), math.cos(theta), math.cos(phi)
+	local sphereX = st*sp
+	local sphereY = ct
+	local sphereZ = st*cp
+	-- Make quaternion
+	local s, c = math.sin(roll / 2), math.cos(roll / 2)
+	local x, y, z, w = sphereX * s, sphereY * s, sphereZ * s, c
+	local len = math.sqrt(x^2 + y^2 + z^2 + w^2)
+	x = x / len
+	y = y / len
+	z = z / len
+	w = w / len
+	return x, y, z, w
+end
+
+-- Old (not working) code for testing rotation uniformity
+-- local samplepositions = {
+-- 	{c=0,v=consts.rightVector},
+-- 	{c=0,v=consts.upVector},
+-- 	{c=0,v=consts.forwardVector}
+-- }
+-- local count = 100000
+-- for _=1, count do
+-- 	local rot = mathsies.quat(randomOrientation())
+-- 	local vec = mathsies.vec3.rotate(consts.forwardVector, rot)
+-- 	local mind, minv = math.huge, nil
+-- 	for _, v in ipairs(samplepositions) do
+-- 		local d = mathsies.vec3.distance(vec, v.v)
+-- 		if d < mind then
+-- 			mind = d
+-- 			minv = v
+-- 		end
+-- 	end
+-- 	if minv then
+-- 		minv.c=minv.c+1
+-- 	end
+-- end
+-- for _, v in ipairs(samplepositions) do
+-- 	print(v.c, v.v)
+-- end
 
 return game

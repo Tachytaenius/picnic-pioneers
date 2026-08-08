@@ -23,7 +23,7 @@ local util = require("util")
 ---@field public loadShapeTypes fun(self: Gamestate)
 local game = {}
 
-function game:initCelestial()
+function game:initCelestial(initParams)
 	-- Basic init
 	self.celestialTime = mapm.number(0) -- Will be used for celestial simulation, so it's arbitrary precision
 	self:initCelestialRNG()
@@ -66,11 +66,10 @@ function game:initCelestial()
 
 	-- Place ship
 	self.ship = {
-		position = bm.vec3(0, 0, 0), -- Arbitrary precision, used to define position with enough information at each size scale
+		position = initParams.shipPosition or bm.vec3(0, 0, 0), -- Arbitrary precision, used to define position with enough information at each size scale
 		orientation = mathsies.quat(),
 		verticalFOV = math.rad(80)
 	}
-	-- self.ship.position = self.ship.position - bm.vec3(0, 0, 1.75 * consts.galaxyGroupRadii.z) -- TEMP
 
 	-- Initial handlePointLayers call to get everything consistent, including pointLayerGravityWellSlowdownFactor for first handleShipMovement call
 	self:handlePointLayers()
