@@ -107,7 +107,7 @@ function love.draw()
 		local required = state.loadInfo.shapeTypePrecalcIntegralsRequired
 		if done and required then
 			love.graphics.print(
-				"Loading...\n" ..
+				"Precalculating (and caching) various object masses...\n" ..
 				math.floor(done / required * 100) .. "%"
 			)
 		end
