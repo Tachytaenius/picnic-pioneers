@@ -8,8 +8,8 @@ for _, name in ipairs(names) do
 	if not love.filesystem.getInfo(prefix .. name .. suffix) then
 		error(
 			"\n\nMissing library \"" .. name .. "\"!\n" ..
-			"Did you run `make -C sources copy`?\n" ..
-			"If it fails...\n" ..
+			"Did you run make?\n" ..
+			"If it fails on the sources...\n" ..
 			"Did you initialise submodules?\n" ..
 			"Do you need a dependency?",
 			0

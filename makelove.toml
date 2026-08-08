@@ -22,7 +22,7 @@ love_files = [
 
 [hooks]
 prebuild = [
-    "make -C sources copy",
+    "make",
     "rm -f version.txt",
     "./get-version > version.txt"
 ]
