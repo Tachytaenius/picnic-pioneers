@@ -1,0 +1,31 @@
+name = "picnic-pioneers"
+default_targets = ["appimage", "win64", "win32", "macos"]
+build_directory = "makelove-build"
+love_version = "12.0"
+icon_file = "icon.png"
+
+love_files = [
+    "::git-ls-tree::",
+    "./version.txt",
+    "./lib/*.so", # Will need to be DLL on Windows etc
+    "-*/.*",
+    "-./readme.txt",
+    "-./love_license.txt",
+    "-./makelove.toml",
+    "-./get-version",
+    "-./build-libs"
+]
+
+[archive_files]
+"license.txt" = "license.txt"
+"love_license.txt" = "love_license.txt"
+
+[hooks]
+prebuild = [
+    "make -C sources copy",
+    "rm -f version.txt",
+    "./get-version > version.txt"
+]
+postbuild = [
+    "rm version.txt"
+]

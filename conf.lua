@@ -1,3 +1,5 @@
+require("libCheck")
+
 local util = require("util")
 util.load()
 local consts = require("consts")

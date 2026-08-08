@@ -1,3 +1,5 @@
+local version = love.filesystem.read("version.txt") or "unknown" -- This file is provided on build
+
 local bm = require("bigmaths")
 local consts = require("consts")
 local game = require("game")

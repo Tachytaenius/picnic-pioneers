@@ -1,0 +1,6 @@
+[submodule "sources/rng"]
+	path = sources/rng
+	url = https://github.com/Tachytaenius/simple-128-seed-rng
+[submodule "sources/lmapm"]
+	path = sources/lmapm
+	url = https://github.com/Tachytaenius/lmapm-compile
