@@ -102,7 +102,9 @@ function consts.load()
 	consts.iconPath = "icon.png"
 	consts.iconScale = 16
 
-	consts.tau = math.pi * 2
+	-- Determinism! Being silly about the precision. Taken from OEIS.
+	consts.tau = 6.28318530717958647692528676655900576839433879875021164194988918461563281257241799725606965068423413
+	consts.pi = consts.tau / 2
 
 	consts.maxDeltaTime = 0.1
 	consts.initMaxTickLength = 0.2

@@ -4,3 +4,6 @@
 [submodule "sources/lmapm"]
 	path = sources/lmapm
 	url = https://github.com/Tachytaenius/lmapm-compile
+[submodule "sources/dmath"]
+	path = sources/dmath
+	url = https://github.com/pocketpy/dmath

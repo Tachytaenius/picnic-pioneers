@@ -1,3 +1,5 @@
+local dmath = require("dmath")
+
 local info = {}
 
 info.zScaleRatioMin = 0.08
@@ -54,12 +56,14 @@ info.constants = {
 }
 
 local sqrt = math.sqrt
-local sin = math.sin
-local cos = math.cos
 local min = math.min
 local max = math.max
 local abs = math.abs
-local atan2 = math.atan2
+
+-- These need to be deterministic
+local sin = dmath.sin
+local cos = dmath.cos
+local atan2 = dmath.atan2
 
 -- TODO: Move magic numbers to shape constants
 

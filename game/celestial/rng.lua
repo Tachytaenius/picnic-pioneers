@@ -1,4 +1,5 @@
 local rngManager = require("rngManager")
+local dmath = require("dmath")
 
 local mathsies = require("lib.mathsies")
 local consts = require("consts")
@@ -93,7 +94,7 @@ end
 function game:celestialRandomOnSphereSurface(radius)
 	local phi = self:celestialRandom() * consts.tau
 	local cosTheta = self:celestialRandom() * 2 - 1
-	local theta = math.acos(cosTheta)
+	local theta = dmath.acos(cosTheta)
 
 	return radius * mathsies.vec3.fromAngles(theta, phi)
 end
@@ -101,7 +102,7 @@ end
 function game:celestialRandomInSphereVolume(radius)
 	local phi = self:celestialRandom() * consts.tau
 	local cosTheta = self:celestialRandom() * 2 - 1
-	local theta = math.acos(cosTheta)
+	local theta = dmath.acos(cosTheta)
 
 	local u = self:celestialRandom()
 	local r = radius * u ^ (1 / 3)
@@ -130,7 +131,7 @@ function game:celestialRandomOrientation()
 	-- Angles
 	local phi = self:celestialRandom() * consts.tau
 	local cosTheta = self:celestialRandom() * 2 - 1
-	local theta = math.acos(cosTheta)
+	local theta = dmath.acos(cosTheta)
 	-- Get a random roll angle with the probability density function 2 / pi * sin(x / 2) ^ 2 where x is in [0, pi)
 	-- Source for above is https://math.stackexchange.com/questions/442418/random-generation-of-rotation-matrices#comment7610329_442423
 	-- The integral of that function is (x - sin(x)) / pi, which... can't be inverted analytically, it seems
@@ -143,20 +144,20 @@ function game:celestialRandomOrientation()
 		return output
 	end
 	local function f(x)
-		return (x - math.sin(x)) / math.pi
+		return (x - dmath.sin(x)) / consts.pi
 	end
 	local function fDeriv(x)
-		return 2 / math.pi * math.sin(x / 2) ^ 2
+		return 2 / consts.pi * dmath.sin(x / 2) ^ 2
 	end
 	local rollRand = self:celestialRandom()
-	local roll = rollRand == 0 and 0 or newtonRaphson(f, fDeriv, rollRand, math.pi * rollRand, 16)
+	local roll = rollRand == 0 and 0 or newtonRaphson(f, fDeriv, rollRand, consts.pi * rollRand, 16)
 	-- Sphere point (rotation axis)
-	local st, sp, ct, cp = math.sin(theta), math.sin(phi), math.cos(theta), math.cos(phi)
+	local st, sp, ct, cp = dmath.sin(theta), dmath.sin(phi), dmath.cos(theta), dmath.cos(phi)
 	local sphereX = st*sp
 	local sphereY = ct
 	local sphereZ = st*cp
 	-- Make quaternion
-	local s, c = math.sin(roll / 2), math.cos(roll / 2)
+	local s, c = dmath.sin(roll / 2), dmath.cos(roll / 2)
 	local x, y, z, w = sphereX * s, sphereY * s, sphereZ * s, c
 	local len = math.sqrt(x^2 + y^2 + z^2 + w^2)
 	x = x / len

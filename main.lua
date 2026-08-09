@@ -93,7 +93,7 @@ function love.update(dt)
 	local dtLimited = math.min(dt, consts.maxDeltaTime)
 	state:update(dtLimited)
 
-	-- TEMP
+	-- TEMP (would we want this to be dmath's exp?)
 	local rate = 5
 	if love.keyboard.isDown("-") then
 		consts.celestialLuminanceMultiplier = consts.celestialLuminanceMultiplier * math.exp(-rate * dt)

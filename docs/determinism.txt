@@ -1,0 +1,23 @@
+Determinism guide (tentative)
+High caution!
+
+TODO: Ensure C libraries do not compile in ways that can introduce nondeterminism.
+Only ensure determinism in places where it makes a difference to game state. Output graphics can be nondeterministic.
+...Considering: forgo determinism for game updates on the ship and only keep it for world generation (what about the movement of the ship, e.g. the gravity slowdown calculation?).
+
+General:
+
+Assume GPU is nondeterministic.
+Avoid functions with nondeterministic results like pairs in relevant places, unless used in such a way that it makes no difference.
+When multithreading, ensure that any combining calculations like sums over the results are done in deterministic order with deterministic results.
+Test results across platforms (TODO).
+
+Maths:
+
+Use dmath module/library for maths functions that can vary across platforms.
+Assume all platforms are IEEE 754-compliant (this makes +/*- and sqrt safe).
+TODO: Ensure rounding modes on all threads are set and unchanging.
+Don't trust Lua's maths constants (except huge in cases where its exact value does not matter, like when finding the closest object to the player using min).
+Use constants from consts.
+Don't trust Lua's maths functions except for very basic functions with only one possible answer (floor, max, abs, etc). Assume rad and deg use untrusted Lua constants.
+This includes the power operator "^", although it may well be fine for integers (e.g. squaring). TODO: Test across machines!
