@@ -1,5 +1,10 @@
 local version = love.filesystem.read("version.txt") or "unknown" -- This file is provided on build
 
+-- Assume that this love instance runs on a separate thread to
+-- whatever started it (rounding modes are per-thread).
+local extutils = require("lib.extutils")
+extutils.ensureRoundingMode()
+
 local bm = require("bigmaths")
 local consts = require("consts")
 local game = require("game")

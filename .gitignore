@@ -2,5 +2,6 @@ makelove-build
 # version.txt should not actually be left in the files after building
 version.txt
 
-# Compiled libraries. Will need DLL etc when the time comes.
-lib/*.so
+# Compilation output. Will need DLL etc when the time comes.
+*.so
+*.o

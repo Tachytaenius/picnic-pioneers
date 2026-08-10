@@ -2,7 +2,9 @@ local prefix = "lib/"
 local suffix = ".so"
 local names = {
 	"mapm",
-	"rng"
+	"rng",
+	"extutils",
+	"dmath"
 }
 for _, name in ipairs(names) do
 	if not love.filesystem.getInfo(prefix .. name .. suffix) then

@@ -1,5 +1,5 @@
-local rngManager = require("rngManager")
-local dmath = require("dmath")
+local rngManager = require("lib.rng")
+local dmath = require("lib.dmath")
 
 local mathsies = require("lib.mathsies")
 local consts = require("consts")

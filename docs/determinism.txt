@@ -11,6 +11,7 @@ Assume GPU is nondeterministic.
 Avoid functions with nondeterministic results like pairs in relevant places, unless used in such a way that it makes no difference.
 When multithreading, ensure that any combining calculations like sums over the results are done in deterministic order with deterministic results.
 Test results across platforms (TODO).
+Run ensureRoundingMode on all threads before any calculations.
 
 Maths:
 

@@ -1,5 +1,8 @@
 local detail, maxThreads = ...
 
+local extutils = require("lib.extutils")
+extutils.ensureRoundingMode()
+
 local initSampleDistribution = require("threadCode.common.initSampleDistribution")
 
 local distributions = {} -- 0-indexed

@@ -1,6 +1,6 @@
 local ffi = require("ffi")
 
-local lib = ffi.load("lib/dmath.so")
+local dmath = ffi.load("lib/dmath.so")
 
 ffi.cdef([[
 // Original source: include/public/math.h in the dmath library
@@ -238,4 +238,4 @@ float       truncf(float);
 // -snip-
 ]])
 
-return lib
+return dmath

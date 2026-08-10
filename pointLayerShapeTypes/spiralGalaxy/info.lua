@@ -1,4 +1,4 @@
-local dmath = require("dmath")
+local dmath = require("lib.dmath")
 
 local info = {}
 

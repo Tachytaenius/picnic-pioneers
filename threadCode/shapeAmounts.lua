@@ -1,3 +1,6 @@
+local extutils = require("lib.extutils")
+extutils.ensureRoundingMode()
+
 local processShapeNoiseLayerInfo = require("threadCode.common.processShapeNoiseLayerInfo")
 local setValueNoiseForShapeTypeDensityFunc = require("threadCode.common.setValueNoiseForShapeTypeDensityFunc")
 local setValueNoiseFunctionVars = require("threadCode.common.setValueNoiseFunctionVars")
