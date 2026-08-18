@@ -16,6 +16,7 @@ local state
 
 local initCoroutine
 local shouldResize
+local skipOneUpdate
 
 local function clearCache()
 	print("Clearing cache...")
@@ -65,6 +66,8 @@ function love.load(args)
 	}) end)
 
 	shouldResize = false
+
+	skipOneUpdate = false
 end
 
 function love.update(dt)
@@ -79,13 +82,14 @@ function love.update(dt)
 		repeat
 			local success, err = coroutine.resume(initCoroutine)
 			if not success then
-				error("Game init failed:\n\n" .. err)
+				error("Game init failed:\n\n" .. err .. "\n\nCoroutine traceback:\n" .. debug.traceback(initCoroutine))
 			end
 			time = love.timer.getTime() - start
 		until time >= consts.initMaxTickLength
 
 		if coroutine.status(initCoroutine) == "dead" then
 			state.loadInfo = nil
+			skipOneUpdate = true
 		end
 
 		return
@@ -93,6 +97,12 @@ function love.update(dt)
 
 	if shouldResize then -- Don't handle during loading
 		state:resizeGameScreen(love.graphics.getDimensions())
+	end
+
+	if skipOneUpdate then
+		-- Avoid large initial dt
+		skipOneUpdate = false
+		return
 	end
 
 	local dtLimited = math.min(dt, consts.maxDeltaTime)

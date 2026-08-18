@@ -101,8 +101,8 @@ galaxyPointLayerInfo.features = {
 					name = "genericNebulae",
 					weight = 1,
 					-- 2.5 * 10^-20 metres^-1 in the middle, converted from "1.8 magnitudes per kiloparsec" attenuation coefficient measurement near the sun
-					mulRangeMin = 1.875e-20,
-					mulRangeMax = 3.125e-20
+					mulRangeMin = 2.5e-20 * 0.1,
+					mulRangeMax = 2.5e-20 * 1.9
 				}
 			}
 		},
@@ -115,8 +115,8 @@ galaxyPointLayerInfo.features = {
 				{
 					name = "genericNebulae",
 					weight = 1,
-					mulRangeMin = 1.875e-20,
-					mulRangeMax = 3.125e-20
+					mulRangeMin = 2.5e-20 * 0.1,
+					mulRangeMax = 2.5e-20 * 1.9
 				}
 			}
 		}
@@ -206,36 +206,61 @@ local starSystemPointLayerInfo = {
 
 starSystemPointLayerInfo.features = {
 	mass = "unsent",
-	bodies = true -- Final layer, treated differently
+	starParams = "unsent",
+	bodies = true, -- Final layer, treated differently
+	pointStarCountWeights = {200, 10, 3}
 }
 
+local starParamsScratch = {}
 function starSystemPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, chunkBufferIndex, count)
 	local extraInfo = self.chunkExtraInfo[chunkBufferIndex]
-	local mass = extraInfo.mass
+	local massInfo = extraInfo.mass
+	local starParamInfo = extraInfo.starParams
 	local luminousFluxScale = self.chunkSize ^ -2
+	local starProbabilites = self.features.pointStarCountCumulativeProbability
 	for i = 0, count - 1 do
 		local x = self.gameObject:celestialRandom()
 		local y = self.gameObject:celestialRandom()
 		local z = self.gameObject:celestialRandom()
 
-		-- Copied in consts.lua (for now)
-		local randomValue = self.gameObject:celestialRandom()
-		local exponentT = consts.starMassRandomTerm1Weight * randomValue ^ consts.starMassRandomTerm1Exponent + (1 - consts.starMassRandomTerm1Weight) * randomValue
-		local exponent = consts.starMassExponentRangeLow + exponentT * (consts.starMassExponentRangeHigh - consts.starMassExponentRangeLow)
-		local starMass = consts.starMassMultiplier * 10 ^ exponent
-		mass[i] = starMass
-		local density = consts.starDensity
-		local temperature = consts.starEffectiveTemperature
-		local volume = starMass / density
-		local radius = (volume / (2 / 3 * consts.tau)) ^ (1 / 3)
-		local area = 2 * consts.tau * radius ^ 2
-		local luminousExitance = consts.stefanBoltzmannConstant * temperature ^ 4
-		local luminousFlux = luminousExitance * area -- TEMP, replace all the incorrect photometry terms with correct (spectral!) radiometric ones. and MAKE SURE that spectral flux --> RGB is correct!!!!
-		local r = luminousFlux * luminousFluxScale * self.gameObject:celestialRandomRange(0.5, 1.5)
-		local g = luminousFlux * luminousFluxScale * self.gameObject:celestialRandomRange(0.5, 1.5)
-		local b = luminousFlux * luminousFluxScale * self.gameObject:celestialRandomRange(0.5, 1.5)
+		local massSum = 0
+		local rSum, gSum, bSum = 0, 0, 0
+		local starsThisSystemChooser = self.gameObject:celestialRandom()
+		local starsThisSystem
+		for num, probability in ipairs(starProbabilites) do
+			if starsThisSystemChooser < probability then
+				starsThisSystem = num
+				break
+			end
+		end
+		starsThisSystem = starsThisSystem or 1 -- Shouldn't happen tbh
+		assert(1 <= starsThisSystem and starsThisSystem <= consts.maxStarsPerSystem, "Invalid system star count " .. starsThisSystem)
 
-		self:setPoint(chunkBufferIndex, i, x, y, z, r, g, b)
+		for starIndex = 1, starsThisSystem do
+			for paramIndex = 1, consts.starParamCount do
+				local param = self.gameObject:celestialRandom()
+				starParamsScratch[paramIndex] = param
+				starParamInfo[consts.maxStarsPerSystem * consts.starParamCount * i + (starIndex - 1) * consts.starParamCount + paramIndex - 1] = param
+			end
+
+			local radius, mass, radiantFlux = self.gameObject:generateStar(unpack(starParamsScratch))
+			massSum = massSum + mass
+			-- Absolute nonsense abuse of radiometry/photometry terms in here. TEMP/TODO.
+			rSum = rSum + radiantFlux * self.gameObject:celestialRandomRange(0.5, 1.5)
+			gSum = gSum + radiantFlux * self.gameObject:celestialRandomRange(0.5, 1.5)
+			bSum = bSum + radiantFlux * self.gameObject:celestialRandomRange(0.5, 1.5)
+		end
+		if starsThisSystem < consts.maxStarsPerSystem then
+			starParamInfo[consts.maxStarsPerSystem * consts.starParamCount * i + starsThisSystem * consts.starParamCount] = consts.invalidStarParam
+		end
+		local otherBodiesMass = 0 -- TODO
+		massSum = massSum + otherBodiesMass
+		massInfo[i] = massSum
+
+		local r = rSum * luminousFluxScale
+		local g = gSum * luminousFluxScale
+		local b = bSum * luminousFluxScale
+		self:setPoint(chunkBufferIndex, i, x, y, z, r, g ,b)
 	end
 end
 
@@ -298,11 +323,54 @@ function game:initPointLayers()
 		end
 	end
 
-	-- TODO: Verify?
-	local starAverageMass = consts.averageStarMass
-	local starAverageLuminousFluxR = consts.averageStarLuminousFluxR
-	local starAverageLuminousFluxG = consts.averageStarLuminousFluxG
-	local starAverageLuminousFluxB = consts.averageStarLuminousFluxB
+	local finalLayer = self.pointLayers[#self.pointLayers]
+	local countWeights = finalLayer.features.pointStarCountWeights
+	assert(#countWeights == consts.maxStarsPerSystem, "Wrong number of count weights. Must match max stars per system const (" .. consts.maxStarsPerSystem .. ")")
+	local totalWeight = 0
+	local weightSums = {}
+	for i, weight in ipairs(countWeights) do
+		totalWeight = totalWeight + weight
+		weightSums[i] = totalWeight
+	end
+	local cumulativeProbability = {}
+	for i, weightSum in ipairs(weightSums) do
+		cumulativeProbability[i] = weightSum / totalWeight
+	end
+	finalLayer.features.pointStarCountCumulativeProbability = cumulativeProbability
+
+	local averageStarCountPerPoint = 0
+	for i, weight in ipairs(countWeights) do
+		averageStarCountPerPoint = averageStarCountPerPoint + i * weight
+	end
+	averageStarCountPerPoint = averageStarCountPerPoint / totalWeight
+
+	local axisSamples = 1000
+	local sumMass = 0
+	local sumFluxR = 0
+	local sumFluxG = 0
+	local sumFluxB = 0
+	local count = 0
+	for i = 1, axisSamples do
+		local param1 = (i - 0.5) / axisSamples
+		for j = 1, axisSamples do
+			local param2 = (j - 0.5) / axisSamples
+
+			local radius, mass, radiantFlux = self:generateStar(param1, param2)
+			sumMass = sumMass + mass
+			sumFluxR = sumFluxR + radiantFlux
+			sumFluxG = sumFluxG + radiantFlux
+			sumFluxB = sumFluxB + radiantFlux
+
+			count = count + 1
+		end
+	end
+	-- Here star is used to mean both individual stars and also star system points... sorry.
+	local averageOtherBodiesMass = 0 -- TODO
+	local starAverageMass = sumMass / count * averageStarCountPerPoint + averageOtherBodiesMass
+	local starAverageLuminousFluxR = sumFluxR / count * averageStarCountPerPoint
+	local starAverageLuminousFluxG = sumFluxG / count * averageStarCountPerPoint
+	local starAverageLuminousFluxB = sumFluxB / count * averageStarCountPerPoint
+
 	for i = #self.pointLayers, 1, -1 do
 		local pointLayer = self.pointLayers[i]
 		if i == #self.pointLayers then
@@ -772,10 +840,14 @@ function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBu
 		POINT_COUNT = new.maxPoints
 	}
 	local unsentFeatureNames = {}
-	local function tryFeature(name, format, defineName, forcePresence)
+	local function tryFeature(name, format, defineName, forcePresence, disallowSending)
 		local presence = forcePresence or layerInfo.features[name]
 		if not presence then
 			return
+		end
+
+		if disallowSending then
+			assert(presence == "unsent", "\"" .. name .. "\" feature cannot be \"sent\"")
 		end
 
 		assert(presence == "sent" or presence == "unsent", "\"" .. name .. "\" feature must be either \"sent\" to GPU or \"unsent\", \"" .. presence .. "\" is invalid")
@@ -797,6 +869,7 @@ function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBu
 	tryFeature("radii", "floatvec3", "RADII")
 	tryFeature("orientation", "floatvec4", "ORIENTATION")
 	tryFeature("mass", "float", "MASS")
+	tryFeature("starParams", nil, nil, nil, true)
 
 	new.pointBuffer = love.graphics.newBuffer(new.pointBufferFormat, new.maxPoints, {
 		shaderstorage = true,
@@ -1068,6 +1141,16 @@ function game:handlePointLayers()
 				yRadius = chunkExtraInfo.radii[closestIdInChunk * 3 + 1]
 				zRadius = chunkExtraInfo.radii[closestIdInChunk * 3 + 2]
 			end
+			local attenuationShapeTypeName, attenuationShapeSubtypeId
+			if pointLayer.features.attenuationShapeTypeSubtypeIds then
+				local attenuationShapeTypeId
+				if pointLayer.features.attenuationShapeTypeSubtypeIds == "sent" then
+					attenuationShapeTypeId, attenuationShapeSubtypeId = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "attenuationShapeTypeSubtypeIds", "uint32", 2)
+				elseif pointLayer.features.attenuationShapeTypeSubtypeIds == "unsent" then
+					attenuationShapeTypeId, attenuationShapeSubtypeId = chunkExtraInfo.attenuationShapeTypeSubtypeIds[closestIdInChunk * 2], chunkExtraInfo.attenuationShapeTypeSubtypeIds[closestIdInChunk * 2 + 1]
+				end
+				attenuationShapeTypeName = self.pointLayerShapeTypes[attenuationShapeTypeId].name
+			end
 
 			if pointLayer.childPointLayer then
 				if
@@ -1092,7 +1175,10 @@ function game:handlePointLayers()
 
 					shapeTypeName = self.pointLayerShapeTypes[shapeTypeId].name,
 					shapeSubtypeId = shapeSubtypeId,
-					radii = xRadius and mathsies.vec3(xRadius, yRadius, zRadius) or nil
+					radii = xRadius and mathsies.vec3(xRadius, yRadius, zRadius) or nil,
+
+					attenuationShapeTypeName = attenuationShapeTypeName,
+					attenuationShapeSubtypeId = attenuationShapeSubtypeId
 				}
 				self:seedCelestialRNG(self:getGlobalCelestialObjectIdNumbers(
 					pointLayer:getGlobalCelestialObjectIdParameters(consts.objectGenerationStages.noiseValues, pointLayer.currentPotentialObject)
@@ -1157,16 +1243,8 @@ function game:handlePointLayers()
 					currentObject.shapeTypeName = self.pointLayerShapeTypes[shapeTypeId].name
 					currentObject.shapeSubtypeId = shapeSubtypeId
 				end
-				if pointLayer.features.attenuationShapeTypeSubtypeIds then
-					local attenuationShapeTypeId, attenuationShapeSubtypeId
-					if pointLayer.features.attenuationShapeTypeSubtypeIds == "sent" then
-						attenuationShapeTypeId, attenuationShapeSubtypeId = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "attenuationShapeTypeSubtypeIds", "uint32", 2)
-					elseif pointLayer.features.attenuationShapeTypeSubtypeIds == "unsent" then
-						attenuationShapeTypeId, attenuationShapeSubtypeId = chunkExtraInfo.attenuationShapeTypeSubtypeIds[closestIdInChunk * 2], chunkExtraInfo.attenuationShapeTypeSubtypeIds[closestIdInChunk * 2 + 1]
-					end
-					currentObject.attenuationShapeTypeName = self.pointLayerShapeTypes[attenuationShapeTypeId].name
-					currentObject.attenuationShapeSubtypeId = attenuationShapeSubtypeId
-				end
+				currentObject.attenuationShapeTypeName = attenuationShapeTypeName
+				currentObject.attenuationShapeSubtypeId = attenuationShapeSubtypeId
 				if pointLayer.features.radii then
 					currentObject.radii = mathsies.vec3(xRadius, yRadius, zRadius)
 				end
@@ -1199,6 +1277,18 @@ function game:handlePointLayers()
 						attenuationMultiplier = chunkExtraInfo.attenuationMultiplier[closestIdInChunk]
 					end
 					currentObject.attenuationMultiplier = attenuationMultiplier
+				end
+				if pointLayer.features.starParams then
+					currentObject.starParams = {}
+					local offset = closestIdInChunk * consts.maxStarsPerSystem * consts.starParamCount
+					for starId = 0, consts.maxStarsPerSystem - 1 do
+						local params = {}
+						currentObject.starParams[starId + 1] = params
+						local offset = offset + starId * consts.starParamCount
+						for param = 1, consts.starParamCount do
+							params[param] = chunkExtraInfo.starParams[offset + param - 1]
+						end
+					end
 				end
 				-- Remaining features are generated (or fetched from extra info) in possibly layer-specific ways
 				self:seedCelestialRNG(self:getGlobalCelestialObjectIdNumbers(

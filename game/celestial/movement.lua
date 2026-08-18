@@ -13,15 +13,23 @@ function game:getGravityWellSlowdownFactor()
 	local lastPointLayer = self.pointLayers[#self.pointLayers]
 	if lastPointLayer.currentObject then
 		local obj = lastPointLayer.currentObject
-		local dist = #bm.vec3.toMathsiesVec3(
-			self.ship.position - obj.position
-		)
-		if dist > 0 then
-			local mass = lastPointLayer.chunkExtraInfo[obj.chunkBufferIndex].mass[obj.pointId]
-			result = result + mass * dist ^ consts.slowdownDistanceExponent
+		local shipPosRelative = bm.vec3.toMathsiesVec3(self.ship.position - obj.position)
+		if not obj.bodies then
+			local dist = #shipPosRelative
+			if dist > 0 then
+				local mass = lastPointLayer.chunkExtraInfo[obj.chunkBufferIndex].mass[obj.pointId]
+				result = result + mass * dist ^ consts.slowdownDistanceExponent
+			end
+		else
+			for _, body in ipairs(obj.bodies) do
+				local dist = mathsies.vec3.distance(shipPosRelative, body.position)
+				if dist > 0 then
+					result = result + body.mass * dist ^ consts.slowdownDistanceExponent
+				end
+			end
 		end
 	end
-	return consts.gravitationalConstant * result -- TODO: Planets etc
+	return consts.gravitationalConstant * result
 end
 
 function game:getMaxMovementSpeed()

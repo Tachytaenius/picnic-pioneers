@@ -207,8 +207,11 @@ function consts.load()
 
 	consts.diskMeshVertices = 5
 	consts.pointAngularRadius = 0.006
+	-- This fade is the distance to an object when its brightness (in point form) fades out:
 	consts.pointFadeStart = 1 / 3
 	consts.pointFadeExponent = 1
+	-- This fade is across the disk of a point:
+	consts.pointDiskFadeExponent = 2.5
 
 	consts.POVFarDistance = 10000
 	consts.POVNearDistance = 0.01
@@ -242,42 +245,9 @@ function consts.load()
 	consts.volumetricCanvasScale = 1
 	consts.volumetricMaxPixelAdditions = 240 -- Shouldn't go above 255
 
-	consts.starDensity = 1408 -- TEMP?
-	consts.starEffectiveTemperature = 5772
-
-	consts.starMassRandomTerm1Weight = 0.75
-	consts.starMassRandomTerm1Exponent = 20
-	consts.starMassExponentRangeLow = 28.25
-	consts.starMassExponentRangeHigh = 31.5
-	consts.starMassMultiplier = 1.5
-	-- Derived
-	-- TEMP/TODO: Properly, please... this is copy/pasted from pointLayer.lua's starSystemPointLayerInfo:generateChunk
-	local count = 10000
-	local sumMass = 0
-	local sumFluxR = 0
-	local sumFluxG = 0
-	local sumFluxB = 0
-	for i = 1, count do
-		local randomValue = (i - 0.5) / count
-		local exponentT = consts.starMassRandomTerm1Weight * randomValue ^ consts.starMassRandomTerm1Exponent + (1 - consts.starMassRandomTerm1Weight) * randomValue
-		local exponent = consts.starMassExponentRangeLow + exponentT * (consts.starMassExponentRangeHigh - consts.starMassExponentRangeLow)
-		local starMass = consts.starMassMultiplier * 10 ^ exponent
-		sumMass = sumMass + starMass
-		local density = consts.starDensity
-		local temperature = consts.starEffectiveTemperature
-		local volume = starMass / density
-		local radius = (volume / (2 / 3 * consts.tau)) ^ (1 / 3)
-		local area = 2 * consts.tau * radius ^ 2
-		local luminousExitance = consts.stefanBoltzmannConstant * temperature ^ 4
-		local luminousFlux = luminousExitance * area
-		sumFluxR = sumFluxR + luminousFlux
-		sumFluxG = sumFluxG + luminousFlux
-		sumFluxB = sumFluxB + luminousFlux
-	end
-	consts.averageStarMass = sumMass / count
-	consts.averageStarLuminousFluxR = sumFluxR / count
-	consts.averageStarLuminousFluxG = sumFluxG / count
-	consts.averageStarLuminousFluxB = sumFluxB / count
+	consts.starParamCount = 2
+	consts.maxStarsPerSystem = 3
+	consts.invalidStarParam = -1
 end
 
 return consts

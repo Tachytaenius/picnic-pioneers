@@ -7,6 +7,9 @@ const float tau = 6.283185307179586476925286766559005768394338798750211641949889
 varying float fade;
 varying vec3 colour;
 
+uniform float fadeExponent;
+
+uniform float angularRadius;
 // These depend on angular radius
 uniform float diskDistanceToSphere;
 uniform float scale;
@@ -71,9 +74,11 @@ void vertexmain() {
 out vec4 outColour;
 
 void pixelmain() {
-	// float fadeMultiplier = 1.0 - fade;
-	float fadeMultiplier = 1.0;
-	outColour = fadeMultiplier * vec4(colour, 1.0);
+	// float shape = 1.0;
+	float shape = pow(1.0 - fade, fadeExponent); // Must match graphics.lua's version of this line
+	// Compensating for the shape not being constantly 1 is done with the pointOutputMultiplier variable CPU-side
+
+	outColour = shape * vec4(colour, 1.0);
 }
 
 #endif 

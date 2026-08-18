@@ -12,6 +12,20 @@ function game:drawCelestial(POVEntity)
 
 	local luminanceMultiplier = consts.celestialLuminanceMultiplier
 
+	-- The below calculation gets pointOutputMultiplier, which is used to keep the integral over the disk a point light occupies the same as it is if light on in the disk is always 1.
+	-- Not analytical because of the use of pow, it seems
+	local integralSteps = 20
+	local stepSize = consts.pointAngularRadius / integralSteps
+	local diskStarlightIntegral = 0
+	for angle = 0, consts.pointAngularRadius, stepSize do
+		local fade = angle / consts.pointAngularRadius
+		local shape = (1 - fade) ^ consts.pointDiskFadeExponent -- Must match pointDrawables.glsl's shape variable
+		local integralHere = math.sin(angle) * shape
+		diskStarlightIntegral = diskStarlightIntegral + integralHere * stepSize
+	end
+	local integralForFlatDiskStarlight = 1 - math.cos(consts.pointAngularRadius)
+	local pointOutputMultiplier = integralForFlatDiskStarlight / diskStarlightIntegral -- Used to ensure the integral across the spherical cap remains the same as if output shape was constant 1
+
 	local cameraPositionFull = self.ship.position
 	local cameraOrientation = self.ship.orientation
 	local cameraVerticalFOV = POVEntity.verticalFOV
@@ -154,7 +168,7 @@ function game:drawCelestial(POVEntity)
 			if volumetricShader:hasUniform("baseEmission") then
 				volumetricShader:send("baseEmission", {
 					-- Density's distance dimension is -3, intensity's is 2, so the unit scale is raised to the -1
-					distanceUnitScale ^ -1 * pointLayer.maxPointDensity * pointLayer.averageLuminousFluxRPerPoint / (2 * consts.tau), -- TODO: This 4pi is definitely wrong... or something around it is
+					distanceUnitScale ^ -1 * pointLayer.maxPointDensity * pointLayer.averageLuminousFluxRPerPoint / (2 * consts.tau),
 					distanceUnitScale ^ -1 * pointLayer.maxPointDensity * pointLayer.averageLuminousFluxGPerPoint / (2 * consts.tau),
 					distanceUnitScale ^ -1 * pointLayer.maxPointDensity * pointLayer.averageLuminousFluxBPerPoint / (2 * consts.tau)
 				})
@@ -237,7 +251,7 @@ function game:drawCelestial(POVEntity)
 			local diskDistanceToSphere = 1 - math.cos(consts.pointAngularRadius) -- Unit sphere spherical cap height from angular radius
 			local diskSolidAngle = consts.tau * diskDistanceToSphere
 			local scaleToGetAngularRadius = math.tan(consts.pointAngularRadius)
-			local luminanceCalcConst = luminanceMultiplier / (diskSolidAngle * 2 * consts.tau)
+			local luminanceCalcConst = luminanceMultiplier * pointOutputMultiplier / (diskSolidAngle * 2 * consts.tau)
 
 			local maxAngleFromCentre = diagonalFOV / 2 + consts.pointAngularRadius
 			local minDot = math.cos(maxAngleFromCentre)
@@ -275,6 +289,8 @@ function game:drawCelestial(POVEntity)
 					})
 					self.individualPointShader:send("totalTransmittanceCanvas", self.screenCanvasses.pointTotalTransmittanceCanvas)
 
+					-- self.individualPointShader:send("angularRadius", consts.pointAngularRadius)
+					self.individualPointShader:send("fadeExponent", consts.pointDiskFadeExponent)
 					self.individualPointShader:send("diskDistanceToSphere", diskDistanceToSphere)
 					self.individualPointShader:send("scale", scaleToGetAngularRadius)
 					self.individualPointShader:send("skyToClip", {mathsies.mat4.components(skyToClip)})
@@ -320,6 +336,8 @@ function game:drawCelestial(POVEntity)
 			local drawShader = self.pointDrawablesShader
 			love.graphics.setShader(drawShader)
 			drawShader:send("PointDrawables", self.pointDrawableBuffer)
+			-- drawShader:send("angularRadius", consts.pointAngularRadius)
+			drawShader:send("fadeExponent", consts.pointDiskFadeExponent)
 			drawShader:send("diskDistanceToSphere", diskDistanceToSphere)
 			drawShader:send("scale", scaleToGetAngularRadius)
 			drawShader:send("cameraUp", {mathsies.vec3.components(cameraUp)})
@@ -350,8 +368,10 @@ function game:drawCelestial(POVEntity)
 		local diskDistanceToSphere = 1 - math.cos(consts.pointAngularRadius) -- Unit sphere spherical cap height from angular radius
 		local diskSolidAngle = consts.tau * diskDistanceToSphere
 		local scaleToGetAngularRadius = math.tan(consts.pointAngularRadius)
-		local luminanceCalcConst = 1 / (diskSolidAngle * 2 * consts.tau)
+		local luminanceCalcConst = pointOutputMultiplier / (diskSolidAngle * 2 * consts.tau)
 
+		-- self.individualPointShader:send("angularRadius", consts.pointAngularRadius)
+		self.individualPointShader:send("fadeExponent", consts.pointDiskFadeExponent)
 		self.individualPointShader:send("diskDistanceToSphere", diskDistanceToSphere)
 		self.individualPointShader:send("scale", scaleToGetAngularRadius)
 		self.individualPointShader:send("skyToClip", {mathsies.mat4.components(skyToClip)})

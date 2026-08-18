@@ -93,7 +93,7 @@ void computemain() {
 				0.0, 1.0
 			), fadeExponent);
 			float dist2 = dist * dist;
-			vec3 luminance = point.luminousFlux / dist2 * luminanceCalcConst; // Luminance within the light source's spherical cap on the celestial sphere. All combined, it should be flux / (dist^2 * 4pi * diskSolidAngle), where flux / (dist^2 * 4pi) takes it from luminous flux to luminous exitance and then the exitance divided by the disk solid angle gets you the luminance. Should be right, even if some of the names are wrong. TODO: We have learned more, so make sure this is true!
+			vec3 luminance = point.luminousFlux / dist2 * luminanceCalcConst; // Luminance within the light source's spherical cap on the celestial sphere. All combined, it should be flux / (dist^2 * 4pi * diskSolidAngle), where flux / (dist^2 * 4pi) takes it from luminous flux to luminous exitance and then the exitance divided by the disk solid angle gets you the luminance. Should be right, even if some of the names are wrong.
 
 			vec3 clipSpacePos = perspectiveDivide(skyToClip * vec4(direction, 1.0));
 			vec3 textureSamplePos = vec3(
