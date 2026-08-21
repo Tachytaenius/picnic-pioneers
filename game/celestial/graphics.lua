@@ -167,7 +167,7 @@ function game:drawCelestial(POVEntity)
 			volumetricShader:send("shapeRadii", {mathsies.vec3.components(distanceUnitScale * parentObjectRadii)})
 			if volumetricShader:hasUniform("baseEmission") then
 				volumetricShader:send("baseEmission", {
-					-- Density's distance dimension is -3, intensity's is 2, so the unit scale is raised to the -1
+					-- Density's distance dimension is -3, intensity's is 2 (the 4pi divisor is in steradians taking from flux to intensity), so the unit scale is raised to the -1
 					distanceUnitScale ^ -1 * pointLayer.maxPointDensity * pointLayer.averageLuminousFluxRPerPoint / (2 * consts.tau),
 					distanceUnitScale ^ -1 * pointLayer.maxPointDensity * pointLayer.averageLuminousFluxGPerPoint / (2 * consts.tau),
 					distanceUnitScale ^ -1 * pointLayer.maxPointDensity * pointLayer.averageLuminousFluxBPerPoint / (2 * consts.tau)
@@ -176,8 +176,6 @@ function game:drawCelestial(POVEntity)
 			if volumetricShader:hasUniform("baseAttenuation") then
 				volumetricShader:send("baseAttenuation", attenuationMultiplier / distanceUnitScale)
 			end
-			-- volumetricShader:send("luminousIntensityPerPoint", {1, 1, 1})
-			-- volumetricShader:send("maxDensity", 1)
 			local w, h = volumetricShader:getLocalThreadgroupSize()
 			love.graphics.dispatchThreadgroups(volumetricShader,
 				math.ceil(pointLayer.volumetricCanvas:getWidth() / w),

@@ -93,7 +93,12 @@ void computemain() {
 				0.0, 1.0
 			), fadeExponent);
 			float dist2 = dist * dist;
-			vec3 luminance = point.luminousFlux / dist2 * luminanceCalcConst; // Luminance within the light source's spherical cap on the celestial sphere. All combined, it should be flux / (dist^2 * 4pi * diskSolidAngle), where flux / (dist^2 * 4pi) takes it from luminous flux to luminous exitance and then the exitance divided by the disk solid angle gets you the luminance. Should be right, even if some of the names are wrong.
+			vec3 luminance = point.luminousFlux / dist2 * luminanceCalcConst;
+			// Luminance calculation constant is (ignoring overall brightness multiplier and the factor for drawing the disks with even brightness at any fade exponent) equal to 1 / (4pi * diskSolidAngle).
+			// When dividing the light source's luminous flux by 4pi (steradians) we get its luminous intensity in a given direction (spherically symmetric).
+			// When dividing the intensity by dist^2 we get illuminance from this light source at that distance. (I believe there are factors of 4pi both above and below that cancel out. One from within the area in the denominator and one from a solid angle. This leaves us with just a dist^2 denominator.)
+			// We imagine the illuminance to blur out into a region on a spherical surface around the camera (specifically, it blurs out into a spherical cap) and then direct all its light straight into the centre of the camera sphere.
+			// The average luminance from the perspective of the centre of the camera sphere is then equal to the illuminance divided by the solid angle of the spherical cap.
 
 			vec3 clipSpacePos = perspectiveDivide(skyToClip * vec4(direction, 1.0));
 			vec3 textureSamplePos = vec3(
