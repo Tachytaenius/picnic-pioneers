@@ -7,6 +7,7 @@ extutils.ensureRoundingMode()
 
 local bm = require("bigmaths")
 local consts = require("consts")
+consts.loadAll()
 local game = require("game")
 local settings = require("settings")
 local util = require("util")
@@ -61,6 +62,10 @@ function love.load(args)
 	settings:save()
 	state = game:newState()
 	state.loadInfo = {}
+
+	-- Setup window
+	util.remakeWindow(consts.defaultWindowWidth, consts.defaultWindowHeight)
+
 	initCoroutine = coroutine.create(function() state:initState({
 		shipPosition = bm.vec3(unpack(startPosStrings))
 	}) end)
@@ -73,24 +78,25 @@ end
 function love.update(dt)
 	if state.loadInfo then
 		if not state.loadInfo.skippedFirstUpdate then
-			state.loadInfo.skippedFirstUpdate = true
+			state.loadInfo.skippedFirstUpdate = true -- Skipped loading update
 			return
 		end
 
 		local start = love.timer.getTime()
 		local time
 		repeat
+			if coroutine.status(initCoroutine) == "dead" then
+				state.loadInfo = nil
+				skipOneUpdate = true -- Skipped actual game update
+				break
+			end
+
 			local success, err = coroutine.resume(initCoroutine)
 			if not success then
 				error("Game init failed:\n\n" .. err .. "\n\nCoroutine traceback:\n" .. debug.traceback(initCoroutine))
 			end
 			time = love.timer.getTime() - start
 		until time >= consts.initMaxTickLength
-
-		if coroutine.status(initCoroutine) == "dead" then
-			state.loadInfo = nil
-			skipOneUpdate = true
-		end
 
 		return
 	end
@@ -118,8 +124,24 @@ function love.update(dt)
 	end
 end
 
+-- TEMP
+local function printPos()
+	if not (state and state.ship) then
+		return false
+	end
+	print(tostring(state.ship.position.x) .. " " .. tostring(state.ship.position.y) .. " " .. tostring(state.ship.position.z))
+	return true
+end
+function love.keypressed(key)
+	if key == "p" then
+		printPos()
+	end
+end
+
 function love.draw()
 	if state.loadInfo then
+		-- TODO: Clean this up!!!
+
 		local done = state.loadInfo.shapeTypePrecalcIntegralsDone
 		local required = state.loadInfo.shapeTypePrecalcIntegralsRequired
 		if done and required then
@@ -127,7 +149,21 @@ function love.draw()
 				"Precalculating (and caching) various object masses...\n" ..
 				math.floor(done / required * 100) .. "%"
 			)
+			return
 		end
+		
+		local done = state.loadInfo.starPrecalcSamplesDone
+		local required = state.loadInfo.starPrecalcSamplesRequired
+		if done and required then
+			love.graphics.print(
+				"Precalculating average star properties...\n" ..
+				math.floor(done / required * 100) .. "%"
+			)
+			return
+		end
+
+		-- Misc loading
+		love.graphics.print("Loading...")
 		return
 	end
 

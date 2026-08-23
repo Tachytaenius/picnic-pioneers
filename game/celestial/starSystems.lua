@@ -11,13 +11,16 @@ function game:generateStarSystem(layerObject)
 		if layerObject.starParams[i][1] == consts.invalidStarParam then
 			break
 		end
-		local radius, mass, flux = self:generateStar(unpack(layerObject.starParams[i]))
+		local radius, mass, rFlux = self:generateStar(unpack(layerObject.starParams[i]))
+		local lFlux = rFlux -- TEMP: Nonsense. I guess what's happening in this program is that we simply see radiance (not spectral radiance) but it gets called luminance. Etc
+		local lIntensity = lFlux / (consts.tau * 2)
 		massSum = massSum + mass
 		local star = {
 			type = "star",
 			mass = mass,
 			radius = radius,
-			luminousFlux = mathsies.vec3(flux, flux, flux),
+			luminousFlux = mathsies.vec3(lFlux, lFlux, lFlux),
+			luminousIntensity = mathsies.vec3(lIntensity, lIntensity, lIntensity),
 			position = mathsies.vec3((i - 1) * 1.5e9, 0, 0) -- TODO: Kepler orbits
 		}
 		table.insert(bodies, star)
@@ -28,7 +31,6 @@ function game:generateStarSystem(layerObject)
 	layerObject.bodies = bodies
 end
 
--- This is only for mass and luminous flux
 -- All params are in [0, 1] (RNG being noninclusive may never allow reaching 1 though)
 -- Returns radius, mass, and radiant flux (aka luminosity)
 local solarLuminosity = 3.828e26
@@ -74,7 +76,7 @@ local function massRadiusRelation(mass)
 	end
 	return solarRadius * temp
 end
-function game:generateStar(param1, param2)
+function game:generateStar(param1, param2)--, param3)
 	-- Nonlinear relationship between mass param and actual mass
 	local exponentT = starMassParamWeight * param1 ^ starMassParamExponent + (1 - starMassParamWeight) * param1
 	local exponent = starMassExponentRangeLow + exponentT * (starMassExponentRangeHigh - starMassExponentRangeLow)

@@ -88,19 +88,20 @@
 ---@field averageStarLuminousFluxB number
 local consts = {}
 
-function consts.load()
+consts.identity = "picnic-pioneers"
+consts.loveVersion = "12.0"
+
+function consts.loadAll()
 	local util = require("util")
 	local bm = require("bigmaths")
 	local mathsies = require("lib.mathsies")
-
-	consts.identity = "picnic-pioneers"
-	consts.loveVersion = "12.0"
 
 	consts.windowTitle = "Picnic Pioneers"
 	consts.defaultWindowWidth = 640
 	consts.defaultWindowHeight = 480
 	consts.iconPath = "icon.png"
 	consts.iconScale = 16
+	consts.windowIconImageData = util.getScaledImageData(consts.iconPath, consts.iconScale)
 
 	-- Determinism! Being silly about the precision. Taken from OEIS.
 	consts.tau = 6.28318530717958647692528676655900576839433879875021164194988918461563281257241799725606965068423413
@@ -246,8 +247,9 @@ function consts.load()
 	consts.volumetricMaxPixelAdditions = 240 -- Shouldn't go above 255
 
 	consts.starParamCount = 2
-	consts.maxStarsPerSystem = 3
+	consts.maxStarsPerSystem = 4
 	consts.invalidStarParam = -1
+	consts.starAxisSamples = 5000
 end
 
 return consts

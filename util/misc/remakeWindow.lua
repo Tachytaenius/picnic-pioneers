@@ -15,6 +15,6 @@ return function(width, height)
 			resizable = true
 		}
 	)
-	love.window.setIcon(util.getScaledImageData(consts.iconPath, consts.iconScale))
+	love.window.setIcon(consts.windowIconImageData)
 	love.window.setTitle(consts.windowTitle)
 end

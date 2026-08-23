@@ -31,8 +31,11 @@ function game:initCelestial(initParams)
 	-- Mix of graphics and non-graphics
 	self.amountDataStageManagerThread = love.thread.newThread("threadCode/amountDataStageManager.lua")
 	self.amountDataStageManagerThread:start(consts.shapeSlowdownIntegralDetail, consts.pointLayerShapeTypeAmountIntegralMaxThreads)
+	coroutine.yield()
 	self:loadShapeTypes()
+	coroutine.yield()
 	self:initPointLayers()
+	coroutine.yield()
 
 	-- Graphics init
 

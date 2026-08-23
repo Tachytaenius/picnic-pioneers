@@ -14,9 +14,6 @@ function game:newState()
 end
 
 function game:initState(initParams)
-	-- Setup window
-	util.remakeWindow(consts.defaultWindowWidth, consts.defaultWindowHeight)
-
 	-- Common graphics init
 	self.screenCanvasses = {} -- Canvasses for which the size is supposed to match the game output size. There are also scaled canvasses like those in point layers for their volumetrics or the point attenuation texture
 	self.screenWidth, self.screenHeight = love.graphics.getDimensions()

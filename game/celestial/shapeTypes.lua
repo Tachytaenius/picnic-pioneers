@@ -516,7 +516,6 @@ function game:loadShapeTypes()
 	local loadInfo = self.loadInfo
 	loadInfo.shapeTypePrecalcIntegralsRequired = requiredIntegrals
 	loadInfo.shapeTypePrecalcIntegralsDone = 0
-
 	local alreadyDoneNoiseless = false
 	for averagingIteration = 0, noiseAveraging - 1 do
 		-- Init noise for the integrals. They are allowed to use the same value data
@@ -571,6 +570,8 @@ function game:loadShapeTypes()
 
 		alreadyDoneNoiseless = true
 	end
+	loadInfo.shapeTypePrecalcIntegralsDone = nil
+	loadInfo.shapeTypePrecalcIntegralsRequired = nil
 
 	-- Divide down the averaging sums for the shape types with noise
 	for id = 0, count - 1 do
