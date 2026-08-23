@@ -83,7 +83,7 @@ function game:resizeGameScreen(width, height, forceRecreate)
 		-- pointLayer.volumetricCanvasCameraInfo = nil -- Not needed since the new canvas is ready for new rays to add in
 		pointLayer.volumetricCanvas = love.graphics.newCanvas(self.volumetricCanvasWidth, self.volumetricCanvasHeight, {
 			debugname = pointLayer.debugName .. " Volumetric Canvas",
-			format = "rgba32f", -- RGB for luminance and A for opacity (1 - transmittance). 32 bits to maintain precision when adding up. When drawing the value of the point total transmittance canvas, it was shown to become imprecise (banding and other artifacts) after a while with 16 bits.
+			format = "rgba32f", -- RGB for radiance and A for opacity (1 - transmittance). 32 bits to maintain precision when adding up. When drawing the value of the point total transmittance canvas, it was shown to become imprecise (banding and other artifacts) after a while with 16 bits.
 			computewrite = true
 		})
 		pointLayer.volumetricAddCountCanvas = love.graphics.newCanvas(self.volumetricCanvasWidth, self.volumetricCanvasHeight, {

@@ -32,7 +32,7 @@ VolumetricSample sampleVolumetrics(vec3 samplePosition) {
 }
 
 vec4 getRayColourAndTransmittance(vec3 rayPosition, vec3 rayDirection, float sampleLerp) {
-	vec3 totalRayLuminance = vec3(0.0);
+	vec3 totalRayRadiance = vec3(0.0);
 	float totalTransmittance = 1.0;
 	// Ray moves backwards from end to camera
 	// We increase detail towards camera
@@ -40,7 +40,7 @@ vec4 getRayColourAndTransmittance(vec3 rayPosition, vec3 rayDirection, float sam
 
 	ConvexRaycastResult result = ellipsoidRaycast(vec3(0.0), shapeRadii, rayPosition, rayDirection);
 	if (!result.hit || result.t2 <= 0.0) {
-		return vec4(totalRayLuminance, totalTransmittance);
+		return vec4(totalRayRadiance, totalTransmittance);
 	}
 
 	float rayOffset = max(0.0, result.t1);
@@ -69,13 +69,13 @@ vec4 getRayColourAndTransmittance(vec3 rayPosition, vec3 rayDirection, float sam
 		float attenuation = volumetricSample.attenuation;
 		transmittanceThisStep *= exp(-attenuation * rayStepSize);
 
-		vec3 rayLuminanceThisStep = rayStepSize * volumetricSample.emission * emissionFadeMultiplier;
-		totalRayLuminance = totalRayLuminance * transmittanceThisStep + rayLuminanceThisStep;
+		vec3 rayRadianceThisStep = rayStepSize * volumetricSample.emission * emissionFadeMultiplier;
+		totalRayRadiance = totalRayRadiance * transmittanceThisStep + rayRadianceThisStep;
 		totalTransmittance *= transmittanceThisStep;
 
 		segmentStart = segmentEnd;
 	}
-	return vec4(totalRayLuminance, totalTransmittance);
+	return vec4(totalRayRadiance, totalTransmittance);
 }
 
 layout (local_size_x = 16, local_size_y = 16) in;

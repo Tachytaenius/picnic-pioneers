@@ -137,10 +137,10 @@ function galaxyPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, chunkB
 
 	local nextLayerMaxDensity = self.childPointLayer.maxPointDensity
 	local nextLayerAverageMassPerPoint = self.childPointLayer.averageMassPerPoint
-	local nextLayerAverageLuminousIntensityRPerPoint = self.childPointLayer.averageLuminousIntensityRPerPoint
-	local nextLayerAverageLuminousIntensityGPerPoint = self.childPointLayer.averageLuminousIntensityGPerPoint
-	local nextLayerAverageLuminousIntensityBPerPoint = self.childPointLayer.averageLuminousIntensityBPerPoint
-	local luminousIntensityScale = self.chunkSize ^ -2
+	local nextLayerAverageRadiantIntensityRPerPoint = self.childPointLayer.averageRadiantIntensityRPerPoint
+	local nextLayerAverageRadiantIntensityGPerPoint = self.childPointLayer.averageRadiantIntensityGPerPoint
+	local nextLayerAverageRadiantIntensityBPerPoint = self.childPointLayer.averageRadiantIntensityBPerPoint
+	local radiantIntensityScale = self.chunkSize ^ -2
 	for i = 0, count - 1 do
 		local x = self.gameObject:celestialRandom()
 		local y = self.gameObject:celestialRandom()
@@ -184,9 +184,9 @@ function galaxyPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, chunkB
 		local amountWithin = baseAmount * xRadius * yRadius * zRadius * nextLayerMaxDensity -- Estimate
 		massInfo[i] = amountWithin * nextLayerAverageMassPerPoint
 
-		local r = amountWithin * nextLayerAverageLuminousIntensityRPerPoint * luminousIntensityScale
-		local g = amountWithin * nextLayerAverageLuminousIntensityGPerPoint * luminousIntensityScale
-		local b = amountWithin * nextLayerAverageLuminousIntensityBPerPoint * luminousIntensityScale
+		local r = amountWithin * nextLayerAverageRadiantIntensityRPerPoint * radiantIntensityScale
+		local g = amountWithin * nextLayerAverageRadiantIntensityGPerPoint * radiantIntensityScale
+		local b = amountWithin * nextLayerAverageRadiantIntensityBPerPoint * radiantIntensityScale
 
 		shapeTypeSubtypeIdInfo[2 * i], shapeTypeSubtypeIdInfo[2 * i + 1] = shapeTypeId, shapeSubtypeId
 		attenuationShapeTypeSubtypeIdInfo[2 * i], attenuationShapeTypeSubtypeIdInfo[2 * i + 1] = attenuationShapeTypeId, attenuationShapeSubtypeId
@@ -216,7 +216,7 @@ function starSystemPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, ch
 	local extraInfo = self.chunkExtraInfo[chunkBufferIndex]
 	local massInfo = extraInfo.mass
 	local starParamInfo = extraInfo.starParams
-	local luminousIntensityScale = self.chunkSize ^ -2
+	local radiantIntensityScale = self.chunkSize ^ -2
 	local starProbabilites = self.features.pointStarCountCumulativeProbability
 	for i = 0, count - 1 do
 		local x = self.gameObject:celestialRandom()
@@ -245,7 +245,6 @@ function starSystemPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, ch
 
 			local radius, mass, radiantFlux = self.gameObject:generateStar(unpack(starParamsScratch))
 			massSum = massSum + mass
-			-- Absolute nonsense abuse of radiometry/photometry terms in here. TEMP/TODO.
 			rSum = rSum + radiantFlux / (consts.tau * 2)
 			gSum = gSum + radiantFlux / (consts.tau * 2)
 			bSum = bSum + radiantFlux / (consts.tau * 2)
@@ -257,9 +256,9 @@ function starSystemPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, ch
 		massSum = massSum + otherBodiesMass
 		massInfo[i] = massSum
 
-		local r = rSum * luminousIntensityScale
-		local g = gSum * luminousIntensityScale
-		local b = bSum * luminousIntensityScale
+		local r = rSum * radiantIntensityScale
+		local g = gSum * radiantIntensityScale
+		local b = bSum * radiantIntensityScale
 		self:setPoint(chunkBufferIndex, i, x, y, z, r, g ,b)
 	end
 end
@@ -376,21 +375,21 @@ function game:initPointLayers()
 	-- Here star is used to mean both individual stars and also star system points... sorry.
 	local averageOtherBodiesMass = 0 -- TODO
 	local starAverageMass = sumMass / count * averageStarCountPerPoint + averageOtherBodiesMass
-	local starAverageLuminousIntensityR = sumFluxR / count * averageStarCountPerPoint / (consts.tau * 2)
-	local starAverageLuminousIntensityG = sumFluxG / count * averageStarCountPerPoint / (consts.tau * 2)
-	local starAverageLuminousIntensityB = sumFluxB / count * averageStarCountPerPoint / (consts.tau * 2)
+	local starAverageRadiantIntensityR = sumFluxR / count * averageStarCountPerPoint / (consts.tau * 2)
+	local starAverageRadiantIntensityG = sumFluxG / count * averageStarCountPerPoint / (consts.tau * 2)
+	local starAverageRadiantIntensityB = sumFluxB / count * averageStarCountPerPoint / (consts.tau * 2)
 	loadInfo.starPrecalcSamplesRequired = nil
 	loadInfo.starPrecalcSamplesDone = nil
 	coroutine.yield()
 
-	-- Luminous fluxes here ignore attenuation
+	-- Radiant fluxes here ignore attenuation
 	for i = #self.pointLayers, 1, -1 do
 		local pointLayer = self.pointLayers[i]
 		if i == #self.pointLayers then
 			pointLayer.averageMassPerPoint = starAverageMass
-			pointLayer.averageLuminousIntensityRPerPoint = starAverageLuminousIntensityR
-			pointLayer.averageLuminousIntensityGPerPoint = starAverageLuminousIntensityG
-			pointLayer.averageLuminousIntensityBPerPoint = starAverageLuminousIntensityB
+			pointLayer.averageRadiantIntensityRPerPoint = starAverageRadiantIntensityR
+			pointLayer.averageRadiantIntensityGPerPoint = starAverageRadiantIntensityG
+			pointLayer.averageRadiantIntensityBPerPoint = starAverageRadiantIntensityB
 		else
 			local childPointLayer = pointLayer.childPointLayer
 			local totalWeight = 0
@@ -431,9 +430,9 @@ function game:initPointLayers()
 			end
 			local averageAmount = averageAmountPreDivide / totalWeight
 			pointLayer.averageMassPerPoint = averageAmount * childPointLayer.averageMassPerPoint
-			pointLayer.averageLuminousIntensityRPerPoint = averageAmount * childPointLayer.averageLuminousIntensityRPerPoint
-			pointLayer.averageLuminousIntensityGPerPoint = averageAmount * childPointLayer.averageLuminousIntensityGPerPoint
-			pointLayer.averageLuminousIntensityBPerPoint = averageAmount * childPointLayer.averageLuminousIntensityBPerPoint
+			pointLayer.averageRadiantIntensityRPerPoint = averageAmount * childPointLayer.averageRadiantIntensityRPerPoint
+			pointLayer.averageRadiantIntensityGPerPoint = averageAmount * childPointLayer.averageRadiantIntensityGPerPoint
+			pointLayer.averageRadiantIntensityBPerPoint = averageAmount * childPointLayer.averageRadiantIntensityBPerPoint
 		end
 	end
 
@@ -873,7 +872,7 @@ function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBu
 		end
 	end
 	tryFeature("position", "floatvec3", "POSITION", "sent")
-	tryFeature("luminousIntensity", "floatvec3", "LUMINOUS_INTENSITY", "sent")
+	tryFeature("radiantIntensity", "floatvec3", "RADIANT_INTENSITY", "sent")
 	tryFeature("shapeTypeSubtypeIds", "uint32vec2", "SHAPE_TYPE_SUBTYPE")
 	tryFeature("attenuationShapeTypeSubtypeIds", "uint32vec2", "ATTENUATION_SHAPE_TYPE_SUBTYPE")
 	tryFeature("attenuationMultiplier", "float", "ATTENUATION_MULTIPLIER")
@@ -1228,7 +1227,7 @@ function game:handlePointLayers()
 					pointLayer.childPointLayer:handleThreadedShapeInit("expect")
 				end
 
-				local r, g, b = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "luminousIntensity", "float", 3)
+				local r, g, b = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "radiantIntensity", "float", 3)
 
 				pointLayer.currentObject = {
 					chunkId = chunkId,
@@ -1249,7 +1248,7 @@ function game:handlePointLayers()
 					)
 				))
 				currentObject.position = objectPosition
-				currentObject.luminousIntensity = mathsies.vec3(r, g, b) * pointLayer.chunkSize ^ 2 -- Bring back to proper units
+				currentObject.radiantIntensity = mathsies.vec3(r, g, b) * pointLayer.chunkSize ^ 2 -- Bring back to proper units
 				if pointLayer.features.shapeTypeSubtypeIds then
 					currentObject.shapeTypeName = self.pointLayerShapeTypes[shapeTypeId].name
 					currentObject.shapeSubtypeId = shapeSubtypeId

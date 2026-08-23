@@ -12,15 +12,15 @@ function game:generateStarSystem(layerObject)
 			break
 		end
 		local radius, mass, rFlux = self:generateStar(unpack(layerObject.starParams[i]))
-		local lFlux = rFlux -- TEMP: Nonsense. I guess what's happening in this program is that we simply see radiance (not spectral radiance) but it gets called luminance. Etc
+		local lFlux = rFlux -- TEMP: Nonsense. I guess what's happening in this program is that we simply see radiance (not spectral radiance) but it gets called radiance. Etc
 		local lIntensity = lFlux / (consts.tau * 2)
 		massSum = massSum + mass
 		local star = {
 			type = "star",
 			mass = mass,
 			radius = radius,
-			luminousFlux = mathsies.vec3(lFlux, lFlux, lFlux),
-			luminousIntensity = mathsies.vec3(lIntensity, lIntensity, lIntensity),
+			radiantFlux = mathsies.vec3(lFlux, lFlux, lFlux),
+			radiantIntensity = mathsies.vec3(lIntensity, lIntensity, lIntensity),
 			position = mathsies.vec3((i - 1) * 1.5e9, 0, 0) -- TODO: Kepler orbits
 		}
 		table.insert(bodies, star)

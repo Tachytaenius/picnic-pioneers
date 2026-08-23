@@ -2,8 +2,8 @@ struct Point {
 #ifdef FEATURE_POSITION
 	vec3 position;
 #endif
-#ifdef FEATURE_LUMINOUS_INTENSITY
-	vec3 luminousIntensity;
+#ifdef FEATURE_RADIANT_INTENSITY
+	vec3 radiantIntensity;
 #endif
 #ifdef FEATURE_ORIENTATION
 	vec4 orientation; // Quaternion

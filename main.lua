@@ -49,7 +49,7 @@ function love.load(args)
 			startPosStrings[3] = args[i + 2]
 			i = i + 3
 		elseif arg == "--brightnessMultiplier" then
-			consts.celestialLuminanceMultiplier = tonumber(args[i])
+			consts.celestialRadianceMultiplier = tonumber(args[i])
 			i = i + 1
 		else
 			error("Invalid argument \"" .. arg .. "\"")
@@ -117,10 +117,10 @@ function love.update(dt)
 	-- TEMP (would we want this to be dmath's exp?)
 	local rate = 5
 	if love.keyboard.isDown("-") then
-		consts.celestialLuminanceMultiplier = consts.celestialLuminanceMultiplier * math.exp(-rate * dt)
+		consts.celestialRadianceMultiplier = consts.celestialRadianceMultiplier * math.exp(-rate * dt)
 	end
 	if love.keyboard.isDown("=") then
-		consts.celestialLuminanceMultiplier = consts.celestialLuminanceMultiplier * math.exp(rate * dt)
+		consts.celestialRadianceMultiplier = consts.celestialRadianceMultiplier * math.exp(rate * dt)
 	end
 end
 
@@ -175,10 +175,8 @@ function love.draw()
 		"z: " .. tostring(state.ship.position.z) .. "\n" ..
 		"factor: " .. state:getGravityWellSlowdownFactor() .. "\n" ..
 		"base max speed: " .. state:getMaxMovementSpeed() .. "\n" ..
-		-- "max \"luminance\" order: " .. math.floor(math.log10(maxLuminance)) .. "\n" ..
-		-- "max \"luminance\": " .. maxLuminance .. "\n" ..
-		"\"luminance\" multiplier order: " .. math.floor(math.log10(consts.celestialLuminanceMultiplier)) .. "\n" ..
-		"\"luminance\" multiplier: " .. consts.celestialLuminanceMultiplier
+		"radiance multiplier order: " .. math.floor(math.log10(consts.celestialRadianceMultiplier)) .. "\n" ..
+		"radiance multiplier: " .. consts.celestialRadianceMultiplier
 	)
 end
 

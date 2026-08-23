@@ -61,7 +61,7 @@
 ---@field pointAngularRadius number
 ---@field pointFadeStart number
 ---@field pointFadeExponent number
----@field celestialLuminanceMultiplier number
+---@field celestialRadianceMultiplier number
 ---@field pointPreparationThreadgroupSize number
 ---@field pointLayerShapeTypeAmountIntegralMaxThreads number
 ---@field shapeIntegralThreadTimeout number
@@ -83,9 +83,9 @@
 ---@field starMassExponentRangeHigh number
 ---@field starMassMultiplier number
 ---@field averageStarMass number
----@field averageStarLuminousFluxR number
----@field averageStarLuminousFluxG number
----@field averageStarLuminousFluxB number
+---@field averageStarRadiantFluxR number
+---@field averageStarRadiantFluxG number
+---@field averageStarRadiantFluxB number
 local consts = {}
 
 consts.identity = "picnic-pioneers"
@@ -162,7 +162,7 @@ function consts.loadAll()
 
 	consts.pointDrawableBufferFormat = {
 		{name = "direction", format = "floatvec3"},
-		{name = "luminance", format = "floatvec3"}
+		{name = "radiance", format = "floatvec3"}
 	}
 
 	-- Vertex formats
@@ -217,7 +217,7 @@ function consts.loadAll()
 	consts.POVFarDistance = 10000
 	consts.POVNearDistance = 0.01
 
-	consts.celestialLuminanceMultiplier = 1e14
+	consts.celestialRadianceMultiplier = 1e14
 
 	-- TODO: Move some of these out as they're not really simulation or graphics parameters in the sense that I meant.
 	consts.pointPreparationThreadgroupSize = 512

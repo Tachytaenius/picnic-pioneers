@@ -19,14 +19,14 @@ uniform float scale;
 #ifdef INSTANCED
 struct PointDrawable {
 	vec3 direction;
-	vec3 luminance;
+	vec3 radiance;
 };
 readonly buffer PointDrawables {
 	PointDrawable pointDrawables[];
 };
 #else
 uniform vec3 direction;
-uniform vec3 luminance;
+uniform vec3 radiance;
 uniform sampler3D pointAttenuationTexture;
 uniform sampler2D totalTransmittanceCanvas;
 uniform vec3 attenuationTextureCoords;
@@ -45,14 +45,14 @@ void vertexmain() {
 #ifdef INSTANCED
 	uint i = gl_InstanceID;
 	PointDrawable pointDrawable = pointDrawables[i];
-	colour = pointDrawable.luminance;
+	colour = pointDrawable.radiance;
 	vec3 direction = pointDrawable.direction;
 #else
 	vec2 totalTransmittanceCoord = vec2(attenuationTextureCoords.x, 1.0 - attenuationTextureCoords.y);
 	float transmittance =
 		texture(pointAttenuationTexture, attenuationTextureCoords).r *
 		texture(totalTransmittanceCanvas, totalTransmittanceCoord).r;
-	colour = luminance * transmittance;
+	colour = radiance * transmittance;
 #endif
 
 	vec3 billboardRight = cross(cameraUp, direction);

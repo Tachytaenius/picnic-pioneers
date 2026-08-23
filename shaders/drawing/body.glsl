@@ -38,7 +38,7 @@ void computemain() {
 	// 	discard;
 	// }
 
-	vec4 bodySample = sampleBody( // Luminance in RGB and transmittance in A
+	vec4 bodySample = sampleBody( // Radiance in RGB and transmittance in A
 		cameraPosition + direction * max(0.0, result.t1) - bodyPosition,
 		cameraPosition + direction * result.t2 - bodyPosition,
 		direction

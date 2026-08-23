@@ -10,7 +10,7 @@ function game:drawCelestial(POVEntity)
 
 	local aspectRatio = outputCanvas:getWidth() / outputCanvas:getHeight()
 
-	local luminanceMultiplier = consts.celestialLuminanceMultiplier
+	local radianceMultiplier = consts.celestialRadianceMultiplier
 
 	-- The below calculation gets pointOutputMultiplier, which is used to keep the integral over the disk a point light occupies the same as it is if light on in the disk is always 1.
 	-- Not analytical because of the use of pow, it seems
@@ -110,7 +110,7 @@ function game:drawCelestial(POVEntity)
 					pointLayer.volumetricCanvasCameraInfo.position ~= cameraPositionFull or
 					pointLayer.volumetricCanvasCameraInfo.orientation ~= cameraOrientation or
 					pointLayer.volumetricCanvasCameraInfo.verticalFOV ~= cameraVerticalFOV or
-					pointLayer.volumetricCanvasCameraInfo.brightnessMultiplier ~= luminanceMultiplier
+					pointLayer.volumetricCanvasCameraInfo.brightnessMultiplier ~= radianceMultiplier
 				then
 					-- TODO: Reprojection
 					local original = love.graphics.getCanvas()
@@ -125,7 +125,7 @@ function game:drawCelestial(POVEntity)
 				position = bm.vec3.clone(cameraPositionFull),
 				orientation = mathsies.quat.clone(cameraOrientation),
 				verticalFOV = cameraVerticalFOV,
-				brightnessMultiplier = luminanceMultiplier
+				brightnessMultiplier = radianceMultiplier
 			}
 
 			-- Send shape params for point density (aka emission)
@@ -146,7 +146,7 @@ function game:drawCelestial(POVEntity)
 				volumetricShader:send("AttenuationNoiseValues", pointLayer.valueNoiseBufferAttenuation)
 			end
 
-			volumetricShader:send("brightnessMultiplier", luminanceMultiplier)
+			volumetricShader:send("brightnessMultiplier", radianceMultiplier)
 			volumetricShader:send("preNormaliseCornerDirs", unpack(cornerDirs))
 			volumetricShader:send("size", {pointLayer.volumetricCanvas:getDimensions()})
 			volumetricShader:send("resultCanvas", pointLayer.volumetricCanvas)
@@ -168,9 +168,9 @@ function game:drawCelestial(POVEntity)
 			if volumetricShader:hasUniform("baseEmission") then
 				volumetricShader:send("baseEmission", {
 					-- Density's distance dimension is -3, intensity's is 2 (from the m^2 in the W), so the unit scale is raised to the -1
-					distanceUnitScale ^ -1 * pointLayer.maxPointDensity * pointLayer.averageLuminousIntensityRPerPoint,
-					distanceUnitScale ^ -1 * pointLayer.maxPointDensity * pointLayer.averageLuminousIntensityGPerPoint,
-					distanceUnitScale ^ -1 * pointLayer.maxPointDensity * pointLayer.averageLuminousIntensityBPerPoint
+					distanceUnitScale ^ -1 * pointLayer.maxPointDensity * pointLayer.averageRadiantIntensityRPerPoint,
+					distanceUnitScale ^ -1 * pointLayer.maxPointDensity * pointLayer.averageRadiantIntensityGPerPoint,
+					distanceUnitScale ^ -1 * pointLayer.maxPointDensity * pointLayer.averageRadiantIntensityBPerPoint
 				})
 			end
 			if volumetricShader:hasUniform("baseAttenuation") then
@@ -249,7 +249,7 @@ function game:drawCelestial(POVEntity)
 			local diskDistanceToSphere = 1 - math.cos(consts.pointAngularRadius) -- Unit sphere spherical cap height from angular radius
 			local diskSolidAngle = consts.tau * diskDistanceToSphere
 			local scaleToGetAngularRadius = math.tan(consts.pointAngularRadius)
-			local luminanceCalcConst = luminanceMultiplier * pointOutputMultiplier / diskSolidAngle
+			local radianceCalcConst = radianceMultiplier * pointOutputMultiplier / diskSolidAngle
 
 			local maxAngleFromCentre = diagonalFOV / 2 + consts.pointAngularRadius
 			local minDot = math.cos(maxAngleFromCentre)
@@ -276,8 +276,8 @@ function game:drawCelestial(POVEntity)
 					local direction = difference / distance
 					direction = bm.vec3.toMathsiesVec3(direction)
 					distance = bm.mapm.tonumber(distance)
-					local r, g, b = pointLayer:getPointVars(object.chunkBufferIndex, object.pointId, "luminousIntensity", "float", 3)
-					local luminance = mathsies.vec3(r, g, b) / distance ^ 2 * luminanceCalcConst
+					local r, g, b = pointLayer:getPointVars(object.chunkBufferIndex, object.pointId, "radiantIntensity", "float", 3)
+					local radiance = mathsies.vec3(r, g, b) / distance ^ 2 * radianceCalcConst
 					self.individualPointShader:send("pointAttenuationTexture", pointAttenuationTexture) -- Might be the clear texture
 					local clipSpacePos = skyToClip * direction -- "Perspective divide" is already done (xyz is divided by w, and w isn't even stored since these are vec3s)
 					self.individualPointShader:send("attenuationTextureCoords", {
@@ -295,7 +295,7 @@ function game:drawCelestial(POVEntity)
 					self.individualPointShader:send("cameraUp", {mathsies.vec3.components(cameraUp)})
 					self.individualPointShader:send("cameraRight", {mathsies.vec3.components(cameraRight)})
 					self.individualPointShader:send("direction", {mathsies.vec3.components(direction)})
-					self.individualPointShader:send("luminance", {mathsies.vec3.components(luminance)})
+					self.individualPointShader:send("radiance", {mathsies.vec3.components(radiance)})
 					love.graphics.setShader(self.individualPointShader)
 					love.graphics.draw(self.pointDiskMesh)
 				end
@@ -304,7 +304,7 @@ function game:drawCelestial(POVEntity)
 			local preparationShader = pointLayer.pointPreparationShader
 			preparationShader:send("totalTransmittanceCanvas", self.screenCanvasses.pointTotalTransmittanceCanvas)
 			preparationShader:send("pointAttenuationTexture", pointAttenuationTexture)
-			preparationShader:send("luminanceCalcConst", luminanceCalcConst)
+			preparationShader:send("radianceCalcConst", radianceCalcConst)
 			preparationShader:send("chunkBufferSideLength", pointLayer.chunkBufferSideLength)
 			preparationShader:send("viewMinPosInChunkBuffer", {
 				(cameraPosition.x - pointLayer.chunkBufferSideLength / 2) % pointLayer.chunkBufferSideLength,
@@ -366,7 +366,7 @@ function game:drawCelestial(POVEntity)
 		local diskDistanceToSphere = 1 - math.cos(consts.pointAngularRadius) -- Unit sphere spherical cap height from angular radius
 		local diskSolidAngle = consts.tau * diskDistanceToSphere
 		local scaleToGetAngularRadius = math.tan(consts.pointAngularRadius)
-		local luminanceCalcConst = pointOutputMultiplier / diskSolidAngle
+		local radianceCalcConst = pointOutputMultiplier / diskSolidAngle
 
 		-- self.individualPointShader:send("angularRadius", consts.pointAngularRadius)
 		self.individualPointShader:send("fadeExponent", consts.pointDiskFadeExponent)
@@ -394,14 +394,14 @@ function game:drawCelestial(POVEntity)
 			if body.type == "star" then
 				bodyShader = self.starShader
 				local surfaceArea = 2 * consts.tau * body.radius ^ 2
-				local surfaceLuminousExitance = body.luminousFlux / surfaceArea
-				local surfaceLuminance = surfaceLuminousExitance / (consts.tau / 2) -- Lambertian emitter (TEMP)
-				bodyShader:send("surfaceLuminance", {mathsies.vec3.components(surfaceLuminance)})
+				local surfaceRadiantExitance = body.radiantFlux / surfaceArea
+				local surfaceRadiance = surfaceRadiantExitance / (consts.tau / 2) -- Lambertian emitter (TEMP)
+				bodyShader:send("surfaceRadiance", {mathsies.vec3.components(surfaceRadiance)})
 			end
 			love.graphics.setShader(bodyShader)
 			bodyShader:send("preNormaliseCornerDirs", unpack(cornerDirs))
 			bodyShader:send("size", {outputCanvas:getDimensions()})
-			bodyShader:send("outputMultiplier", luminanceMultiplier)
+			bodyShader:send("outputMultiplier", radianceMultiplier)
 			bodyShader:send("bodyPosition", {mathsies.vec3.components(body.position)}) -- TEMP
 			bodyShader:send("bodyRadius", body.radius)
 			-- bodyShader:send("clipToSky", {mathsies.mat4.components(clipToSky)})
@@ -421,12 +421,12 @@ function game:drawCelestial(POVEntity)
 			local direction = difference / distance
 
 			love.graphics.setBlendMode("add")
-			local luminance
-			if body.type == "star" then -- TODO: Calculate luminance of distant planets (when we even have any)
-				luminance = body.luminousIntensity / distance ^ 2 * luminanceCalcConst
+			local radiance
+			if body.type == "star" then -- TODO: Calculate radiance of distant planets (when we even have any)
+				radiance = body.radiantIntensity / distance ^ 2 * radianceCalcConst
 			end
 			self.individualPointShader:send("direction", {mathsies.vec3.components(direction)})
-			self.individualPointShader:send("luminance", {mathsies.vec3.components(luminance * luminanceMultiplier)})
+			self.individualPointShader:send("radiance", {mathsies.vec3.components(radiance * radianceMultiplier)})
 			love.graphics.setShader(self.individualPointShader)
 			love.graphics.draw(self.pointDiskMesh)
 			love.graphics.setBlendMode("alpha")

@@ -5,7 +5,7 @@ uniform int maxPointsPerChunk;
 
 struct PointDrawable {
 	vec3 direction;
-	vec3 luminance;
+	vec3 radiance;
 };
 writeonly buffer PointDrawables {
 	PointDrawable pointDrawables[];
@@ -28,7 +28,7 @@ uniform sampler3D pointAttenuationTexture; // Only considering the current layer
 uniform sampler2D totalTransmittanceCanvas; // Same as above. Has no depth information. Is multiplied down by closer nebulae from layers smaller than the current one. Essentially the "starting point" for the above texture.
 uniform int chunkBufferSideLength;
 uniform vec3 viewMinPosInChunkBuffer;
-uniform float luminanceCalcConst;
+uniform float radianceCalcConst;
 
 uniform float fadeInRadius;
 uniform float fadeOutRadius;
@@ -93,11 +93,11 @@ void computemain() {
 				0.0, 1.0
 			), fadeExponent);
 			float dist2 = dist * dist;
-			vec3 luminance = point.luminousIntensity / dist2 * luminanceCalcConst;
-			// Luminance calculation constant is (ignoring overall brightness multiplier and the factor for drawing the disks with even brightness at any fade exponent) equal to 1 / diskSolidAngle.
-			// When dividing the intensity by dist^2 we get illuminance from this light source at that distance. (I believe there are factors of 4pi both above and below that cancel out. One from within the area in the denominator and one from a solid angle. This leaves us with just a dist^2 denominator.)
-			// We imagine the illuminance to blur out into a region on a spherical surface around the camera (specifically, it blurs out into a spherical cap) and then direct all its light straight into the centre of the camera sphere.
-			// The average luminance from the perspective of the centre of the camera sphere is then equal to the illuminance divided by the solid angle of the spherical cap.
+			vec3 radiance = point.radiantIntensity / dist2 * radianceCalcConst;
+			// Radiance calculation constant is (ignoring overall brightness multiplier and the factor for drawing the disks with even brightness at any fade exponent) equal to 1 / diskSolidAngle.
+			// When dividing the intensity by dist^2 we get irradiance from this light source at that distance. (I believe there are factors of 4pi both above and below that cancel out. One from within the area in the denominator and one from a solid angle. This leaves us with just a dist^2 denominator.)
+			// We imagine the irradiance to blur out into a region on a spherical surface around the camera (specifically, it blurs out into a spherical cap) and then direct all its light straight into the centre of the camera sphere.
+			// The average radiance from the perspective of the centre of the camera sphere is then equal to the irradiance divided by the solid angle of the spherical cap.
 
 			vec3 clipSpacePos = perspectiveDivide(skyToClip * vec4(direction, 1.0));
 			vec3 textureSamplePos = vec3(
@@ -111,7 +111,7 @@ void computemain() {
 
 			pointDrawable = PointDrawable (
 				direction,
-				transmittance * luminance * pointFadeMultiplier
+				transmittance * radiance * pointFadeMultiplier
 			);
 			write = true;
 			indexThisThreadgroup = atomicAdd(writeCount, 1);
