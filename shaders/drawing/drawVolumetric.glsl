@@ -10,5 +10,5 @@ void pixelmain() {
 	if (count == 0u) {
 		discard;
 	}
-	fragmentColour = texelFetch(MainTex, coord, 0) / float(count);
+	fragmentColour = texelFetch(MainTex, coord, 0).rrrg / float(count);
 }

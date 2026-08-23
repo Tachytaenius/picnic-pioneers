@@ -5,7 +5,7 @@ uniform int maxPointsPerChunk;
 
 struct PointDrawable {
 	vec3 direction;
-	vec3 radiance;
+	float radiance;
 };
 writeonly buffer PointDrawables {
 	PointDrawable pointDrawables[];
@@ -93,7 +93,7 @@ void computemain() {
 				0.0, 1.0
 			), fadeExponent);
 			float dist2 = dist * dist;
-			vec3 radiance = point.radiantIntensity / dist2 * radianceCalcConst;
+			float radiance = point.radiantIntensity / dist2 * radianceCalcConst;
 			// Radiance calculation constant is (ignoring overall brightness multiplier and the factor for drawing the disks with even brightness at any fade exponent) equal to 1 / diskSolidAngle.
 			// When dividing the intensity by dist^2 we get irradiance from this light source at that distance. (I believe there are factors of 4pi both above and below that cancel out. One from within the area in the denominator and one from a solid angle. This leaves us with just a dist^2 denominator.)
 			// We imagine the irradiance to blur out into a region on a spherical surface around the camera (specifically, it blurs out into a spherical cap) and then direct all its light straight into the centre of the camera sphere.

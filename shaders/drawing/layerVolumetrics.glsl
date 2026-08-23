@@ -5,7 +5,7 @@ uniform float fadeInRadius;
 uniform float fadeOutRadius;
 uniform float fadeExponent;
 
-uniform vec3 baseEmission;
+uniform float baseEmission;
 uniform float baseAttenuation;
 
 uniform vec3 shapeRadii;
@@ -16,7 +16,7 @@ uniform float rayStepVariance;
 
 uniform float brightnessMultiplier;
 uniform ivec2 size;
-uniform layout(rgba32f) image2D resultCanvas;
+uniform layout(rg32f) image2D resultCanvas;
 uniform layout(r8ui) uimage2D additionCountCanvas;
 
 uniform vec3[4] preNormaliseCornerDirs;
@@ -31,8 +31,8 @@ VolumetricSample sampleVolumetrics(vec3 samplePosition) {
 	);
 }
 
-vec4 getRayColourAndTransmittance(vec3 rayPosition, vec3 rayDirection, float sampleLerp) {
-	vec3 totalRayRadiance = vec3(0.0);
+vec2 getRayColourAndTransmittance(vec3 rayPosition, vec3 rayDirection, float sampleLerp) {
+	float totalRayRadiance = 0.0;
 	float totalTransmittance = 1.0;
 	// Ray moves backwards from end to camera
 	// We increase detail towards camera
@@ -40,7 +40,7 @@ vec4 getRayColourAndTransmittance(vec3 rayPosition, vec3 rayDirection, float sam
 
 	ConvexRaycastResult result = ellipsoidRaycast(vec3(0.0), shapeRadii, rayPosition, rayDirection);
 	if (!result.hit || result.t2 <= 0.0) {
-		return vec4(totalRayRadiance, totalTransmittance);
+		return vec2(totalRayRadiance, totalTransmittance);
 	}
 
 	float rayOffset = max(0.0, result.t1);
@@ -69,13 +69,13 @@ vec4 getRayColourAndTransmittance(vec3 rayPosition, vec3 rayDirection, float sam
 		float attenuation = volumetricSample.attenuation;
 		transmittanceThisStep *= exp(-attenuation * rayStepSize);
 
-		vec3 rayRadianceThisStep = rayStepSize * volumetricSample.emission * emissionFadeMultiplier;
+		float rayRadianceThisStep = rayStepSize * volumetricSample.emission * emissionFadeMultiplier;
 		totalRayRadiance = totalRayRadiance * transmittanceThisStep + rayRadianceThisStep;
 		totalTransmittance *= transmittanceThisStep;
 
 		segmentStart = segmentEnd;
 	}
-	return vec4(totalRayRadiance, totalTransmittance);
+	return vec2(totalRayRadiance, totalTransmittance);
 }
 
 layout (local_size_x = 16, local_size_y = 16) in;
@@ -110,13 +110,13 @@ void computemain() {
 		uint variationSeed = (pixelId + w * h) ^ raySeed;
 		float stepVariation = (hash11(variationSeed) - 0.5) * rayStepVariance + 0.5;
 	
-		vec4 outColour = getRayColourAndTransmittance(cameraPosition, direction, stepVariation);
+		vec2 outputs = getRayColourAndTransmittance(cameraPosition, direction, stepVariation);
 
-		outColour.a = 1.0 - outColour.a; // Turn transmittance into opacity
-		outColour.rgb *= brightnessMultiplier;
+		outputs.g = 1.0 - outputs.g; // Turn transmittance into opacity
+		outputs.r *= brightnessMultiplier;
 
-		vec4 inColour = imageLoad(resultCanvas, coord);
-		vec4 toWrite = vec4(outColour + inColour);
+		vec2 inputs = imageLoad(resultCanvas, coord).rg;
+		vec4 toWrite = vec4(outputs + inputs, 0.0, 1.0);
 		imageStore(resultCanvas, coord, toWrite);
 	// }
 }

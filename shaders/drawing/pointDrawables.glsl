@@ -5,7 +5,7 @@ const float tau = 6.283185307179586476925286766559005768394338798750211641949889
 // Assumes additive mode on a canvas with float colours
 
 varying float fade;
-varying vec3 colour;
+varying float outRadiance;
 
 uniform float fadeExponent;
 
@@ -19,14 +19,14 @@ uniform float scale;
 #ifdef INSTANCED
 struct PointDrawable {
 	vec3 direction;
-	vec3 radiance;
+	float radiance;
 };
 readonly buffer PointDrawables {
 	PointDrawable pointDrawables[];
 };
 #else
 uniform vec3 direction;
-uniform vec3 radiance;
+uniform float radiance;
 uniform sampler3D pointAttenuationTexture;
 uniform sampler2D totalTransmittanceCanvas;
 uniform vec3 attenuationTextureCoords;
@@ -45,14 +45,14 @@ void vertexmain() {
 #ifdef INSTANCED
 	uint i = gl_InstanceID;
 	PointDrawable pointDrawable = pointDrawables[i];
-	colour = pointDrawable.radiance;
+	outRadiance = pointDrawable.radiance;
 	vec3 direction = pointDrawable.direction;
 #else
 	vec2 totalTransmittanceCoord = vec2(attenuationTextureCoords.x, 1.0 - attenuationTextureCoords.y);
 	float transmittance =
 		texture(pointAttenuationTexture, attenuationTextureCoords).r *
 		texture(totalTransmittanceCanvas, totalTransmittanceCoord).r;
-	colour = radiance * transmittance;
+	outRadiance = radiance * transmittance;
 #endif
 
 	vec3 billboardRight = cross(cameraUp, direction);
@@ -62,7 +62,7 @@ void vertexmain() {
 	}
 	vec3 billboardUp = cross(direction, billboardRight);
 	vec3 centre = direction * (1.0 - diskDistanceToSphere);
-	float effectiveScale = colour == vec3(0.0) ? 0.0 : scale; // Draw no fragments if no brightness
+	float effectiveScale = outRadiance == 0.0 ? 0.0 : scale; // Draw no fragments if no brightness
 	vec3 celestialSpherePos = centre + effectiveScale * (billboardRight * VertexPosition.x + billboardUp * VertexPosition.y);
 	gl_Position = skyToClip * vec4(celestialSpherePos, 1.0);
 }
@@ -78,7 +78,7 @@ void pixelmain() {
 	float shape = pow(1.0 - fade, fadeExponent); // Must match graphics.lua's version of this line
 	// Compensating for the shape not being constantly 1 is done with the pointOutputMultiplier variable CPU-side
 
-	outColour = shape * vec4(colour, 1.0);
+	outColour = shape * vec4(vec3(outRadiance), 1.0);
 }
 
 #endif 

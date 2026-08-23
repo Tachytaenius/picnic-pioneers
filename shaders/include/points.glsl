@@ -3,7 +3,7 @@ struct Point {
 	vec3 position;
 #endif
 #ifdef FEATURE_RADIANT_INTENSITY
-	vec3 radiantIntensity;
+	float radiantIntensity;
 #endif
 #ifdef FEATURE_ORIENTATION
 	vec4 orientation; // Quaternion

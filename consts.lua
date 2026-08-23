@@ -162,7 +162,7 @@ function consts.loadAll()
 
 	consts.pointDrawableBufferFormat = {
 		{name = "direction", format = "floatvec3"},
-		{name = "radiance", format = "floatvec3"}
+		{name = "radiance", format = "float"}
 	}
 
 	-- Vertex formats

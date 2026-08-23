@@ -38,7 +38,7 @@ void computemain() {
 	// 	discard;
 	// }
 
-	vec4 bodySample = sampleBody( // Radiance in RGB and transmittance in A
+	vec2 bodySample = sampleBody( // Radiance in R and transmittance in G
 		cameraPosition + direction * max(0.0, result.t1) - bodyPosition,
 		cameraPosition + direction * result.t2 - bodyPosition,
 		direction
@@ -46,12 +46,12 @@ void computemain() {
 
 	// Read
 	float transmittance = imageLoad(totalTransmittanceCanvas, coord).r; // Transmittance between body and camera
-	vec3 currentOut = imageLoad(outputCanvas, coord).rgb; // Get current colour
-	float transmittanceThisBody = bodySample.a;
+	float currentOut = imageLoad(outputCanvas, coord).r; // Get current radiance
+	float transmittanceThisBody = bodySample.g;
 	// Modify
-	vec3 newOut = currentOut * transmittanceThisBody + outputMultiplier * bodySample.rgb;
+	float newOut = currentOut * transmittanceThisBody + outputMultiplier * bodySample.r;
 	transmittance *= transmittanceThisBody; // Let body contribute to blocking everything that comes after it
 	// Write
 	imageStore(totalTransmittanceCanvas, coord, vec4(transmittance, 0.0, 0.0, 1.0));
-	imageStore(outputCanvas, coord, vec4(newOut, 1.0));
+	imageStore(outputCanvas, coord, vec4(vec3(newOut), 1.0));
 }
