@@ -9,7 +9,6 @@ local game = {}
 
 function game:getGravityWellSlowdownFactor()
 	local result = self.pointLayerGravityWellSlowdownFactor
-	-- TEMP: Individual bodies (stars, planets, etc) should be defined elsewhere
 	local lastPointLayer = self.pointLayers[#self.pointLayers]
 	if lastPointLayer.currentObject then
 		local obj = lastPointLayer.currentObject

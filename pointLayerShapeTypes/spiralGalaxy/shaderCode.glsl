@@ -15,7 +15,7 @@ float SHAPE_DENSITY_SAMPLE_TYPE(vec3 samplePosition, vec3 samplePositionTrueRati
 		VALUE_NOISE(2, samplePosition),
 		VALUE_NOISE(3, samplePosition)
 	) * 2.0 - 1.0) / vec3(1.0, 1.0, PARAM(averageZRatio));
-	samplePosition = samplePosition + offset;
+	samplePosition = samplePosition + offset * (1.0 - originalLength3D);
 
 	float samplePositionElevation = samplePosition.z;
 	vec2 samplePosition2D = samplePosition.xy;

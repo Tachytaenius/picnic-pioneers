@@ -147,17 +147,27 @@ function love.draw()
 		if done and required then
 			love.graphics.print(
 				"Precalculating (and caching) various object masses...\n" ..
-				math.floor(done / required * 100) .. "%"
+				math.floor(done / required * 100) .. "% (" .. done .. "/" .. required .. ")"
 			)
 			return
 		end
-		
+
 		local done = state.loadInfo.starPrecalcSamplesDone
 		local required = state.loadInfo.starPrecalcSamplesRequired
 		if done and required then
 			love.graphics.print(
 				"Precalculating average star properties...\n" ..
-				math.floor(done / required * 100) .. "%"
+				math.floor(done / required * 100) .. "% (" .. done .. "/" .. required .. ")"
+			)
+			return
+		end
+
+		local done = state.loadInfo.intensitiesMeasured
+		local required = state.loadInfo.intensitiesToMeasure or true
+		if done and required then
+			love.graphics.print(
+				"Precalculating object radiant intensities...\n" ..
+				math.floor(done / required * 100) .. "% (" .. done .. "/" .. required .. ")"
 			)
 			return
 		end

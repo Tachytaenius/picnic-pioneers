@@ -75,17 +75,6 @@
 ---@field volumetricMaxRaySteps number
 ---@field volumetricCanvasScale number
 ---@field volumetricMaxPixelAdditions number
----@field starDensity number
----@field starEffectiveTemperature number
----@field starMassRandomTerm1Weight number
----@field starMassRandomTerm1Exponent number
----@field starMassExponentRangeLow number
----@field starMassExponentRangeHigh number
----@field starMassMultiplier number
----@field averageStarMass number
----@field averageStarRadiantFluxR number
----@field averageStarRadiantFluxG number
----@field averageStarRadiantFluxB number
 local consts = {}
 
 consts.identity = "picnic-pioneers"
@@ -131,10 +120,13 @@ function consts.loadAll()
 		"starSystem",
 		"systemBody"
 	})
-
 	consts.objectGenerationStages = util.makeBidirectional({ -- For multithreading
 		[0] = "main",
 		"noiseValues"
+	})
+	consts.shapeIntegralNoiseSeedTypes = util.makeBidirectional({
+		[0] = "baseAmounts",
+		"intensities"
 	})
 
 	consts.noAttenuationShapeTypeName = "noAttenuation"
@@ -144,13 +136,14 @@ function consts.loadAll()
 	consts.intBufferFormat = {
 		{name = "value", format = "int32"}
 	}
-
 	consts.uintBufferFormat = {
 		{name = "value", format = "uint32"}
 	}
-
 	consts.floatBufferFormat = {
 		{name = "value", format = "float"}
+	}
+	consts.vec3BufferFormat = {
+		{name = "value", format = "floatvec3"}
 	}
 
 	consts.indirectDrawBufferFormat = {
@@ -217,7 +210,7 @@ function consts.loadAll()
 	consts.POVFarDistance = 10000
 	consts.POVNearDistance = 0.01
 
-	consts.celestialRadianceMultiplier = 1e14
+	consts.celestialRadianceMultiplier = 1e13
 
 	-- TODO: Move some of these out as they're not really simulation or graphics parameters in the sense that I meant.
 	consts.pointPreparationThreadgroupSize = 512

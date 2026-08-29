@@ -27,12 +27,12 @@ return function(layerIndex, x, y, z)
 	local cellSizeX = 1 / (sizeX - 1)
 	local cellSizeY = 1 / (sizeY - 1)
 	local cellSizeZ = 1 / (sizeZ - 1)
-	local mixX = (x % cellSizeX) / cellSizeX
-	local mixY = (y % cellSizeY) / cellSizeY
-	local mixZ = (z % cellSizeZ) / cellSizeZ
 	local cellX = clamp(floor(x / cellSizeX), 0, sizeX - 2)
 	local cellY = clamp(floor(y / cellSizeY), 0, sizeY - 2)
 	local cellZ = clamp(floor(z / cellSizeZ), 0, sizeZ - 2)
+	local mixX = (x / cellSizeX) - cellX
+	local mixY = (y / cellSizeY) - cellY
+	local mixZ = (z / cellSizeZ) - cellZ
 	return trilinearMix(
 		getValue(valueNoiseDataFFI, start, sizeX, sizeY, sizeZ, cellX + 0, cellY + 0, cellZ + 0),
 		getValue(valueNoiseDataFFI, start, sizeX, sizeY, sizeZ, cellX + 0, cellY + 0, cellZ + 1),

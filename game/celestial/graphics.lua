@@ -402,10 +402,10 @@ function game:drawCelestial(POVEntity)
 			bodyShader:send("preNormaliseCornerDirs", unpack(cornerDirs))
 			bodyShader:send("size", {outputCanvas:getDimensions()})
 			bodyShader:send("outputMultiplier", radianceMultiplier)
-			bodyShader:send("bodyPosition", {mathsies.vec3.components(body.position)}) -- TEMP
+			bodyShader:send("bodyPosition", {mathsies.vec3.components(body.position)})
 			bodyShader:send("bodyRadius", body.radius)
 			-- bodyShader:send("clipToSky", {mathsies.mat4.components(clipToSky)})
-			bodyShader:send("cameraPosition", {mathsies.vec3.components(cameraPositionRelative)}) -- TEMP
+			bodyShader:send("cameraPosition", {mathsies.vec3.components(cameraPositionRelative)})
 			bodyShader:send("totalTransmittanceCanvas", self.screenCanvasses.pointTotalTransmittanceCanvas)
 			bodyShader:send("outputCanvas", outputCanvas)
 

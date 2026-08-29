@@ -1,5 +1,7 @@
 local info = {}
 
+info.attenuation = true
+
 function info.getDensity(x, y, z)
 	local len = math.sqrt(x^2+y^2+z^2)
 

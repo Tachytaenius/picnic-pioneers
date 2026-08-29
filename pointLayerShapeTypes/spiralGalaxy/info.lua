@@ -47,12 +47,17 @@ info.parameters = {
 	}
 }
 
-info.constants = {
-	coreProportion = 0.1,
-	coreFullProportion = 0.35,
-	armVerticalTaperPower = 1.5,
-	noiseOffsetSize = 0.03,
-	averageZRatio = average
+local coreProportion = 0.1
+local coreFullProportion = 0.35
+local armVerticalTaperPower = 1.5
+local noiseOffsetSize = 0.03
+local averageZRatio = average
+info.constants = { -- For GPU mostly
+	coreProportion = coreProportion,
+	coreFullProportion = coreFullProportion,
+	armVerticalTaperPower = armVerticalTaperPower,
+	noiseOffsetSize = noiseOffsetSize,
+	averageZRatio = averageZRatio
 }
 
 local sqrt = math.sqrt
@@ -72,17 +77,17 @@ function info.getDensity(x, y, z, densityExponent, armCount, armEndRotation)
 	if originalLength3D > 1 then
 		return 0
 	end
-	local xOffset = (valueNoise(1, x, y, z) * 2 - 1) * info.constants.noiseOffsetSize
-	local yOffset = (valueNoise(2, x, y, z) * 2 - 1) * info.constants.noiseOffsetSize
+	local xOffset = (valueNoise(1, x, y, z) * 2 - 1) * noiseOffsetSize
+	local yOffset = (valueNoise(2, x, y, z) * 2 - 1) * noiseOffsetSize
 	local zOffset =
-		(valueNoise(3, x, y, z) * 2 - 1) * info.constants.noiseOffsetSize /
-		info.constants.averageZRatio -- It *is* divide, not multiply, right? (Or do we just not do anything?)
-	local x = x + xOffset
-	local y = y + yOffset
-	local z = z + zOffset
+		(valueNoise(3, x, y, z) * 2 - 1) * noiseOffsetSize /
+		averageZRatio -- It *is* divide, not multiply, right? (Or do we just not do anything?)
+	local x = x + xOffset * (1 - originalLength3D) -- Stop the offset noise towards the edges to avoid excessive variation in base amount
+	local y = y + yOffset * (1 - originalLength3D)
+	local z = z + zOffset * (1 - originalLength3D)
 
 	local length2D = sqrt(x ^ 2 + y ^ 2)
-	local length3D = sqrt(x ^ 2 + y ^ 2 + z ^ 2)
+	-- local length3D = sqrt(x ^ 2 + y ^ 2 + z ^ 2)
 	local length3DZScaled = sqrt(x ^ 2 + y ^ 2 + (z / 3) ^ 2) -- For core proportion
 	local swirlAngle = armEndRotation * length2D
 	local c, s = cos(swirlAngle), sin(swirlAngle)
@@ -90,14 +95,14 @@ function info.getDensity(x, y, z, densityExponent, armCount, armEndRotation)
 	local swirledY = x * s + y * c
 
 	local galaxyCoreFactor = max(0, min(1,
-		(length3DZScaled - info.constants.coreFullProportion) / (info.constants.coreProportion - info.constants.coreFullProportion)
+		(length3DZScaled - coreFullProportion) / (coreProportion - coreFullProportion)
 	))
 
 	local armVerticalTaperEnd = 1 - 0.9 * min(1, length2D)
 	local armVerticalTaperStart = armVerticalTaperEnd * 0.05
 	local armVerticalTaper = max(0, min(1,
 		(abs(z) - armVerticalTaperEnd) / (armVerticalTaperStart - armVerticalTaperEnd)
-	)) ^ info.constants.armVerticalTaperPower
+	)) ^ armVerticalTaperPower
 
 	local armFactor = armVerticalTaper * (
 		sin(atan2(swirledY, swirledX) * armCount) * 0.5 + 0.5

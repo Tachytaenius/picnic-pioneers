@@ -1,28 +1,36 @@
-uniform vec3 cameraPosition;
 uniform uint maxRaySteps;
-
-uniform float fadeInRadius;
-uniform float fadeOutRadius;
-uniform float fadeExponent;
 
 uniform vec3 baseEmission;
 uniform float baseAttenuation;
 
 uniform vec3 shapeRadii;
 
-// uniform float rayChance;
-uniform uint raySeed;
-uniform float rayStepVariance;
-
 uniform float brightnessMultiplier;
 uniform ivec2 size;
-uniform layout(rgba32f) image2D resultCanvas;
+uniform layout(RESULT_CANVAS_FORMAT) image2D resultCanvas;
+
+#ifndef INTENSITY_PRECALC
+uniform vec3 cameraPosition;
+
 uniform layout(r8ui) uimage2D additionCountCanvas;
 
 uniform vec3[4] preNormaliseCornerDirs;
 
+uniform uint raySeed;
+uniform float rayStepVariance;
+
+uniform float fadeInRadius;
+uniform float fadeOutRadius;
+uniform float fadeExponent;
+#else
+uniform float samplingDiskRadius;
+uniform vec3 cameraForwards;
+uniform vec3 cameraRight;
+uniform vec3 cameraUp;
+#endif
+
 VolumetricSample sampleVolumetrics(vec3 samplePosition) {
-	vec3 samplePositionTrueRatio = samplePosition * shapeRadii;
+	vec3 samplePositionTrueRatio = samplePosition * shapeRadii / max(shapeRadii.x, max(shapeRadii.y, shapeRadii.z));
 	float emissionDensity = sampleEmissionShapeDensity(samplePosition, samplePositionTrueRatio);
 	float attenuationDensity = sampleAttenuationShapeDensity(samplePosition, samplePositionTrueRatio);
 	return VolumetricSample (
@@ -46,22 +54,29 @@ vec4 getRayColourAndTransmittance(vec3 rayPosition, vec3 rayDirection, float sam
 	float rayOffset = max(0.0, result.t1);
 	float rayLength = result.t2 - rayOffset;
 
-	float maxRayLength = 2.0 * max(max(shapeRadii.x, shapeRadii.y), shapeRadii.z); // A whole diameter
-	uint rayStepCount = max(maxRaySteps, uint(max(0.0, rayLength / maxRayLength) * (maxRaySteps - 1) + 1.0));
+	// float maxRayLength = 2.0 * max(max(shapeRadii.x, shapeRadii.y), shapeRadii.z); // A whole diameter
+	// uint rayStepCount = clamp(uint(
+	// 	rayLength / maxRayLength * maxRaySteps
+	// ), 2, maxRaySteps);
+	uint rayStepCount = maxRaySteps;
 
 	float segmentStart = result.t2;
 	for (uint rayStep = 0u; rayStep < rayStepCount; rayStep++) {
-		float t = 1.0 - float(rayStep) / float(rayStepCount - 1);
+		float t = 1.0 - float(rayStep + 1) / float(rayStepCount);
 		t = t * t; // Increase detail towards camera (without using pow)
 		float segmentEnd = rayOffset + rayLength * t;
-		float rayStepSize = segmentStart - segmentEnd; // Start is greater than end (TODO: RenderDoc showed that this is 0 on first step)
+		float rayStepSize = segmentStart - segmentEnd;
 		float sampleT = mix(segmentEnd, segmentStart, sampleLerp);
 		vec3 samplePosition = (rayPosition + rayDirection * sampleT) / shapeRadii;
 
+#ifndef INTENSITY_PRECALC
 		float emissionFadeMultiplier = 1.0 - pow(clamp(
 			(sampleT - fadeInRadius) / (fadeOutRadius - fadeInRadius),
 			0.0, 1.0
 		), fadeExponent);
+#else
+		float emissionFadeMultiplier = 1.0;
+#endif
 
 		float transmittanceThisStep = 1.0;
 
@@ -85,6 +100,7 @@ void computemain() {
 		return;
 	}
 
+#ifndef INTENSITY_PRECALC
 	vec2 mixFactor = (vec2(coord) + 0.5) / vec2(size);
 	vec3 direction = normalize(
 		mix (
@@ -109,7 +125,15 @@ void computemain() {
 	// if (rayChance == 1.0 || hash11(chanceSeed) < rayChance) {
 		uint variationSeed = (pixelId + w * h) ^ raySeed;
 		float stepVariation = (hash11(variationSeed) - 0.5) * rayStepVariance + 0.5;
-	
+#else
+		float stepVariation = 0.5;
+		vec2 posOnDisk = (vec2(coord) + 0.5) / vec2(size) * 2.0 - 1.0;
+		if (length(posOnDisk) > 1.0) {
+			// return; // TEMP commentout for testing
+		}
+		vec3 direction = cameraForwards;
+		vec3 cameraPosition = samplingDiskRadius * (-cameraForwards + cameraRight * posOnDisk.x + cameraUp * posOnDisk.y);
+#endif
 		vec4 outColour = getRayColourAndTransmittance(cameraPosition, direction, stepVariation);
 
 		outColour.a = 1.0 - outColour.a; // Turn transmittance into opacity

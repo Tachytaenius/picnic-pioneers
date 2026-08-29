@@ -8,7 +8,7 @@ uniform float baseAttenuation;
 uniform vec3 shapeRadii;
 
 float sampleAttenuationVolume(vec3 samplePosition) {
-	vec3 samplePositionTrueRatio = samplePosition * shapeRadii;
+	vec3 samplePositionTrueRatio = samplePosition * shapeRadii / max(shapeRadii.x, max(shapeRadii.y, shapeRadii.z));
 	float attenuationDensity = sampleAttenuationShapeDensity(samplePosition, samplePositionTrueRatio);
 	return baseAttenuation * attenuationDensity;
 }
@@ -31,7 +31,7 @@ void computemain() {
 		)
 	).xyz);
 
-	float rayStepSize = rayLength / float(textureSize.z);
+	float rayStepSize = rayLength / float(textureSize.z - 1);
 	vec3 rayStepVec = direction * rayStepSize;
 	vec3 currentPosition = cameraPosition;
 	float transmittance = 1.0;

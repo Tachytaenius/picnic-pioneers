@@ -345,6 +345,7 @@ function game:initPointLayers()
 	end
 	averageStarCountPerPoint = averageStarCountPerPoint / totalWeight
 
+	coroutine.yield()
 	local axisSamples = consts.starAxisSamples
 	loadInfo.starPrecalcSamplesRequired = axisSamples ^ consts.starParamCount
 	loadInfo.starPrecalcSamplesDone = 0
@@ -387,9 +388,9 @@ function game:initPointLayers()
 		local pointLayer = self.pointLayers[i]
 		if i == #self.pointLayers then
 			pointLayer.averageMassPerPoint = starAverageMass
-			pointLayer.averageRadiantIntensityRPerPoint = starAverageRadiantIntensityR
-			pointLayer.averageRadiantIntensityGPerPoint = starAverageRadiantIntensityG
-			pointLayer.averageRadiantIntensityBPerPoint = starAverageRadiantIntensityB
+			pointLayer.averageUnattenuatedRadiantIntensityRPerPoint = starAverageRadiantIntensityR
+			pointLayer.averageUnattenuatedRadiantIntensityGPerPoint = starAverageRadiantIntensityG
+			pointLayer.averageUnattenuatedRadiantIntensityBPerPoint = starAverageRadiantIntensityB
 		else
 			local childPointLayer = pointLayer.childPointLayer
 			local totalWeight = 0
@@ -399,42 +400,42 @@ function game:initPointLayers()
 				local shapeType = self.pointLayerShapeTypes[shapeTypeInfo.name] -- shapeTypeInfo is the point layer's usage of the shape, shapeType is the shape type itself
 				local minS, maxS = shapeTypeInfo.scaleMin, shapeTypeInfo.scaleMax
 				local minZR, maxZR = shapeType.zScaleRatioMin, shapeType.zScaleRatioMax
-				local averageBaseObjectAmountMultiplier =
-					1 / 8 *
-					(minS + maxS) *
-					(minS ^ 2 + maxS ^ 2) *
-					(minZR + maxZR)
+				local averageBaseObjectAmountMultiplier = (minS + maxS) * (minS ^ 2 + maxS ^ 2) / 4
 
 				local total = 0
 				assert(not shapeType.attenuation, "Attenuation shape types cannot be used for point density")
 				for samplingId = 0, shapeType.sampleCount - 1 do
-					local subtypeBaseAmount
+					local sample
 					if shapeType.needsTrueRatio then
-						subtypeBaseAmount = 0
+						sample = 0
 						for zSample = 0, shapeType.zScaleRatioSamples - 1 do
-							subtypeBaseAmount = subtypeBaseAmount + shapeType.sampleBaseObjectAmounts[samplingId][zSample]
+							local zScaleRatio = shapeType.zScaleRatioMin + zSample / (shapeType.zScaleRatioSamples - 1) * (shapeType.zScaleRatioMax - shapeType.zScaleRatioMin)
+							sample = sample + shapeType.sampleBaseObjectAmounts[samplingId][zSample] * zScaleRatio
 						end
 					else
-						subtypeBaseAmount = shapeType.sampleBaseObjectAmounts[samplingId]
+						sample = shapeType.sampleBaseObjectAmounts[samplingId] * (minZR + maxZR) / 2
 					end
 					total = total +
-						subtypeBaseAmount *
+						sample *
 						averageBaseObjectAmountMultiplier *
 						childPointLayer.maxPointDensity
 				end
 				local countMultiplier = shapeType.needsTrueRatio and shapeType.zScaleRatioSamples or 1
-				local averageAmountThisShapeTypeInfo = total / (shapeType.sampleCount * countMultiplier)
+				local countThisShapeInfo = shapeType.sampleCount * countMultiplier
+				local averageAmountThisShapeTypeInfo = total / countThisShapeInfo
 
-				averageAmountPreDivide = averageAmountPreDivide + averageAmountThisShapeTypeInfo
+				averageAmountPreDivide = averageAmountPreDivide + averageAmountThisShapeTypeInfo * shapeTypeInfo.weight
 				totalWeight = totalWeight + shapeTypeInfo.weight
 			end
 			local averageAmount = averageAmountPreDivide / totalWeight
 			pointLayer.averageMassPerPoint = averageAmount * childPointLayer.averageMassPerPoint
-			pointLayer.averageRadiantIntensityRPerPoint = averageAmount * childPointLayer.averageRadiantIntensityRPerPoint
-			pointLayer.averageRadiantIntensityGPerPoint = averageAmount * childPointLayer.averageRadiantIntensityGPerPoint
-			pointLayer.averageRadiantIntensityBPerPoint = averageAmount * childPointLayer.averageRadiantIntensityBPerPoint
+			pointLayer.averageUnattenuatedRadiantIntensityRPerPoint = averageAmount * childPointLayer.averageUnattenuatedRadiantIntensityRPerPoint
+			pointLayer.averageUnattenuatedRadiantIntensityGPerPoint = averageAmount * childPointLayer.averageUnattenuatedRadiantIntensityGPerPoint
+			pointLayer.averageUnattenuatedRadiantIntensityBPerPoint = averageAmount * childPointLayer.averageUnattenuatedRadiantIntensityBPerPoint
 		end
 	end
+
+	self:getPointLayerIntensities()
 
 	-- Ensure no objects could be too big for the celestal id system to work on its contained points or to smoothly transition between resolvable and unresolved
 	for i = 1, #self.pointLayers do
@@ -537,13 +538,16 @@ function pointLayerFunctions:randomiseValueNoise(type)
 		return
 	end
 	-- This layer will have a noise buffer/data if its parent can have a shape type that has noise.
+	self:randomiseValueNoiseCore(suffix, shapeType.noiseInfo.requiredValueCount)
+end
+function pointLayerFunctions:randomiseValueNoiseCore(suffix, count)
 	local buffer = self["valueNoiseBuffer" .. suffix]
 	local data = self["valueNoiseData" .. suffix]
 	local dataFFI = self["valueNoiseDataFFI" .. suffix]
-	for i = 0, shapeType.noiseInfo.requiredValueCount - 1 do
+	for i = 0, count - 1 do
 		dataFFI[i] = self.gameObject:celestialRandom()
 	end
-	buffer:setArrayData(data, 1, 1, shapeType.noiseInfo.requiredValueCount)
+	buffer:setArrayData(data, 1, 1, count)
 end
 
 function pointLayerFunctions:prepareValueNoiseFunction() -- This is per shape type, so in case multiple layers use the same shape type this must be set before every use of the density function
@@ -1227,8 +1231,6 @@ function game:handlePointLayers()
 					pointLayer.childPointLayer:handleThreadedShapeInit("expect")
 				end
 
-				local r, g, b = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "radiantIntensity", "float", 3)
-
 				pointLayer.currentObject = {
 					chunkId = chunkId,
 					chunkBufferIndex = chunkBufferIndex, -- Won't change for the same object
@@ -1248,7 +1250,6 @@ function game:handlePointLayers()
 					)
 				))
 				currentObject.position = objectPosition
-				currentObject.radiantIntensity = mathsies.vec3(r, g, b) * pointLayer.chunkSize ^ 2 -- Bring back to proper units
 				if pointLayer.features.shapeTypeSubtypeIds then
 					currentObject.shapeTypeName = self.pointLayerShapeTypes[shapeTypeId].name
 					currentObject.shapeSubtypeId = shapeSubtypeId

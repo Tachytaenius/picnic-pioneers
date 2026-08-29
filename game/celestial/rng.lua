@@ -42,12 +42,11 @@ function game:getGlobalCelestialObjectIdNumbers(objectType, stage, galaxyChunkId
 	return a, b, c, d
 end
 -- Designed not to clash with any celestial objects
--- function game:getShapeIntegralNoiseSeed(averagingIteration, typeId, subTypeId)
-function game:getShapeIntegralNoiseSeed(averagingIteration) -- No need to even specify type or subtype
-	local a = 0 -- typeId?
-	local b = 0 -- subTypeId?
+function game:getShapeIntegralNoiseSeed(averagingIteration, typeId)
+	local a = typeId
+	local b = 0
 	local c = averagingIteration
-	local d = consts.idObjectTypes.special * 2 ^ 16
+	local d = consts.idObjectTypes.special * 2 ^ 16 -- In the same bits as object type in getGlobalCelestialObjectIdNumbers
 	return a, b, c, d
 end
 

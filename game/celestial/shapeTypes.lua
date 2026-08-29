@@ -57,9 +57,11 @@ end
 function game:getSubtypeBaseAmountWithSamples(shapeType, shapeSubtypeId, zScaleRatio)
 	local zSampleLerp, zSampleAIdx, zSampleBIdx
 	if shapeType.needsTrueRatio then
-		local where = shapeType.zScaleRatioSamples * (zScaleRatio - shapeType.zScaleRatioMin) / (shapeType.zScaleRatioMax - shapeType.zScaleRatioMin)
-		local prevSample = math.max(0, math.min(1, math.floor(where))) -- Clamp for safety
-		zSampleLerp = where - prevSample -- Should be (more or less) between 0 and 1
+		local where = (zScaleRatio - shapeType.zScaleRatioMin) / (shapeType.zScaleRatioMax - shapeType.zScaleRatioMin)
+		local whereSamples = where * (shapeType.zScaleRatioSamples - 1)
+		local prevSample = math.max(0, math.min(shapeType.zScaleRatioSamples - 1, math.floor(whereSamples)))
+
+		zSampleLerp = whereSamples - prevSample -- Should be (more or less) between 0 and 1
 		zSampleAIdx = prevSample
 		zSampleBIdx = math.min(shapeType.zScaleRatioSamples - 1, prevSample + 1)
 	else
@@ -108,6 +110,9 @@ function game:getSubtypeBaseAmountWithSamples(shapeType, shapeSubtypeId, zScaleR
 		table.insert(mixNSampleArgs, baseAmountThisSample)
 	end
 
+	if #lerpFactors == 0 then
+		return mixNSampleArgs[1]
+	end
 	return util.mixN(lerpFactors, unpack(mixNSampleArgs))
 end
 
@@ -290,21 +295,64 @@ local function cacheShapeType(shapeType, code, resolution, noiseAveraging)
 		if shapeType.needsTrueRatio then
 			resultsToEncode[i + 1] = {}
 			for j = 0, shapeType.zScaleRatioSamples - 1 do
-				resultsToEncode[i + 1][j + 1] = encodeDouble(shapeType.sampleBaseObjectAmounts[i][j])
+				local amount = shapeType.sampleBaseObjectAmounts[i][j]
+				resultsToEncode[i + 1][j + 1] = encodeDouble(amount)
 			end
 		else
-			resultsToEncode[i + 1] = encodeDouble(shapeType.sampleBaseObjectAmounts[i])
+			local amount = shapeType.sampleBaseObjectAmounts[i]
+			resultsToEncode[i + 1] = encodeDouble(amount)
 		end
 	end
 
 	local contents = json.encode({
 		code = code,
 		resolution = resolution,
-		noiseRepeat = noiseAveraging,
+		noiseRepeat = shapeType.noiseInfo and noiseAveraging or nil,
 		results = resultsToEncode
 	})
 
 	love.filesystem.write(dirPath .. shapeType.name .. ".json", contents)
+end
+local function readCache(shapeType, cachedInfo)
+	if shapeType.needsTrueRatio then
+		local results = {}
+		if #cachedInfo.results ~= shapeType.sampleCount then
+			return false
+		end
+		for samplingId = 0, shapeType.sampleCount - 1 do
+			local sampleResults = cachedInfo.results[samplingId + 1]
+			if type(sampleResults) ~= "table" then
+				return false
+			end
+
+			local resultsInner = {}
+			results[samplingId] = resultsInner
+			if #sampleResults ~= shapeType.zScaleRatioSamples then
+				return false
+			end
+			for zSample = 0, shapeType.zScaleRatioSamples - 1 do
+				local code = sampleResults[zSample + 1]
+				if not checkCode(code) then
+					return false
+				end
+				resultsInner[zSample] = decodeDouble(code)
+			end
+		end
+		return results
+	else
+		local results = {}
+		if #cachedInfo.results ~= shapeType.sampleCount then
+			return false
+		end
+		for samplingId = 0, shapeType.sampleCount - 1 do
+			local code = cachedInfo.results[samplingId + 1]
+			if not checkCode(code) then -- Will return if code is not present
+				return false
+			end
+			results[samplingId] = decodeDouble(code)
+		end
+		return results
+	end
 end
 local function handleCache(shapeType, code, resolution, noiseAveraging)
 	local dirPath = "cache/shapeTypes/"
@@ -341,48 +389,9 @@ local function handleCache(shapeType, code, resolution, noiseAveraging)
 
 	assert(cachedInfo.results, "Cached info for shape type " .. shapeType.name .. " has no results data?")
 
-	-- TODO: Version info? a) what about unknown versions and b) what about *not* recreating all unnecessarily every update?
-	-- Force regenerate cache option?
+	-- TODO: Version info? a) what about unknown versions and b) what about *not* recreating all unnecessarily every update? ... Don't use the game version but rather a "result version" which is changed when different results are expected. Best kept as a string rather than a number for flexibility.
 
-	if shapeType.needsTrueRatio then
-		local results = {}
-		if #cachedInfo.results ~= shapeType.sampleCount then
-			return false
-		end
-		for samplingId = 0, shapeType.sampleCount - 1 do
-			local sampleResults = cachedInfo.results[samplingId + 1]
-			if type(sampleResults) ~= "table" then
-				return false
-			end
-
-			local resultsInner = {}
-			results[samplingId] = resultsInner
-			if #sampleResults ~= shapeType.zScaleRatioSamples then
-				return false
-			end
-			for zSample = 0, shapeType.zScaleRatioSamples - 1 do
-				local code = sampleResults[samplingId + 1]
-				if not checkCode(code) then
-					return false
-				end
-				resultsInner[zSample] = decodeDouble(code)
-			end
-		end
-		return results
-	else
-		local results = {}
-		if #cachedInfo.results ~= shapeType.sampleCount then
-			return false
-		end
-		for samplingId = 0, shapeType.sampleCount - 1 do
-			local code = cachedInfo.results[samplingId + 1]
-			if not checkCode(code) then -- Will return if code is not present
-				return false
-			end
-			results[samplingId] = decodeDouble(code)
-		end
-		return results
-	end
+	return readCache(shapeType, cachedInfo)
 end
 
 function game:loadShapeTypes()
@@ -519,7 +528,7 @@ function game:loadShapeTypes()
 	local alreadyDoneNoiseless = false
 	for averagingIteration = 0, noiseAveraging - 1 do
 		-- Init noise for the integrals. They are allowed to use the same value data
-		self:seedCelestialRNG(self:getShapeIntegralNoiseSeed(averagingIteration)) -- The code in there is TOOD
+		self:seedCelestialRNG(self:getShapeIntegralNoiseSeed(averagingIteration, consts.shapeIntegralNoiseSeedTypes.baseAmounts))
 		for i = 0, maxRequiredNoiseValues - 1 do
 			valueNoiseDataFFI[i] = self:celestialRandom()
 		end
@@ -543,12 +552,14 @@ function game:loadShapeTypes()
 			for samplingId = 0, shapeType.sampleCount - 1 do
 				local subtypeId = self:subtypeFromSamplingId(shapeType, samplingId)
 				if shapeType.needsTrueRatio then
-					sampleBaseObjectAmounts[samplingId] = {}
+					sampleBaseObjectAmounts[samplingId] = sampleBaseObjectAmounts[samplingId] or {}
 					for zScaleStep = 0, shapeType.zScaleRatioSamples - 1 do
-						local ratioX = 1
-						local ratioY = 1
+						local scaleX = 1
+						local scaleY = 1
 						local lerpFactor = zScaleStep / (shapeType.zScaleRatioSamples - 1)
-						local ratioZ = shapeType.zScaleRatioMin + lerpFactor * (shapeType.zScaleRatioMax - shapeType.zScaleRatioMin)
+						local scaleZ = shapeType.zScaleRatioMin + lerpFactor * (shapeType.zScaleRatioMax - shapeType.zScaleRatioMin)
+						local divisor = math.max(scaleX, scaleY, scaleZ)
+						local ratioX, ratioY, ratioZ = scaleX / divisor, scaleY / divisor, scaleZ / divisor
 						local result = self:getShapeTypeBaseObjectAmount(sampleDistribution, integralThreads, shapeType, subtypeId, valueNoiseData, ratioX, ratioY, ratioZ)
 						sampleBaseObjectAmounts[samplingId][zScaleStep] = (sampleBaseObjectAmounts[samplingId][zScaleStep] or 0) + result
 
@@ -606,12 +617,14 @@ function game:loadShapeTypes()
 
 	-- Get all needed shader combinations
 	local shapeVolumeShaders = {}
+	local shapeIntensityPrecalcShaders = {}
 	for i = 0, count - 1 do
 		local shapeType = pointLayerShapeTypes[i]
 		if shapeType.attenuation then
 			goto continue
 		end
 		shapeVolumeShaders[shapeType.name] = shapeVolumeShaders[shapeType.name] or {}
+		shapeIntensityPrecalcShaders[shapeType.name] = shapeIntensityPrecalcShaders[shapeType.name] or {}
 		for j = 0, count - 1 do
 			local otherShapeType = pointLayerShapeTypes[j]
 			if not otherShapeType.attenuation then
@@ -636,7 +649,7 @@ function game:loadShapeTypes()
 				-- Attenuation
 				getAttenuationShaderCode(otherShapeType)
 
-			shapeVolumeShaders[shapeType.name][otherShapeType.name] = love.graphics.newComputeShader(
+			local code =
 				"#pragma language glsl4\n" ..
 				"#line 1\n" .. love.filesystem.read("shaders/include/lib/random.glsl") ..
 				"#line 1\n" .. love.filesystem.read("shaders/include/structs.glsl") ..
@@ -646,11 +659,24 @@ function game:loadShapeTypes()
 				"#line 1\n" .. love.filesystem.read("shaders/include/raycasts.glsl") ..
 				table.concat(includeStrings) ..
 				shapeTypeCode ..
-				"#line 1\n" .. love.filesystem.read("shaders/drawing/layerVolumetrics.glsl"),
+				"#line 1\n" .. love.filesystem.read("shaders/drawing/layerVolumetrics.glsl")
+			shapeVolumeShaders[shapeType.name][otherShapeType.name] = love.graphics.newComputeShader(
+				code,
 				{
 					debugname = "Vol. Shader for Emi. " .. shapeType.name .. ", Att. " .. otherShapeType.name,
 					defines = {
-						MAX_ADDITIONS = consts.volumetricMaxPixelAdditions
+						MAX_ADDITIONS = consts.volumetricMaxPixelAdditions,
+						RESULT_CANVAS_FORMAT = "rgba32f"
+					}
+				}
+			)
+			shapeIntensityPrecalcShaders[shapeType.name][otherShapeType.name] = love.graphics.newComputeShader(
+				code,
+				{
+					debugname = "Int.Precalc. Shader for Emi. " .. shapeType.name .. ", Att. " .. otherShapeType.name,
+					defines = {
+						INTENSITY_PRECALC = true,
+						RESULT_CANVAS_FORMAT = "rgba32f"
 					}
 				}
 			)
@@ -697,6 +723,7 @@ function game:loadShapeTypes()
 
 	self.pointLayerShapeTypes = pointLayerShapeTypes
 	self.shapeVolumeShaders = shapeVolumeShaders
+	self.shapeIntensityPrecalcShaders = shapeIntensityPrecalcShaders
 
 	self.valueNoiseDataReusableForPointLayers = valueNoiseData -- Generously donate valueNoiseData to the point layers now that it won't be used again here
 end
