@@ -617,14 +617,14 @@ function game:loadShapeTypes()
 
 	-- Get all needed shader combinations
 	local shapeVolumeShaders = {}
-	local shapeIntensityPrecalcShaders = {}
+	local shapeIntensityPrecalcShaderParams = {}
 	for i = 0, count - 1 do
 		local shapeType = pointLayerShapeTypes[i]
 		if shapeType.attenuation then
 			goto continue
 		end
 		shapeVolumeShaders[shapeType.name] = shapeVolumeShaders[shapeType.name] or {}
-		shapeIntensityPrecalcShaders[shapeType.name] = shapeIntensityPrecalcShaders[shapeType.name] or {}
+		shapeIntensityPrecalcShaderParams[shapeType.name] = shapeIntensityPrecalcShaderParams[shapeType.name] or {}
 		for j = 0, count - 1 do
 			local otherShapeType = pointLayerShapeTypes[j]
 			if not otherShapeType.attenuation then
@@ -670,16 +670,15 @@ function game:loadShapeTypes()
 					}
 				}
 			)
-			shapeIntensityPrecalcShaders[shapeType.name][otherShapeType.name] = love.graphics.newComputeShader(
+			shapeIntensityPrecalcShaderParams[shapeType.name][otherShapeType.name] = { -- More info is applied at the site where this is used
 				code,
 				{
 					debugname = "Int.Precalc. Shader for Emi. " .. shapeType.name .. ", Att. " .. otherShapeType.name,
 					defines = {
-						INTENSITY_PRECALC = true,
-						RESULT_CANVAS_FORMAT = "rgba32f"
+						INTENSITY_PRECALC = true
 					}
 				}
-			)
+			}
 		    ::continue::
 		end
 	    ::continue::
@@ -723,7 +722,7 @@ function game:loadShapeTypes()
 
 	self.pointLayerShapeTypes = pointLayerShapeTypes
 	self.shapeVolumeShaders = shapeVolumeShaders
-	self.shapeIntensityPrecalcShaders = shapeIntensityPrecalcShaders
+	self.shapeIntensityPrecalcShaderParams = shapeIntensityPrecalcShaderParams
 
 	self.valueNoiseDataReusableForPointLayers = valueNoiseData -- Generously donate valueNoiseData to the point layers now that it won't be used again here
 end

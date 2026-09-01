@@ -41,7 +41,7 @@ info.parameters = {
 	},
 	{
 		name = "armEndRotation", -- Overall orientation of the galaxy should account for some notion of clockwise/anticlockwise
-		samples = 4,
+		samples = 3,
 		rangeMin = 2.5,
 		rangeMax = 7
 	}

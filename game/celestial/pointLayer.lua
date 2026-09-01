@@ -96,14 +96,11 @@ galaxyPointLayerInfo.features = {
 			weight = 1,
 			scaleMin = 7.5e18,
 			scaleMax = 1e19,
-			attenuationShapeTypes = {
-				{
-					name = "genericNebulae",
-					weight = 1,
-					-- 2.5 * 10^-20 metres^-1 in the middle, converted from "1.8 magnitudes per kiloparsec" attenuation coefficient measurement near the sun
-					mulRangeMin = 2.5e-20 * 0.1,
-					mulRangeMax = 2.5e-20 * 1.9
-				}
+			attenuationInfo = {
+				name = "genericNebulae",
+				-- 2.5 * 10^-20 metres^-1 in the middle, converted from "1.8 magnitudes per kiloparsec" attenuation coefficient measurement near the sun
+				mulRangeMin = 2.5e-20 * 0.1,
+				mulRangeMax = 2.5e-20 * 1.9
 			}
 		},
 		{
@@ -111,13 +108,10 @@ galaxyPointLayerInfo.features = {
 			weight = 7,
 			scaleMin = 3e19,
 			scaleMax = 7.5e20,
-			attenuationShapeTypes = {
-				{
-					name = "genericNebulae",
-					weight = 1,
-					mulRangeMin = 2.5e-20 * 0.1,
-					mulRangeMax = 2.5e-20 * 1.9
-				}
+			attenuationInfo = {
+				name = "genericNebulae",
+				mulRangeMin = 2.5e-20 * 0.1,
+				mulRangeMax = 2.5e-20 * 1.9
 			}
 		}
 	}
@@ -151,12 +145,12 @@ function galaxyPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, chunkB
 		local shapeTypeId = shapeType.id
 		local shapeSubtypeId = self.gameObject:celestialRandomRangeInt(0, shapeType.subtypeCount)
 
-		local attenuationChoice = choice.attenuationShapeTypes and self.gameObject:celestialRandomChoice(choice.attenuationShapeTypes)
-		local attenuationType = self.gameObject.pointLayerShapeTypes[attenuationChoice and attenuationChoice.name or consts.noAttenuationShapeTypeName]
+		local attenuationInfo = choice.attenuationInfo
+		local attenuationType = self.gameObject.pointLayerShapeTypes[attenuationInfo and attenuationInfo.name or consts.noAttenuationShapeTypeName]
 		local attenuationShapeTypeId = attenuationType.id
 		local attenuationShapeSubtypeId = self.gameObject:celestialRandomRangeInt(0, attenuationType.subtypeCount)
 
-		attenuationMultiplierInfo[i] = self.gameObject:celestialRandomRange(attenuationChoice.mulRangeMin, attenuationChoice.mulRangeMax)
+		attenuationMultiplierInfo[i] = self.gameObject:celestialRandomRange(attenuationInfo.mulRangeMin, attenuationInfo.mulRangeMax)
 
 		local scale = self.gameObject:celestialRandomRange(choice.scaleMin, choice.scaleMax)
 		local zScaleRatio = self.gameObject:celestialRandomRange(shapeType.zScaleRatioMin, shapeType.zScaleRatioMax)
@@ -964,15 +958,13 @@ function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBu
 				hasNoiseEmission = true
 				maxNoiseValuesEmission = math.max(maxNoiseValuesEmission, shapeType.noiseInfo.requiredValueCount)
 			end
-			if not shapeTypeInfo.attenuationShapeTypes then
+			if not shapeTypeInfo.attenuationInfo then
 				goto continue
 			end
-			for _, shapeTypeInfo in ipairs(shapeTypeInfo.attenuationShapeTypes) do
-				local shapeType = self.pointLayerShapeTypes[shapeTypeInfo.name]
-				if shapeType.noiseInfo then
-					hasNoiseAttenuation = true
-					maxNoiseValuesAttenuation = math.max(maxNoiseValuesAttenuation, shapeType.noiseInfo.requiredValueCount)
-				end
+			local shapeType = self.pointLayerShapeTypes[shapeTypeInfo.attenuationInfo.name]
+			if shapeType.noiseInfo then
+				hasNoiseAttenuation = true
+				maxNoiseValuesAttenuation = math.max(maxNoiseValuesAttenuation, shapeType.noiseInfo.requiredValueCount)
 			end
 			::continue::
 		end

@@ -7,9 +7,10 @@ uniform vec3 shapeRadii;
 
 uniform float brightnessMultiplier;
 uniform ivec2 size;
-uniform layout(RESULT_CANVAS_FORMAT) image2D resultCanvas;
 
 #ifndef INTENSITY_PRECALC
+uniform layout(RESULT_CANVAS_FORMAT) image2D resultCanvas;
+
 uniform vec3 cameraPosition;
 
 uniform layout(r8ui) uimage2D additionCountCanvas;
@@ -23,10 +24,12 @@ uniform float fadeInRadius;
 uniform float fadeOutRadius;
 uniform float fadeExponent;
 #else
+uniform layout(RESULT_CANVAS_FORMAT) image2DArray resultCanvas;
+uniform int directionGroup;
 uniform float samplingDiskRadius;
-uniform vec3 cameraForwards;
-uniform vec3 cameraRight;
-uniform vec3 cameraUp;
+
+DIRECTION_CONST_ARRAY
+
 #endif
 
 VolumetricSample sampleVolumetrics(vec3 samplePosition) {
@@ -93,12 +96,23 @@ vec4 getRayColourAndTransmittance(vec3 rayPosition, vec3 rayDirection, float sam
 	return vec4(totalRayRadiance, totalTransmittance);
 }
 
-layout (local_size_x = 16, local_size_y = 16) in;
+#ifndef Z_SIZE
+#define Z_SIZE 1
+#endif
+
+layout (local_size_x = 8, local_size_y = 8, local_size_z = Z_SIZE) in;
 void computemain() {
 	ivec2 coord = ivec2(love_GlobalThreadID.xy);
 	if (any(greaterThanEqual(coord, size))) {
 		return;
 	}
+
+#ifdef INTENSITY_PRECALC
+	uint curLayer = love_GlobalThreadID.z;
+	if (curLayer >= LAYERS) {
+		return;
+	}
+#endif
 
 #ifndef INTENSITY_PRECALC
 	vec2 mixFactor = (vec2(coord) + 0.5) / vec2(size);
@@ -126,11 +140,17 @@ void computemain() {
 		uint variationSeed = (pixelId + w * h) ^ raySeed;
 		float stepVariation = (hash11(variationSeed) - 0.5) * rayStepVariance + 0.5;
 #else
-		float stepVariation = 0.5;
-		vec2 posOnDisk = (vec2(coord) + 0.5) / vec2(size) * 2.0 - 1.0;
+		vec3 rand = hash33(ivec3(coord, directionGroup * LAYERS + curLayer));
+		vec2 posOnDisk = (vec2(coord) + rand.xy) / vec2(size) * 2.0 - 1.0;
+		float stepVariation = rand.z;
 		if (length(posOnDisk) > 1.0) {
-			// return; // TEMP commentout for testing
+			return;
 		}
+
+		vec3 cameraForwards = directions[curLayer * 3 + 0];
+		vec3 cameraUp = directions[curLayer * 3 + 1];
+		vec3 cameraRight = directions[curLayer * 3 + 2];
+
 		vec3 direction = cameraForwards;
 		vec3 cameraPosition = samplingDiskRadius * (-cameraForwards + cameraRight * posOnDisk.x + cameraUp * posOnDisk.y);
 #endif
@@ -139,8 +159,15 @@ void computemain() {
 		outColour.a = 1.0 - outColour.a; // Turn transmittance into opacity
 		outColour.rgb *= brightnessMultiplier;
 
+#ifdef INTENSITY_PRECALC
+		ivec3 layeredCoord = ivec3(coord, curLayer);
+		vec4 inColour = imageLoad(resultCanvas, layeredCoord);
+		vec4 toWrite = vec4(outColour.rgb + inColour.rgb, 0.0);
+		imageStore(resultCanvas, layeredCoord, toWrite);
+#else
 		vec4 inColour = imageLoad(resultCanvas, coord);
 		vec4 toWrite = vec4(outColour + inColour);
 		imageStore(resultCanvas, coord, toWrite);
+#endif
 	// }
 }

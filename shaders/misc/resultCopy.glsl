@@ -1,10 +1,11 @@
-uniform uint index;
+uniform uint directionGroup;
 writeonly buffer Results {
 	vec3 results[];
 };
-uniform sampler2D readCanvas;
+uniform sampler2DArray readCanvas;
 
-layout (local_size_x = 1) in;
+layout (local_size_x = LAYERS) in;
 void computemain() {
-	results[index] = texelFetch(readCanvas, ivec2(0, 0), LOD).rgb;
+	uint i = love_GlobalThreadID.x;
+	results[directionGroup * LAYERS + i] = texelFetch(readCanvas, ivec3(0, 0, i), LOD).rgb;
 }
