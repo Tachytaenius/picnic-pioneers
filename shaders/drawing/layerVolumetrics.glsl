@@ -30,6 +30,8 @@ uniform float samplingDiskRadius;
 
 DIRECTION_CONST_ARRAY
 
+SINE_CONST_ARRAY
+
 #endif
 
 VolumetricSample sampleVolumetrics(vec3 samplePosition) {
@@ -160,6 +162,7 @@ void computemain() {
 		outColour.rgb *= brightnessMultiplier;
 
 #ifdef INTENSITY_PRECALC
+		// outColour.rgb *= sines[curLayer];
 		ivec3 layeredCoord = ivec3(coord, curLayer);
 		vec4 inColour = imageLoad(resultCanvas, layeredCoord);
 		vec4 toWrite = vec4(outColour.rgb + inColour.rgb, 0.0);

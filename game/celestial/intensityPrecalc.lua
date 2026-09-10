@@ -1,15 +1,17 @@
+-- TODO: Needs complete rewrite. Very unconfident in the correctness of this code. Upon rewriting, use functions much more to make cleaner, easier-to-work-with code. Notably, the sin(theta) stuff is broken and ...... ughh
+
 local ffi = require("ffi")
 
 local mathsies = require("lib.mathsies")
 local consts = require("consts")
+local util = require("util")
 
 local game = {}
 
 function game:getPointLayerIntensities()
-	-- TEMP: Continue to ignore attenuation for now-- just check that unattenuated and "attenuated" are the same :)
 	-- No need for dmath with graphics, this is all going on the GPU where we don't trust any determinism at all (NOTE: this means the result of these calculations, the average (attenuated) radiant intensities, are not to be considered deterministic)
 	local format = "rgba32f"
-	local maxRaySteps = 64
+	local maxRaySteps = 32
 	local phiSamples = 9
 	local thetaSamples = 6
 	local directionSamples = phiSamples * thetaSamples
@@ -61,11 +63,11 @@ function game:getPointLayerIntensities()
 					zRatioSamplesThis = shapeType.zScaleRatioSamples
 				else
 					local zRatioSamplesPerRatioDiff = 2.5
-					local maxZRatioSamples = 4
+					local maxZRatioSamples = 3
 					zRatioSamplesThis = math.min(maxZRatioSamples, math.max(1, math.floor(0.5 + zScaleRatioDiff * zRatioSamplesPerRatioDiff))) -- We ignore needsTrueRatio and shapeType.zScaleRatioSamples
 				end
 
-				local scaleSamplesThis = 4
+				local scaleSamplesThis = 6
 
 				local attenuationSamplesThis = not shapeTypeInfo.attenuationInfo and 1 or
 					shapeTypeInfo.attenuationInfo.mulRangeMin == shapeTypeInfo.attenuationInfo.mulRangeMax and 1 or
@@ -122,6 +124,17 @@ function game:getPointLayerIntensities()
 		directionConstArrayCodeLines[#directionConstArrayCodeLines]:sub(1, -2)
 	table.insert(directionConstArrayCodeLines, ");")
 	local directionConstArrayCode = table.concat(directionConstArrayCodeLines, " ")
+
+	-- Get sines
+	local sineTotal = 0
+	local sines = {}
+	for thetaSampleId = 0, thetaSamples - 1 do
+		local theta = consts.tau / 2 * (thetaSampleId + 0.5) / thetaSamples
+		local sine = math.sin(theta)
+		table.insert(sines, sine)
+		sineTotal = sineTotal + sine -- Divide by this. Probably wrong. Very unconfident in all of this and wanting to rewrite it all.
+	end
+	local sineConstArrayCode = "const float sines[] = float[](" .. table.concat(sines, ", ") .. ");"
 
 	local precalcClearShader = love.graphics.newComputeShader("shaders/misc/precalcClear.glsl", {
 		debugname = "Intensity Precalculation Clear Shader",
@@ -182,13 +195,14 @@ function game:getPointLayerIntensities()
 			local intensityTotalGForAllShapeTypeInfos = 0
 			local intensityTotalBForAllShapeTypeInfos = 0
 			local mulByResultDirGroup = {} -- Starts at 0
+			local scaleInfoByDirGroup = {}
 			for _, shapeTypeInfo in ipairs(pointLayer.features.shapeTypeSet) do
 				local shapeType = self.pointLayerShapeTypes[shapeTypeInfo.name]
 				local resultBufferDirGroup = 0
 
 				local attenuationSamples = countsByLayer[pointLayer].attenuationSamplesFromInfos[shapeTypeInfo]
 				for attenuationId = 0, attenuationSamples - 1 do
-					local attLerp = attenuationSamples > 1 and ((attenuationId + 0.5) / attenuationSamples) or 0.5
+					local attLerp = attenuationSamples > 1 and (attenuationId / (attenuationSamples - 1)) or 0.5
 					local attMin, attMax
 					if shapeTypeInfo.attenuationInfo then
 						attMin = shapeTypeInfo.attenuationInfo.mulRangeMin
@@ -206,6 +220,8 @@ function game:getPointLayerIntensities()
 
 					local defines = volumetricShaderParams[2].defines
 					defines.DIRECTION_CONST_ARRAY = directionConstArrayCode
+					defines.SINE_CONST_ARRAY = sineConstArrayCode
+					defines.DTHETA_DPHI = (consts.tau / 2) / (thetaSamples) * consts.tau / (phiSamples)
 					defines.Z_SIZE = 8
 					defines.LAYERS = precalcCanvas:getLayerCount()
 					defines.RESULT_CANVAS_FORMAT = format
@@ -253,9 +269,8 @@ function game:getPointLayerIntensities()
 							local scaleSampleCount = countsByLayer[pointLayer].scaleSamplesFromInfos[shapeTypeInfo]
 							local zRatioSampleCount = countsByLayer[pointLayer].zRatioSamplesFromInfos[shapeTypeInfo]
 							for scaleSampleId = 0, scaleSampleCount - 1 do
-								local lower = shapeTypeInfo.scaleMin + (scaleSampleId) / scaleSampleCount * (shapeTypeInfo.scaleMax - shapeTypeInfo.scaleMin)
-								local upper = shapeTypeInfo.scaleMin + (scaleSampleId + 1) / scaleSampleCount * (shapeTypeInfo.scaleMax - shapeTypeInfo.scaleMin)
-								local scale = shapeTypeInfo.scaleMin + (scaleSampleId + 0.5) / scaleSampleCount * (shapeTypeInfo.scaleMax - shapeTypeInfo.scaleMin)
+								local scaleLerp = scaleSampleId / (scaleSampleCount - 1)
+								local scale = shapeTypeInfo.scaleMin + scaleLerp * (shapeTypeInfo.scaleMax - shapeTypeInfo.scaleMin)
 
 								local shaderScale = 1 / scale -- Rather than the reciprocal of the max of the radii
 								if volumetricShader:hasUniform("baseEmission") then
@@ -269,7 +284,7 @@ function game:getPointLayerIntensities()
 									volumetricShader:send("baseAttenuation", attenuationMultiplier * shaderScale ^ -1)
 								end
 								for zRatioSampleId = 0, zRatioSampleCount - 1 do
-									local zScaleRatioLerp = zRatioSampleCount > 1 and ((zRatioSampleId + 0.5) / zRatioSampleCount) or 0.5
+									local zScaleRatioLerp = zRatioSampleCount > 1 and (zRatioSampleId / (zRatioSampleCount - 1)) or 0.5
 									local zRatio = shapeType.zScaleRatioMin + zScaleRatioLerp * (shapeType.zScaleRatioMax - shapeType.zScaleRatioMin)
 
 									volumetricShader:send("shapeRadii", {
@@ -295,11 +310,9 @@ function game:getPointLayerIntensities()
 
 									local areaAveragedOverByMipmaps = (2 * samplingDiskRadius) ^ 2 -- We don't want the average so we multiply the area back in
 
-									local good = (lower + upper) * (lower ^ 2 + upper ^ 2) / 4 -- Average volume scale with radius scales evenly distributed between lower and upper
-									local bad = ((lower + upper) / 2) ^ 3 -- Volume scale of the average radius scale
-									local compensate = good / bad -- (This approaches 1 as the number of scale samples increases to infinity and this is needed less)
+									mulByResultDirGroup[resultBufferDirGroup] = areaAveragedOverByMipmaps / shaderScale ^ 2 / scale ^ 3
+									scaleInfoByDirGroup[resultBufferDirGroup] = scaleSampleId
 
-									mulByResultDirGroup[resultBufferDirGroup] = areaAveragedOverByMipmaps / shaderScale ^ 2 * compensate
 									resultBufferDirGroup = resultBufferDirGroup + 1
 
 									-- local cpuside do
@@ -328,22 +341,106 @@ function game:getPointLayerIntensities()
 					end
 				end
 
-				local rSum, gSum, bSum = 0, 0, 0
 				local bytesPerFloat = 4
 				local entries = countsByLayer[pointLayer].resultBufferSizesFromInfos[shapeTypeInfo]
 				local data = love.graphics.readbackBuffer(resultBuffer)
 				local dataFFI = ffi.cast("float*", data:getFFIPointer())
 				local strideFloats = resultBuffer:getElementStride() / bytesPerFloat
-				for i = 0, entries - 1 do
-					local group = math.floor(i / directionSamples)
+
+				shapeTypeInfo.unscaledIntensities = { -- NOTE: All divided by their radius cubed
+					-- Array part of this table starts at 0
+					scales = countsByLayer[pointLayer].scaleSamplesFromInfos[shapeTypeInfo],
+					zRatios = countsByLayer[pointLayer].zRatioSamplesFromInfos[shapeTypeInfo],
+					shapeSampleCount = shapeType.sampleCount,
+					attenuationShapeSampleCount = self.pointLayerShapeTypes[shapeTypeInfo.attenuationInfo and shapeTypeInfo.attenuationInfo.name or consts.noAttenuationShapeTypeName].sampleCount,
+					attenuationSamples = countsByLayer[pointLayer].attenuationSamplesFromInfos[shapeTypeInfo]
+				}
+
+				local rSum, gSum, bSum = 0, 0, 0
+				local groupCount = math.floor(entries / directionSamples)
+				for group = 0, groupCount - 1 do
+					local r = 0
+					local g = 0
+					local b = 0
+
+					for i = 0, directionSamples - 1 do
+						local i2 = group * directionSamples + i
+
+						r = r + dataFFI[i2 * strideFloats + 0]
+						g = g + dataFFI[i2 * strideFloats + 1]
+						b = b + dataFFI[i2 * strideFloats + 2]
+					end
 					local mul = mulByResultDirGroup[group]
-					rSum = rSum + dataFFI[i * strideFloats + 0] * mul
-					gSum = gSum + dataFFI[i * strideFloats + 1] * mul
-					bSum = bSum + dataFFI[i * strideFloats + 2] * mul
+					r = r * mul / directionSamples
+					g = g * mul / directionSamples
+					b = b * mul / directionSamples
+
+					shapeTypeInfo.unscaledIntensities[group] = {
+						r = r,
+						b = b,
+						g = g
+					}
+
+					-- For averaging for the whole layer
+					if group < groupCount - 1 then
+						local min = scaleInfoByDirGroup[group] / (shapeTypeInfo.unscaledIntensities.scales - 1)
+						local max = (scaleInfoByDirGroup[group] + 1) / (shapeTypeInfo.unscaledIntensities.scales - 1)
+						local scaleAverage = (min + max) * (min ^ 2 + max ^ 2) / 4
+						rSum = rSum + r * scaleAverage
+						gSum = gSum + g * scaleAverage
+						bSum = bSum + b * scaleAverage
+					end
 				end
-				local r = rSum / entries
-				local g = gSum / entries
-				local b = bSum / entries
+
+				local r = rSum / groupCount
+				local g = gSum / groupCount
+				local b = bSum / groupCount
+
+
+
+
+				local rSum, gSum, bSum = 0, 0, 0
+				local count = 0
+				local scaleStep = 1 / 25
+				local attMin, attMax, attShape
+				if shapeTypeInfo.attenuationInfo then
+					attMin = shapeTypeInfo.attenuationInfo.mulRangeMin
+					attMax = shapeTypeInfo.attenuationInfo.mulRangeMax
+					attShape = shapeTypeInfo.attenuationInfo.name
+				else
+					attMin = 0
+					attMax = 0
+					attShape = consts.noAttenuationShapeTypeName
+				end
+				attShape = self.pointLayerShapeTypes[attShape]
+				for s = 0, shapeTypeInfo.unscaledIntensities.scales - 1, scaleStep do
+					for z = 0, shapeTypeInfo.unscaledIntensities.zRatios - 1 do
+						for a = 0, shapeTypeInfo.unscaledIntensities.attenuationSamples - 1 do
+							for sh = 0, shapeTypeInfo.unscaledIntensities.shapeSampleCount - 1 do
+								for ash = 0, shapeTypeInfo.unscaledIntensities.attenuationShapeSampleCount - 1 do
+									local r, g, b = self:getInterpolatedIntensity(
+										shapeTypeInfo,
+										util.lerp(shapeTypeInfo.scaleMin, shapeTypeInfo.scaleMax, s / (shapeTypeInfo.unscaledIntensities.scales - 1)),
+										util.lerp(shapeType.zScaleRatioMin, shapeType.zScaleRatioMax, z / (shapeTypeInfo.unscaledIntensities.zRatios - 1)),
+										util.lerp(attMin, attMax, a / (shapeTypeInfo.unscaledIntensities.attenuationSamples - 1)),
+										self:subtypeFromSamplingId(shapeType, sh),
+										self:subtypeFromSamplingId(attShape, ash)
+									)
+									rSum = rSum + r
+									gSum = gSum + g
+									bSum = bSum + b
+									count = count + 1
+								end
+							end
+						end
+					end
+				end
+				local r = rSum / count
+				local g = gSum / count
+				local b = bSum / count
+
+
+
 				intensityTotalRForAllShapeTypeInfos = intensityTotalRForAllShapeTypeInfos + r * shapeTypeInfo.weight
 				intensityTotalGForAllShapeTypeInfos = intensityTotalGForAllShapeTypeInfos + g * shapeTypeInfo.weight
 				intensityTotalBForAllShapeTypeInfos = intensityTotalBForAllShapeTypeInfos + b * shapeTypeInfo.weight
@@ -360,6 +457,86 @@ function game:getPointLayerIntensities()
 	coroutine.yield()
 	self.loadInfo.intensitiesMeasured = nil
 	self.loadInfo.intensitiesToMeasure = nil
+end
+
+local scratchTable = {}
+function game:getInterpolatedIntensity(shapeTypeInfo, scale, zScaleRatio, attenuationMultiplier, shapeSubtypeId, attenuationShapeSubtypeId)
+	local shapeType = self.pointLayerShapeTypes[shapeTypeInfo.name]
+	local attenuationShapeType = self.pointLayerShapeTypes[shapeTypeInfo.attenuationInfo and shapeTypeInfo.attenuationInfo.name or consts.noAttenuationShapeTypeName]
+	local attenuationMin = shapeTypeInfo.attenuationInfo and shapeTypeInfo.attenuationInfo.mulRangeMin or 0
+	local attenuationMax = shapeTypeInfo.attenuationInfo and shapeTypeInfo.attenuationInfo.mulRangeMax or 0
+	local intensities = shapeTypeInfo.unscaledIntensities
+
+	local numParams =
+		3 + -- For scale, zScaleRatio, and attenuationMultiplier
+		#shapeType.parameters +
+		#attenuationShapeType.parameters
+
+	local lerpFactors = {}
+	local leftSamples = {}
+	local rightSamples = {}
+	local counts = {}
+	local function addDimension(lower, upper, value, samples)
+		if samples == 1 then
+			-- Skip this dimension
+			numParams = numParams - 1
+			return
+		end
+
+		local lerpOverall = lower == upper and 0.5 or (value - lower) / (upper - lower)
+		local left = samples == 1 and 0 or math.min(samples - 2, math.floor(lerpOverall * (samples - 1)))
+		local right = math.min(left + 1, samples - 1)
+		local lerp = lerpOverall * (samples - 1) - left
+
+		table.insert(lerpFactors, lerp)
+		table.insert(leftSamples, left)
+		table.insert(rightSamples, right)
+		table.insert(counts, samples)
+	end
+
+	local function addShape(shapeType, shapeSubtypeId)
+		self:decodeShapeSubtypeIntoScratchTable(shapeType, shapeSubtypeId, scratchTable)
+		for i, paramVal in ipairs(scratchTable) do
+			local paramDef = shapeType.parameters[i]
+			addDimension(paramDef.rangeMin, paramDef.rangeMax, paramVal, paramDef.samples)
+		end
+	end
+
+	-- Must match order in precalculation
+	addDimension(attenuationMin, attenuationMax, attenuationMultiplier, intensities.attenuationSamples)
+	addShape(shapeType, shapeSubtypeId)
+	addShape(attenuationShapeType, attenuationShapeSubtypeId)
+	addDimension(shapeTypeInfo.scaleMin, shapeTypeInfo.scaleMax, scale, intensities.scales)
+	addDimension(shapeType.zScaleRatioMin, shapeType.zScaleRatioMax, zScaleRatio, intensities.zRatios)
+
+	local mixNSampleArgs = {}
+	for gridSides = 0, 2 ^ numParams - 1 do
+		local index = 0
+		for i = 1, numParams do
+			local bit = i - 1
+			local doLeft = math.floor(gridSides / 2 ^ bit) % 2 == 0
+			local paramSample = (doLeft and leftSamples or rightSamples)[i]
+			index = index * counts[i] + paramSample
+		end
+		local intensity = intensities[index]
+		table.insert(mixNSampleArgs, mathsies.vec3(
+			intensity.r,
+			intensity.g,
+			intensity.b
+		))
+	end
+	local vec
+	if #lerpFactors == 0 then
+		vec = mixNSampleArgs[1]
+	else
+		local lerpFactorsFlipped = {}
+		for i, v in ipairs(lerpFactors) do
+			lerpFactorsFlipped[numParams - i + 1] = v
+		end
+		vec = util.mixN(lerpFactorsFlipped, unpack(mixNSampleArgs))
+	end
+	vec = vec * scale ^ 3
+	return mathsies.vec3.components(vec)
 end
 
 return game

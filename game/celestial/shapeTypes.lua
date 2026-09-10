@@ -11,8 +11,10 @@ local initSampleDistribution = require("threadCode.common.initSampleDistribution
 local game = {}
 
 local decodeShapeSubtypeScratchTable = {} -- Actual parameters
-function game:decodeShapeSubtypeIntoScratchTable(type, subtypeId)
+function game:decodeShapeSubtypeIntoScratchTable(type, subtypeId, alternativeScratchTable)
 	assert(subtypeId < type.subtypeCount, "Shape subtype id is too large")
+
+	local decodeShapeSubtypeScratchTable = alternativeScratchTable or decodeShapeSubtypeScratchTable
 
 	for i = 1, #decodeShapeSubtypeScratchTable do
 		decodeShapeSubtypeScratchTable[i] = nil
