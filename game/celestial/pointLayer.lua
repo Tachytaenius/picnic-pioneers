@@ -124,7 +124,6 @@ galaxyPointLayerInfo.features = {
 }
 
 function galaxyPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, chunkBufferIndex, count)
-	local randomChoice = util.weightedRandomChoice
 	local shapeTypeSet = self.features.shapeTypeSet
 
 	local extraInfo = self.chunkExtraInfo[chunkBufferIndex]

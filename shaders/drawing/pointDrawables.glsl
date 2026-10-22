@@ -58,9 +58,11 @@ void vertexmain() {
 	vec3 billboardRight = cross(cameraUp, direction);
 	if (length(billboardRight) == 0.0) {
 		// Singularity
-		billboardRight = cameraRight;
+		billboardRight = cameraRight; // Normalised already
+	} else {
+		billboardRight = normalize(billboardRight);	
 	}
-	vec3 billboardUp = cross(direction, billboardRight);
+	vec3 billboardUp = cross(direction, billboardRight); // Perpendicular and both vectors normalised. Therefore resulting length is 1
 	vec3 centre = direction * (1.0 - diskDistanceToSphere);
 	float effectiveScale = colour == vec3(0.0) ? 0.0 : scale; // Draw no fragments if no brightness
 	vec3 celestialSpherePos = centre + effectiveScale * (billboardRight * VertexPosition.x + billboardUp * VertexPosition.y);
