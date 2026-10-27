@@ -96,7 +96,10 @@ function love.update(dt)
 				error("Game init failed:\n\n" .. err .. "\n\nCoroutine traceback:\n" .. debug.traceback(initCoroutine))
 			end
 			time = love.timer.getTime() - start
-		until time >= consts.initMaxTickLength
+		until time >= consts.initMaxTickLength or (state.loadInfo and state.loadInfo.forceLoadingBreak)
+		if state.loadInfo then
+			state.loadInfo.forceLoadingBreak = false
+		end
 
 		return
 	end

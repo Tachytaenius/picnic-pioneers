@@ -30,7 +30,7 @@ uniform float samplingDiskRadius;
 
 DIRECTION_CONST_ARRAY
 
-SINE_CONST_ARRAY
+COSINE_CONST_ARRAY
 
 #endif
 
@@ -162,7 +162,7 @@ void computemain() {
 		outColour.rgb *= brightnessMultiplier;
 
 #ifdef INTENSITY_PRECALC
-		// outColour.rgb *= sines[curLayer];
+		// outColour.rgb *= cosines[curLayer] - cosines[curLayer + 1];
 		ivec3 layeredCoord = ivec3(coord, curLayer);
 		vec4 inColour = imageLoad(resultCanvas, layeredCoord);
 		vec4 toWrite = vec4(outColour.rgb + inColour.rgb, 0.0);

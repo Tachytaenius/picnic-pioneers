@@ -91,12 +91,6 @@ galaxyPointLayerInfo.features = {
 	mass = "unsent",
 
 	shapeTypeSet = {
-		-- {
-		-- 	name = "uniform",
-		-- 	weight = 1,
-		-- 	scaleMin = 1e18,
-		-- 	scaleMax = 4e19
-		-- },
 		{
 			name = "ellipticalGalaxy",
 			weight = 1,
@@ -184,19 +178,15 @@ function galaxyPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, chunkB
 		local amountWithin = baseAmount * xRadius * yRadius * zRadius * nextLayerMaxDensity -- Estimate
 		massInfo[i] = amountWithin * nextLayerAverageMassPerPoint
 
-		local r = amountWithin * nextLayerAverageRadiantIntensityRPerPoint * radiantIntensityScale
-		local g = amountWithin * nextLayerAverageRadiantIntensityGPerPoint * radiantIntensityScale
-		local b = amountWithin * nextLayerAverageRadiantIntensityBPerPoint * radiantIntensityScale
-		-- local rnope, gnope, bnope = r, g, b -- TEMP
-		-- print()
-		-- print(shapeType.name)
 		local r, g, b = self.gameObject:getInterpolatedIntensity(choice, scale, zScaleRatio, attenuationMultiplier, shapeSubtypeId, attenuationShapeSubtypeId)
 		r = r * radiantIntensityScale
 		g = g * radiantIntensityScale
 		b = b * radiantIntensityScale
-		-- local rnope = scale ^ 3 * radiantIntensityScale -- TEMP
-		-- print("ratio: " .. r / rnope)
-		-- print("curr, orig", r / radiantIntensityScale, rnope / radiantIntensityScale)
+
+		-- local rOld = amountWithin * nextLayerAverageRadiantIntensityRPerPoint * radiantIntensityScale
+		-- local gOld = amountWithin * nextLayerAverageRadiantIntensityGPerPoint * radiantIntensityScale
+		-- local bOld = amountWithin * nextLayerAverageRadiantIntensityBPerPoint * radiantIntensityScale
+		-- print(shapeType.name, r / rOld)
 
 		shapeTypeSubtypeIdInfo[2 * i], shapeTypeSubtypeIdInfo[2 * i + 1] = shapeTypeId, shapeSubtypeId
 		attenuationShapeTypeSubtypeIdInfo[2 * i], attenuationShapeTypeSubtypeIdInfo[2 * i + 1] = attenuationShapeTypeId, attenuationShapeSubtypeId
@@ -410,7 +400,7 @@ function game:initPointLayers()
 				local shapeType = self.pointLayerShapeTypes[shapeTypeInfo.name] -- shapeTypeInfo is the point layer's usage of the shape, shapeType is the shape type itself
 				local minS, maxS = shapeTypeInfo.scaleMin, shapeTypeInfo.scaleMax
 				local minZR, maxZR = shapeType.zScaleRatioMin, shapeType.zScaleRatioMax
-				local averageBaseObjectAmountMultiplier = (minS + maxS) * (minS ^ 2 + maxS ^ 2) / 4 -- TODO: this is right?
+				local averageBaseObjectAmountMultiplier = (minS + maxS) * (minS ^ 2 + maxS ^ 2) / 4
 
 				local total = 0
 				assert(not shapeType.attenuation, "Attenuation shape types cannot be used for point density")
