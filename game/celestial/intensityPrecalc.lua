@@ -1,20 +1,14 @@
--- TODO: Cache results
-
 local ffi = require("ffi")
-
+local json = require("lib.json")
 local mathsies = require("lib.mathsies")
 local consts = require("consts")
 local util = require("util")
 
 local game = {}
 
--- TODO: Move to consts
-local thetaSamples = 4
-local phiSamples = 4
 local localSizeZ = 8
-local maxRaySteps = 32
 
-local directionSamples = thetaSamples * phiSamples
+local directionSamples = consts.intensityPrecalcThetaSamples * consts.intensityPrecalcPhiSamples
 
 local directionConstArrayCode
 local cosineConstArrayCode
@@ -45,7 +39,7 @@ function game:setupPrecalcShader(shapeType, attShapeType)
 	local defines = volumetricShaderParams[2].defines
 	defines.DIRECTION_CONST_ARRAY = directionConstArrayCode
 	defines.COSINE_CONST_ARRAY = cosineConstArrayCode
-	defines.D_PHI = consts.tau / phiSamples
+	defines.D_PHI = consts.tau / consts.intensityPrecalcPhiSamples
 	defines.Z_SIZE = localSizeZ
 	defines.LAYERS = self.precalcCanvas:getLayerCount()
 	defines.RESULT_CANVAS_FORMAT = self.precalcCanvas:getFormat()
@@ -54,7 +48,7 @@ function game:setupPrecalcShader(shapeType, attShapeType)
 	volumetricShader:send("brightnessMultiplier", 1)
 	volumetricShader:send("size", {self.precalcCanvas:getDimensions()})
 	volumetricShader:send("resultCanvas", self.precalcCanvas)
-	volumetricShader:send("maxRaySteps", maxRaySteps)
+	volumetricShader:send("maxRaySteps", consts.intensityPrecalcMaxRaySteps)
 
 	return volumetricShader
 end
@@ -127,7 +121,7 @@ function game:doPrecalcDispatch(volumetricShader, virtualObjectNumber)
 end
 
 function game:processIntensities(shapeTypeInfo, virtualObjectCount, extraInfoPerVirtualObject, dataFFI, strideFloats)
-	local dPhi = consts.tau / phiSamples
+	local dPhi = consts.tau / consts.intensityPrecalcPhiSamples
 
 	for virtualObjectNumber = 0, virtualObjectCount - 1 do
 		local extra = extraInfoPerVirtualObject[virtualObjectNumber]
@@ -139,14 +133,14 @@ function game:processIntensities(shapeTypeInfo, virtualObjectCount, extraInfoPer
 		local sumG = 0
 		local sumB = 0
 		local i = 0
-		for thetaSampleId = 0, thetaSamples - 1 do
-			local theta = consts.tau / 2 * thetaSampleId / thetaSamples
-			local nextTheta = consts.tau / 2 * (thetaSampleId + 1) / thetaSamples
+		for thetaSampleId = 0, consts.intensityPrecalcThetaSamples - 1 do
+			local theta = consts.tau / 2 * thetaSampleId / consts.intensityPrecalcThetaSamples
+			local nextTheta = consts.tau / 2 * (thetaSampleId + 1) / consts.intensityPrecalcThetaSamples
 			local cosine = math.cos(theta)
 			local nextCosine = math.cos(nextTheta)
 			local multiplier = cosine - nextCosine
-			for phiSampleId = 0, phiSamples - 1 do
-				local phi = consts.tau * (phiSampleId + 0.5) / phiSamples
+			for phiSampleId = 0, consts.intensityPrecalcPhiSamples - 1 do
+				local phi = consts.tau * (phiSampleId + 0.5) / consts.intensityPrecalcPhiSamples
 
 				local baseFloatIndex = (i + directionSamples * virtualObjectNumber) * strideFloats
 				local sampleR = dataFFI[baseFloatIndex + 0] * areaAveragedOverByMipmaps / shaderScale ^ 2
@@ -174,8 +168,8 @@ end
 function game:codegenIntensityPrecalcArrays()
 	-- Get cosines
 	local cosines = {}
-	for thetaSampleId = 0, thetaSamples do -- One more than there are theta samples
-		local theta = consts.tau / 2 * thetaSampleId / thetaSamples
+	for thetaSampleId = 0, consts.intensityPrecalcThetaSamples do -- One more than there are theta samples
+		local theta = consts.tau / 2 * thetaSampleId / consts.intensityPrecalcThetaSamples
 		local cosine = math.cos(theta)
 		table.insert(cosines, cosine)
 	end
@@ -187,10 +181,10 @@ function game:codegenIntensityPrecalcArrays()
 	local function addVec(x, y, z)
 		table.insert(directionConstArrayCodeLines, "\tvec3(" .. x .. ", " .. y ..  ", " .. z .. "),")
 	end
-	for thetaSampleId = 0, thetaSamples - 1 do
-		local theta = consts.tau / 2 * (thetaSampleId + 0.5) / thetaSamples
-		for phiSampleId = 0, phiSamples - 1 do
-			local phi = consts.tau * (phiSampleId + 0.5) / phiSamples
+	for thetaSampleId = 0, consts.intensityPrecalcThetaSamples - 1 do
+		local theta = consts.tau / 2 * (thetaSampleId + 0.5) / consts.intensityPrecalcThetaSamples
+		for phiSampleId = 0, consts.intensityPrecalcPhiSamples - 1 do
+			local phi = consts.tau * (phiSampleId + 0.5) / consts.intensityPrecalcPhiSamples
 
 			local cameraOrientation =
 				mathsies.quat.fromAxisAngle(consts.rightVector * (theta - consts.tau / 4)) *
@@ -211,8 +205,7 @@ function game:codegenIntensityPrecalcArrays()
 end
 
 function game:makePrecalcGraphicsObjects(maxRequiredResultBufferSize)
-	local power = 5
-	local canvasSize = 2 ^ power -- For nice doubling/halving mipchain
+	local canvasSize = 2 ^ consts.intensityPrecalcCanvasSizePower -- For nice doubling/halving mipchain
 
 	self.precalcCanvas = love.graphics.newCanvas(canvasSize, canvasSize, {
 		format = "rgba32f",
@@ -326,7 +319,7 @@ function game:countIntensitiesToMeasure()
 	return intensitiesToMeasure, maxRequiredResultBufferSize, countsByLayer
 end
 
-function game:doIntensityPrecalcShapeTypeInfoAveragingIteration(pointLayer, shapeTypeInfo, volumetricShader, layerCountSet)
+function game:doIntensityPrecalcShapeTypeInfoAveragingIteration(pointLayer, shapeTypeInfo, volumetricShader, layerCountSet, loadingFromCache)
 	local shapeType = self.pointLayerShapeTypes[shapeTypeInfo.name]
 	local attenuationShapeTypeName = shapeTypeInfo.attenuationInfo and shapeTypeInfo.attenuationInfo.name or consts.noAttenuationShapeTypeName
 	local attenuationShapeType = self.pointLayerShapeTypes[attenuationShapeTypeName]
@@ -349,7 +342,9 @@ function game:doIntensityPrecalcShapeTypeInfoAveragingIteration(pointLayer, shap
 				attSubtypeId = attSubtypeId
 			}
 
-			self:sendSubtypeParams(volumetricShader, virtualObject)
+			if not loadingFromCache then
+				self:sendSubtypeParams(volumetricShader, virtualObject)
+			end
 
 			for attenuationId = 0, attenuationSamples - 1 do
 				local attLerp = attenuationSamples > 1 and (attenuationId / (attenuationSamples - 1)) or 0.5
@@ -386,15 +381,18 @@ function game:doIntensityPrecalcShapeTypeInfoAveragingIteration(pointLayer, shap
 							samplingDiskRadius = samplingDiskRadius
 						}
 
-						self:sendRadiusBasedUniforms(volumetricShader, virtualObject, virtualObjectNumber, pointLayer.childPointLayer, shaderScale, samplingDiskRadius)
-
-						self:doPrecalcDispatch(volumetricShader, virtualObjectNumber)
+						if not loadingFromCache then
+							self:sendRadiusBasedUniforms(volumetricShader, virtualObject, virtualObjectNumber, pointLayer.childPointLayer, shaderScale, samplingDiskRadius)
+							self:doPrecalcDispatch(volumetricShader, virtualObjectNumber)
+						end
 						virtualObjectNumber = virtualObjectNumber + 1
 						self.loadInfo.intensitiesMeasured = self.loadInfo.intensitiesMeasured + 1
-						self.loadInfo.intensityBreakCountdown = self.loadInfo.intensityBreakCountdown - 1
-						if self.loadInfo.intensityBreakCountdown <= 0 then
-							self.loadInfo.intensityBreakCountdown = self.loadInfo.intensityBreakInterval
-							self.loadInfo.forceLoadingBreak = true
+						if not loadingFromCache then
+							self.loadInfo.intensityBreakCountdown = self.loadInfo.intensityBreakCountdown - 1
+							if self.loadInfo.intensityBreakCountdown <= 0 then
+								self.loadInfo.intensityBreakCountdown = self.loadInfo.intensityBreakInterval
+								self.loadInfo.forceLoadingBreak = true
+							end
 						end
 						coroutine.yield()
 					end
@@ -405,53 +403,116 @@ function game:doIntensityPrecalcShapeTypeInfoAveragingIteration(pointLayer, shap
 
 	assert(virtualObjectNumber == layerCountSet.resultBufferSizesFromInfos[shapeTypeInfo] / directionSamples and virtualObjectNumber == layerCountSet.virtualObjectCountsFromInfos[shapeTypeInfo], "Something went wrong with the precalculation stuff. Three values should be equal but they're not.")
 
-	local data = love.graphics.readbackBuffer(self.resultBuffer)
-	local dataFFI = ffi.cast("float*", data:getFFIPointer())
-	local strideFloats = self.resultBuffer:getElementStride() / consts.bytesPerGPUVar
+	if not loadingFromCache then
+		local data = love.graphics.readbackBuffer(self.resultBuffer)
+		local dataFFI = ffi.cast("float*", data:getFFIPointer())
+		local strideFloats = self.resultBuffer:getElementStride() / consts.bytesPerGPUVar
 
-	self:processIntensities(shapeTypeInfo, layerCountSet.virtualObjectCountsFromInfos[shapeTypeInfo], extraInfoPerVirtualObject, dataFFI, strideFloats)
+		self:processIntensities(shapeTypeInfo, layerCountSet.virtualObjectCountsFromInfos[shapeTypeInfo], extraInfoPerVirtualObject, dataFFI, strideFloats)
+	end
 
 	return extraInfoPerVirtualObject
 end
 
-function game:handleShapeTypeInfoPrecalc(pointLayer, shapeTypeInfo, layerCountSet)
+function game:saveUnscaledIntensities(pointLayer)
+	local dirPath = "cache/intensities/"
+	love.filesystem.createDirectory(dirPath)
+
+	local toSave = {}
+	toSave.thetaSamples = consts.intensityPrecalcThetaSamples
+	toSave.phiSamples = consts.intensityPrecalcPhiSamples
+	toSave.maxRaySteps = consts.intensityPrecalcMaxRaySteps
+	toSave.canvasSizePower = consts.intensityPrecalcCanvasSizePower
+	toSave.shapeTypeInfoResults = {}
+	for shapeTypeInfoIndex, shapeTypeInfo in ipairs(pointLayer.features.shapeTypeSet) do
+		local unscaledIntensities = shapeTypeInfo.unscaledIntensities
+		local serialised = {}
+		local shapeType = self.pointLayerShapeTypes[shapeTypeInfo.name]
+		local attShapeType = self.pointLayerShapeTypes[shapeTypeInfo.attenuationInfo and shapeTypeInfo.attenuationInfo.name or consts.noAttenuationShapeTypeName]
+		toSave.shapeTypeInfoResults[shapeTypeInfoIndex] = {
+			scales = unscaledIntensities.scales,
+			zRatios = unscaledIntensities.zRatios,
+			shapeSampleCount = unscaledIntensities.shapeSampleCount,
+			attenuationShapeSampleCount = unscaledIntensities.attenuationShapeSampleCount,
+			attenuationSamples = unscaledIntensities.attenuationSamples,
+
+			infoCode = shapeType.code,
+			shaderCode = love.filesystem.read(shapeType.shaderPath),
+			attenuationInfoCode = attShapeType.code,
+			attenuationShaderCode = love.filesystem.read(attShapeType.shaderPath)
+		}
+		toSave.shapeTypeInfoResults[shapeTypeInfoIndex].results = serialised
+		for i = 0, unscaledIntensities.totalCount - 1 do
+			local value = unscaledIntensities[i]
+			serialised[i + 1] = {
+				util.numberSerialise.encodeDouble(value.r),
+				util.numberSerialise.encodeDouble(value.g),
+				util.numberSerialise.encodeDouble(value.b)
+			}
+		end
+	end
+	toSave.resultVersion = consts.intensityPrecalcResultVersion
+	local contents = json.encode(toSave)
+	love.filesystem.write(dirPath .. pointLayer.name .. ".json", contents)
+end
+
+function game:handleShapeTypeInfoPrecalc(pointLayer, shapeTypeInfo, layerCountSet, decodedIntensities)
 	local shapeType = self.pointLayerShapeTypes[shapeTypeInfo.name]
 	local attShapeType = self.pointLayerShapeTypes[shapeTypeInfo.attenuationInfo and shapeTypeInfo.attenuationInfo.name or consts.noAttenuationShapeTypeName]
 	local volumetricShader = self:setupPrecalcShader(shapeType, attShapeType)
 	self:sendNoiseBuffers(volumetricShader, shapeType, attShapeType, pointLayer.childPointLayer)
 
+	local virtualObjectCount = layerCountSet.virtualObjectCountsFromInfos[shapeTypeInfo]
 	local unscaledIntensities = { -- All divided by their scales cubed
 		-- As well as the array part:
+
 		scales = layerCountSet.scaleSamplesFromInfos[shapeTypeInfo],
 		zRatios = layerCountSet.zRatioSamplesFromInfos[shapeTypeInfo],
 		shapeSampleCount = shapeType.sampleCount,
 		attenuationShapeSampleCount = attShapeType.sampleCount,
-		attenuationSamples = layerCountSet.attenuationSamplesFromInfos[shapeTypeInfo]
+		attenuationSamples = layerCountSet.attenuationSamplesFromInfos[shapeTypeInfo],
+
+		totalCount = virtualObjectCount
 	}
 	shapeTypeInfo.unscaledIntensities = unscaledIntensities
-	local virtualObjectCount = layerCountSet.virtualObjectCountsFromInfos[shapeTypeInfo]
-	for i = 0, virtualObjectCount - 1 do
-		-- These are added to over multiple averaging iterations, and then divided down after the iterations are complete
-		unscaledIntensities[i] = {
-			r = 0,
-			g = 0,
-			b = 0
-		}
+	if not decodedIntensities then
+		for i = 0, virtualObjectCount - 1 do
+			-- These are added to over multiple averaging iterations, and then divided down after the iterations are complete
+			unscaledIntensities[i] = {
+				r = 0,
+				g = 0,
+				b = 0
+			}
+		end
 	end
 
 	local averagingIterationCount = layerCountSet.averagingIterationsFromInfos[shapeTypeInfo]
 	local extraInfoPerVirtualObject
-	for averagingIteration = 0, averagingIterationCount - 1 do
-		self:makeRandomNoiseValues(averagingIteration, pointLayer.childPointLayer)
-		extraInfoPerVirtualObject = self:doIntensityPrecalcShapeTypeInfoAveragingIteration(pointLayer, shapeTypeInfo, volumetricShader, layerCountSet)
+	if not decodedIntensities then
+		for averagingIteration = 0, averagingIterationCount - 1 do
+			self:makeRandomNoiseValues(averagingIteration, pointLayer.childPointLayer)
+			extraInfoPerVirtualObject = self:doIntensityPrecalcShapeTypeInfoAveragingIteration(pointLayer, shapeTypeInfo, volumetricShader, layerCountSet)
+		end
+	else
+		extraInfoPerVirtualObject = self:doIntensityPrecalcShapeTypeInfoAveragingIteration(pointLayer, shapeTypeInfo, nil,layerCountSet, true)
+	end
+
+	if not decodedIntensities then
+		for i = 0, virtualObjectCount - 1 do
+			local rgb = unscaledIntensities[i]
+			rgb.r = rgb.r / averagingIterationCount
+			rgb.g = rgb.g / averagingIterationCount
+			rgb.b = rgb.b / averagingIterationCount
+		end
+	else
+		for i = 0, virtualObjectCount - 1 do
+			unscaledIntensities[i] = decodedIntensities[i]
+		end
 	end
 
 	local infoR, infoG, infoB = 0, 0, 0
 	for i = 0, virtualObjectCount - 1 do
 		local rgb = unscaledIntensities[i]
-		rgb.r = rgb.r / averagingIterationCount
-		rgb.g = rgb.g / averagingIterationCount
-		rgb.b = rgb.b / averagingIterationCount
 
 		-- For averaging for the whole layer
 		local extra = extraInfoPerVirtualObject[i]
@@ -478,6 +539,96 @@ function game:handleShapeTypeInfoPrecalc(pointLayer, shapeTypeInfo, layerCountSe
 	return shapeTypeInfo.weight, infoR, infoG, infoB
 end
 
+function game:handleLayerPrecalcCache(pointLayer, layerCountSet)
+	local dirPath = "cache/intensities/"
+	love.filesystem.createDirectory(dirPath)
+
+	local cachedInfoString = love.filesystem.read(dirPath .. pointLayer.name .. ".json")
+	if not cachedInfoString then
+		return false
+	end
+
+	local cachedInfo = util.safeJsonDecode(cachedInfoString)
+	if not cachedInfo then
+		return false
+	end
+
+	local toCheck = {
+		resultVersion = consts.intensityPrecalcResultVersion,
+
+		thetaSamples = consts.intensityPrecalcThetaSamples,
+		phiSamples = consts.intensityPrecalcPhiSamples,
+		maxRaySteps = consts.intensityPrecalcMaxRaySteps,
+		canvasSizePower = consts.intensityPrecalcCanvasSizePower
+	}
+	for key, value in pairs(toCheck) do
+		if cachedInfo[key] ~= value then
+			return false
+		end
+	end
+
+	local results = {}
+	if not cachedInfo.shapeTypeInfoResults or #cachedInfo.shapeTypeInfoResults ~= #pointLayer.features.shapeTypeSet then
+		return false
+	end
+	for infoI, info in ipairs(pointLayer.features.shapeTypeSet) do
+		local infoCache = cachedInfo.shapeTypeInfoResults[infoI]
+		if not infoCache then
+			return false
+		end
+		local shapeTypeInfo = pointLayer.features.shapeTypeSet[infoI]
+		local shapeType = self.pointLayerShapeTypes[shapeTypeInfo.name]
+		local attShapeType = self.pointLayerShapeTypes[shapeTypeInfo.attenuationInfo and shapeTypeInfo.attenuationInfo.name or consts.noAttenuationShapeTypeName]
+		for k, v in pairs({
+			scales = layerCountSet.scaleSamplesFromInfos[shapeTypeInfo],
+			zRatios = layerCountSet.zRatioSamplesFromInfos[shapeTypeInfo],
+			shapeSampleCount = shapeType.sampleCount,
+			attenuationShapeSampleCount = attShapeType.sampleCount,
+			attenuationSamples = layerCountSet.attenuationSamplesFromInfos[shapeTypeInfo],
+
+			infoCode = shapeType.code,
+			shaderCode = love.filesystem.read(shapeType.shaderPath),
+			attenuationInfoCode = attShapeType.code,
+			attenuationShaderCode = love.filesystem.read(attShapeType.shaderPath)
+		}) do
+			if infoCache[k] ~= v then
+				return false
+			end
+		end
+		local cachedResults = infoCache.results
+		if not cachedResults then
+			return false
+		end
+		local virtualObjectCount = layerCountSet.virtualObjectCountsFromInfos[info]
+		if #cachedResults ~= virtualObjectCount then
+			return false
+		end
+		local decodedIntensities = {}
+		results[infoI] = decodedIntensities
+		for i = 0, virtualObjectCount - 1 do
+			local rgb = {}
+			local encoded = cachedResults[i + 1]
+			if not encoded then
+				return false
+			end
+			for channel = 1, 3 do
+				local code = encoded[channel]
+				if not code then
+					return false
+				end
+				if not util.numberSerialise.checkCode(code) then
+					return false
+				end
+				local value = util.numberSerialise.decodeDouble(code)
+				local letter = channel == 1 and "r" or channel == 2 and "g" or channel == 3 and "b"
+				rgb[letter] = value
+			end
+			decodedIntensities[i] = rgb
+		end
+	end
+	return results
+end
+
 function game:getPointLayerIntensities()
 	local intensitiesToMeasure, maxRequiredResultBufferSize, countsByLayer = self:countIntensitiesToMeasure()
 	self:codegenIntensityPrecalcArrays()
@@ -487,7 +638,7 @@ function game:getPointLayerIntensities()
 
 	self.loadInfo.intensitiesMeasured = 0
 	self.loadInfo.intensitiesToMeasure = intensitiesToMeasure
-	self.loadInfo.intensityBreakInterval = 20
+	self.loadInfo.intensityBreakInterval = 250
 	self.loadInfo.intensityBreakCountdown = self.loadInfo.intensityBreakInterval
 	coroutine.yield()
 
@@ -499,8 +650,13 @@ function game:getPointLayerIntensities()
 		local intensityTotalGForAllShapeTypeInfos = 0
 		local intensityTotalBForAllShapeTypeInfos = 0
 
-		for _, shapeTypeInfo in ipairs(pointLayer.features.shapeTypeSet) do
-			local infoWeight, infoR, infoG, infoB = self:handleShapeTypeInfoPrecalc(pointLayer, shapeTypeInfo, countsByLayer[pointLayerIndex])
+		local layerCountSet = countsByLayer[pointLayerIndex]
+
+		local result = self:handleLayerPrecalcCache(pointLayer, layerCountSet) -- If present, then we are loading instead of calculating
+
+		for shapeTypeInfoIndex, shapeTypeInfo in ipairs(pointLayer.features.shapeTypeSet) do
+			local decodedIntensities = result and result[shapeTypeInfoIndex]
+			local infoWeight, infoR, infoG, infoB = self:handleShapeTypeInfoPrecalc(pointLayer, shapeTypeInfo, layerCountSet, decodedIntensities)
 			weightTotalForAllShapeTypeInfos = weightTotalForAllShapeTypeInfos + infoWeight
 			intensityTotalRForAllShapeTypeInfos = intensityTotalRForAllShapeTypeInfos + infoR * infoWeight
 			intensityTotalGForAllShapeTypeInfos = intensityTotalGForAllShapeTypeInfos + infoG * infoWeight
@@ -512,6 +668,10 @@ function game:getPointLayerIntensities()
 		pointLayer.averageRadiantIntensityBPerPoint = intensityTotalBForAllShapeTypeInfos / weightTotalForAllShapeTypeInfos
 
 		-- print("gpu " .. pointLayer.averageRadiantIntensityRPerPoint, "cpu " .. pointLayer.averageUnattenuatedRadiantIntensityRPerPoint, "gpu/cpu " .. pointLayer.averageRadiantIntensityRPerPoint / pointLayer.averageUnattenuatedRadiantIntensityRPerPoint)
+
+		if not result then
+			self:saveUnscaledIntensities(pointLayer)
+		end
 	end
 
 	self.loadInfo.intensitiesMeasured = nil

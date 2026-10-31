@@ -17,7 +17,7 @@ Maths:
 
 Use dmath module/library for maths functions that can vary across platforms.
 Assume all platforms are IEEE 754-compliant (this makes +/*- and sqrt safe).
-TODO: Ensure rounding modes on all threads are set and unchanging.
+Ensure rounding modes on all threads are set and unchanging.
 Don't trust Lua's maths constants (except huge in cases where its exact value does not matter, like when finding the closest object to the player using min).
 Use constants from consts.
 Don't trust Lua's maths functions except for very basic functions with only one possible answer (floor, max, abs, etc). Assume rad and deg use untrusted Lua constants.

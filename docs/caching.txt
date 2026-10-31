@@ -1,0 +1,5 @@
+When caching shape type base object amounts:
+Information about the shape type must not depend on any values outside of the info lua file if they can change, since only the code in that lua file is checked against when checking cache. If values outside of the file change then caches will have to be invalidated. At time of writing this is planned with a results version.
+
+When caching shape type info unscaled intensities:
+It's the same as the above, except that shaderCode.glsl also has to be considered.

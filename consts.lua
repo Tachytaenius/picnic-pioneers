@@ -243,6 +243,14 @@ function consts.loadAll()
 	consts.maxStarsPerSystem = 4
 	consts.invalidStarParam = -1
 	consts.starAxisSamples = 5000
+
+	consts.intensityPrecalcThetaSamples = 4
+	consts.intensityPrecalcPhiSamples = 4
+	consts.intensityPrecalcMaxRaySteps = 32
+	consts.intensityPrecalcCanvasSizePower = 5
+
+	consts.shapeTypeAmountIntegralResultVersion = "1"
+	consts.intensityPrecalcResultVersion = "1"
 end
 
 return consts

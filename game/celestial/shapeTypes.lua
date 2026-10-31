@@ -250,44 +250,6 @@ local function loadShaderIncludes(seenIncludes)
 	return seenIncludes
 end
 
--- :)
--- 100% bit-for-bit exact, which is probably what we want.
--- Maybe hex floats (%a) have some nasty surprises wrt determinism. Denormal numbers?
-ffi.cdef([=[
-    typedef struct {
-        uint32_t lo;
-        uint32_t hi;
-    } intPair;
-    typedef union {
-        double x;
-        intPair raw;
-    } numConverter;
-]=])
-local converter = ffi.new("numConverter")
-local function encodeDouble(x)
-    converter.x = x
-    return string.format("%08x%08x", converter.raw.hi, converter.raw.lo)
-end
-local function decodeDouble(code)
-    local hiStr = string.sub(code, 1, 8)
-    local loStr = string.sub(code, 9, 16)
-    converter.raw.hi = tonumber(hiStr, 16)
-    converter.raw.lo = tonumber(loStr, 16)
-    return converter.x
-end
-local function checkCode(code)
-	if type(code) ~= "string" then
-		return false
-	end
-	if #code ~= 16 then
-		return false
-	end
-	if string.match(code, "[^%x]") then -- If there are any non-hexadecimal chars
-		return false
-	end
-	return true
-end
-
 local function cacheShapeType(shapeType, code, resolution, noiseAveraging)
 	local dirPath = "cache/shapeTypes/"
 	love.filesystem.createDirectory(dirPath)
@@ -298,15 +260,17 @@ local function cacheShapeType(shapeType, code, resolution, noiseAveraging)
 			resultsToEncode[i + 1] = {}
 			for j = 0, shapeType.zScaleRatioSamples - 1 do
 				local amount = shapeType.sampleBaseObjectAmounts[i][j]
-				resultsToEncode[i + 1][j + 1] = encodeDouble(amount)
+				resultsToEncode[i + 1][j + 1] = util.numberSerialise.encodeDouble(amount)
 			end
 		else
 			local amount = shapeType.sampleBaseObjectAmounts[i]
-			resultsToEncode[i + 1] = encodeDouble(amount)
+			resultsToEncode[i + 1] = util.numberSerialise.encodeDouble(amount)
 		end
 	end
 
 	local contents = json.encode({
+		resultVersion = consts.shapeTypeAmountIntegralResultVersion,
+
 		code = code,
 		resolution = resolution,
 		noiseRepeat = shapeType.noiseInfo and noiseAveraging or nil,
@@ -334,10 +298,10 @@ local function readCache(shapeType, cachedInfo)
 			end
 			for zSample = 0, shapeType.zScaleRatioSamples - 1 do
 				local code = sampleResults[zSample + 1]
-				if not checkCode(code) then
+				if not util.numberSerialise.checkCode(code) then
 					return false
 				end
-				resultsInner[zSample] = decodeDouble(code)
+				resultsInner[zSample] = util.numberSerialise.decodeDouble(code)
 			end
 		end
 		return results
@@ -348,10 +312,10 @@ local function readCache(shapeType, cachedInfo)
 		end
 		for samplingId = 0, shapeType.sampleCount - 1 do
 			local code = cachedInfo.results[samplingId + 1]
-			if not checkCode(code) then -- Will return if code is not present
+			if not util.numberSerialise.checkCode(code) then -- Will return if code is not present
 				return false
 			end
-			results[samplingId] = decodeDouble(code)
+			results[samplingId] = util.numberSerialise.decodeDouble(code)
 		end
 		return results
 	end
@@ -389,7 +353,13 @@ local function handleCache(shapeType, code, resolution, noiseAveraging)
 		return false
 	end
 
-	assert(cachedInfo.results, "Cached info for shape type " .. shapeType.name .. " has no results data?")
+	if cachedInfo.resultVersion ~= consts.shapeTypeAmountIntegralResultVersion then
+		return false
+	end
+
+	if not cachedInfo.results then
+		return false
+	end
 
 	-- TODO: Version info? a) what about unknown versions and b) what about *not* recreating all unnecessarily every update? ... Don't use the game version but rather a "result version" which is changed when different results are expected. Best kept as a string rather than a number for flexibility.
 
@@ -719,7 +689,7 @@ function game:loadShapeTypes()
 			shapeType.needsCalculating = nil
 			cacheShapeType(shapeType, shapeType.code, resolution, noiseAveraging)
 		end
-		shapeType.code = nil
+		-- NOTE: The code is needed by a similar cache system in intensity precalculation, so we will not nil it here.
 	end
 
 	self.pointLayerShapeTypes = pointLayerShapeTypes

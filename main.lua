@@ -30,6 +30,7 @@ end
 
 function love.load(args)
 	local startPosStrings = {}
+	local quitAfterInit
 
 	local i = 1
 	while true do
@@ -43,6 +44,8 @@ function love.load(args)
 		elseif arg == "--noRun" then
 			love.event.quit()
 			return
+		elseif arg == "--quitAfterInit" then
+			quitAfterInit = true
 		elseif arg == "--startPosition" then
 			startPosStrings[1] = args[i]
 			startPosStrings[2] = args[i + 1]
@@ -62,6 +65,7 @@ function love.load(args)
 	settings:save()
 	state = game:newState()
 	state.loadInfo = {}
+	state.quitAfterInit = quitAfterInit
 
 	-- Setup window
 	util.remakeWindow(consts.defaultWindowWidth, consts.defaultWindowHeight)
@@ -88,6 +92,10 @@ function love.update(dt)
 			if coroutine.status(initCoroutine) == "dead" then
 				state.loadInfo = nil
 				skipOneUpdate = true -- Skipped actual game update
+				if state.quitAfterInit then
+					love.event.quit()
+					return
+				end
 				break
 			end
 
