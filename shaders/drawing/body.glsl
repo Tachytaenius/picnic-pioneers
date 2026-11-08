@@ -6,7 +6,7 @@ uniform vec3 cameraPosition;
 uniform vec3[4] preNormaliseCornerDirs;
 
 uniform layout(r16f) image2D totalTransmittanceCanvas;
-uniform layout(rgba16f) image2D outputCanvas;
+uniform layout(rgba32f) image2D outputCanvas;
 uniform ivec2 size;
 
 layout (local_size_x = 16, local_size_y = 16) in;
@@ -38,10 +38,15 @@ void computemain() {
 	// 	discard;
 	// }
 
+	vec3 inHitPosRelative = cameraPosition + direction * max(0.0, result.t1) - bodyPosition;
+	vec3 surfaceNormal = normalize(inHitPosRelative); // For sphere. If we change it to an ellipsoid, though...
+
 	vec4 bodySample = sampleBody( // Radiance in RGB and transmittance in A
-		cameraPosition + direction * max(0.0, result.t1) - bodyPosition,
-		cameraPosition + direction * result.t2 - bodyPosition,
-		direction
+		cameraPosition - bodyPosition,
+		direction,
+		surfaceNormal,
+		inHitPosRelative,
+		cameraPosition + direction * result.t2 - bodyPosition
 	);
 
 	// Read

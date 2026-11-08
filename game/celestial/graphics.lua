@@ -395,7 +395,7 @@ function game:drawCelestial(POVEntity)
 				bodyShader = self.starShader
 				local surfaceArea = 2 * consts.tau * body.radius ^ 2
 				local surfaceRadiantExitance = body.radiantFlux / surfaceArea
-				local surfaceRadiance = surfaceRadiantExitance / (consts.tau / 2) -- Lambertian emitter (TEMP)
+				local surfaceRadiance = surfaceRadiantExitance / (consts.tau / 2)
 				bodyShader:send("surfaceRadiance", {mathsies.vec3.components(surfaceRadiance)})
 			end
 			love.graphics.setShader(bodyShader)

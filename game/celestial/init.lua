@@ -52,6 +52,7 @@ function game:initCelestial(initParams)
 	self.attenuationAccumulationShader = love.graphics.newShader("shaders/drawing/attenuationAccumulation.glsl")
 	self.brightnessMultiplyShader = love.graphics.newShader("shaders/drawing/brightnessMultiply.glsl")
 	self.transmittanceOutputMultiplierShader = love.graphics.newShader("shaders/drawing/transmittanceOutputMultiplier.glsl")
+	self.gammaToLinearShader = love.graphics.newShader("shaders/drawing/gammaToLinear.glsl")
 
 	self.starShader = love.graphics.newComputeShader(
 		"#line 1\n" .. love.filesystem.read("shaders/include/raycasts.glsl") ..

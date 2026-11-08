@@ -50,7 +50,7 @@ function game:resizeGameScreen(width, height, forceRecreate)
 		computewrite = true
 	})
 	self.screenCanvasses.outputCanvas = love.graphics.newCanvas(width, height, {
-		format = "rgba16f",
+		format = "rgba32f",
 		debugname = "Output Canvas",
 		computewrite = true
 	})
