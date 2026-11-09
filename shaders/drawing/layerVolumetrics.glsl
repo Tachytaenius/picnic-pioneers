@@ -164,7 +164,8 @@ void computemain() {
 #ifdef INTENSITY_PRECALC
 		// outColour.rgb *= cosines[curLayer] - cosines[curLayer + 1];
 		ivec3 layeredCoord = ivec3(coord, curLayer);
-		vec4 inColour = imageLoad(resultCanvas, layeredCoord);
+		// vec4 inColour = imageLoad(resultCanvas, layeredCoord);
+		vec4 inColour = vec4(0.0);
 		vec4 toWrite = vec4(outColour.rgb + inColour.rgb, 0.0);
 		imageStore(resultCanvas, layeredCoord, toWrite);
 #else
