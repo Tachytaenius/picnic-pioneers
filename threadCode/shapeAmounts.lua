@@ -18,7 +18,9 @@ for _, itemName in ipairs(love.filesystem.getDirectoryItems(path)) do
 			getDensity = info.getDensity
 		}
 		processShapeNoiseLayerInfo(new, info)
-		setValueNoiseForShapeTypeDensityFunc(new)
+		if not info.attenuation then
+			setValueNoiseForShapeTypeDensityFunc(new)
+		end
 		table.insert(shapeTypes, new)
 	end
 end

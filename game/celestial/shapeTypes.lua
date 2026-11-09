@@ -388,8 +388,12 @@ function game:loadShapeTypes()
 			shapeType.parameters = info.parameters or {}
 
 			shapeType.needsTrueRatio = info.needsTrueRatio
-			shapeType.getDensity = info.getDensity
-			setValueNoiseForShapeTypeDensityFunc(shapeType)
+			shapeType.attenuation = info.attenuation
+
+			if not shapeType.attenuation then
+				shapeType.getDensity = info.getDensity
+				setValueNoiseForShapeTypeDensityFunc(shapeType)
+			end
 
 			shapeType.zScaleRatioMin = info.zScaleRatioMin
 			shapeType.zScaleRatioMax = info.zScaleRatioMax
@@ -399,8 +403,6 @@ function game:loadShapeTypes()
 				shapeType.zScaleRatioMax = 1
 			end
 			assert(shapeType.zScaleRatioMin <= shapeType.zScaleRatioMax, "Z scale ratio min and max are flipped for shape type " .. itemName)
-
-			shapeType.attenuation = info.attenuation
 
 			shapeType.zScaleRatioSamples = info.zScaleRatioSamples
 			if not shapeType.needsTrueRatio then

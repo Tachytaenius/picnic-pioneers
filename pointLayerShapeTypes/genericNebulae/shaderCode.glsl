@@ -1,7 +1,7 @@
 float SHAPE_DENSITY_SAMPLE_TYPE(vec3 samplePosition, vec3 samplePositionTrueRatio) {
 	return
 		max(0.0, 1.0 - length(samplePosition)) * (
-			2.0 * VALUE_NOISE(1, samplePositionTrueRatio) +
+			2.0 * VALUE_NOISE(1, samplePositionTrueRatio) + // Multiply the noise by 2 to give an average of 1 so that the object's attenuation multiplier is more or less the average
 			PARAM(nebulaMultiplier) * pow(
 				(
 					VALUE_NOISE(2, samplePositionTrueRatio) +
