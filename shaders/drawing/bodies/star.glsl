@@ -4,7 +4,7 @@ const float limbCoefficients[limbCoefficientsLength] = float[](0.3, 0.93, -0.23)
 
 uniform vec3 surfaceRadiance;
 
-vec4 sampleBody(vec3 cameraPosition, vec3 direction, vec3 surfaceNormal, vec3 surfaceEnterPos, vec3 surfaceExitPos) { // Positions are relative to body centre
+ColourTransmittance sampleBody(vec3 cameraPosition, vec3 direction, vec3 surfaceNormal, vec3 surfaceEnterPos, vec3 surfaceExitPos) { // Positions are relative to body centre
 	// This is based on uniforms only so should be optimised?
 	float averageLimbFactor = 0.0;
 	for (int k = 0; k < limbCoefficientsLength; k++) {
@@ -23,5 +23,5 @@ vec4 sampleBody(vec3 cameraPosition, vec3 direction, vec3 surfaceNormal, vec3 su
 	}
 
 	vec3 colour = centralRadiance * limbFactor;
-	return vec4(colour, 0.0);
+	return ColourTransmittance (colour, vec3(0.0));
 }

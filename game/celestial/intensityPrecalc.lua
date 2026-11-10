@@ -26,6 +26,7 @@ end
 
 function game:clearPrecalc()
 	self.precalcClearShader:send("canvas", self.precalcCanvas)
+	self.precalcClearShader:send("opacityCanvas", self.precalcOpacityCanvas)
 	local w, h, d = self.precalcClearShader:getLocalThreadgroupSize()
 	love.graphics.dispatchThreadgroups(self.precalcClearShader,
 		math.ceil(self.precalcCanvas:getWidth() / w),
@@ -48,6 +49,7 @@ function game:setupPrecalcShader(shapeType, attShapeType)
 	volumetricShader:send("brightnessMultiplier", 1)
 	volumetricShader:send("size", {self.precalcCanvas:getDimensions()})
 	volumetricShader:send("resultCanvas", self.precalcCanvas)
+	volumetricShader:send("resultOpacityCanvas", self.precalcOpacityCanvas)
 	volumetricShader:send("maxRaySteps", consts.intensityPrecalcMaxRaySteps)
 
 	return volumetricShader
@@ -94,8 +96,8 @@ function game:sendRadiusBasedUniforms(volumetricShader, virtualObject, virtualOb
 			shaderScale ^ -1 * childPointLayer.maxPointDensity * childPointLayer.averageRadiantIntensityBPerPoint
 		})
 	end
-	if volumetricShader:hasUniform("baseAttenuation") then
-		volumetricShader:send("baseAttenuation", virtualObject.attMultiplier * shaderScale ^ -1)
+	if volumetricShader:hasUniform("attenuationMultiplier") then
+		volumetricShader:send("attenuationMultiplier", virtualObject.attMultiplier * shaderScale ^ -1)
 	end
 	volumetricShader:send("shapeRadii", {
 		shaderScale * virtualObject.scale,
@@ -210,6 +212,15 @@ function game:makePrecalcGraphicsObjects(maxRequiredResultBufferSize)
 	self.precalcCanvas = love.graphics.newCanvas(canvasSize, canvasSize, {
 		format = "rgba32f",
 		debugname = "Intensity Precalculation Canvas",
+		mipmaps = "manual",
+		type = "array",
+		layers = directionSamples,
+		computewrite = true
+	})
+
+	self.precalcOpacityCanvas = love.graphics.newCanvas(canvasSize, canvasSize, {
+		format = "rgba16f",
+		debugname = "Intensity Precalculation Opacity Canvas",
 		mipmaps = "manual",
 		type = "array",
 		layers = directionSamples,

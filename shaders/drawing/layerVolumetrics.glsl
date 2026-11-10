@@ -1,7 +1,7 @@
 uniform uint maxRaySteps;
 
 uniform vec3 baseEmission;
-uniform float baseAttenuation;
+uniform float attenuationMultiplier;
 
 uniform vec3 shapeRadii;
 
@@ -10,6 +10,7 @@ uniform ivec2 size;
 
 #ifndef INTENSITY_PRECALC
 uniform layout(RESULT_CANVAS_FORMAT) image2D resultCanvas;
+uniform layout(rgba16f) image2D resultOpacityCanvas;
 
 uniform vec3 cameraPosition;
 
@@ -25,6 +26,7 @@ uniform float fadeOutRadius;
 uniform float fadeExponent;
 #else
 uniform layout(RESULT_CANVAS_FORMAT) image2DArray resultCanvas;
+uniform layout(rgba16f) image2DArray resultOpacityCanvas;
 uniform int directionGroup;
 uniform float samplingDiskRadius;
 
@@ -37,23 +39,23 @@ COSINE_CONST_ARRAY
 VolumetricSample sampleVolumetrics(vec3 samplePosition) {
 	vec3 samplePositionTrueRatio = samplePosition * shapeRadii / max(shapeRadii.x, max(shapeRadii.y, shapeRadii.z));
 	float emissionDensity = sampleEmissionShapeDensity(samplePosition, samplePositionTrueRatio);
-	float attenuationDensity = sampleAttenuationShapeDensity(samplePosition, samplePositionTrueRatio);
+	vec3 attenuationSample = sampleAttenuationShape(samplePosition, samplePositionTrueRatio);
 	return VolumetricSample (
-		baseAttenuation * attenuationDensity,
+		attenuationMultiplier * attenuationSample,
 		baseEmission * emissionDensity
 	);
 }
 
-vec4 getRayColourAndTransmittance(vec3 rayPosition, vec3 rayDirection, float sampleLerp) {
+ColourTransmittance getRayColourAndTransmittance(vec3 rayPosition, vec3 rayDirection, float sampleLerp) {
 	vec3 totalRayRadiance = vec3(0.0);
-	float totalTransmittance = 1.0;
+	vec3 totalTransmittance = vec3(1.0);
 	// Ray moves backwards from end to camera
 	// We increase detail towards camera
 	// Sample in the middle of each ray segment
 
 	ConvexRaycastResult result = ellipsoidRaycast(vec3(0.0), shapeRadii, rayPosition, rayDirection);
 	if (!result.hit || result.t2 <= 0.0) {
-		return vec4(totalRayRadiance, totalTransmittance);
+		return ColourTransmittance (totalRayRadiance, totalTransmittance);
 	}
 
 	float rayOffset = max(0.0, result.t1);
@@ -83,10 +85,10 @@ vec4 getRayColourAndTransmittance(vec3 rayPosition, vec3 rayDirection, float sam
 		float emissionFadeMultiplier = 1.0;
 #endif
 
-		float transmittanceThisStep = 1.0;
+		vec3 transmittanceThisStep = vec3(1.0);
 
 		VolumetricSample volumetricSample = sampleVolumetrics(samplePosition);
-		float attenuation = volumetricSample.attenuation;
+		vec3 attenuation = volumetricSample.attenuation;
 		transmittanceThisStep *= exp(-attenuation * rayStepSize);
 
 		vec3 rayRadianceThisStep = rayStepSize * volumetricSample.emission * emissionFadeMultiplier;
@@ -95,7 +97,7 @@ vec4 getRayColourAndTransmittance(vec3 rayPosition, vec3 rayDirection, float sam
 
 		segmentStart = segmentEnd;
 	}
-	return vec4(totalRayRadiance, totalTransmittance);
+	return ColourTransmittance (totalRayRadiance, totalTransmittance);
 }
 
 #ifndef Z_SIZE
@@ -156,22 +158,27 @@ void computemain() {
 		vec3 direction = cameraForwards;
 		vec3 cameraPosition = samplingDiskRadius * (-cameraForwards + cameraRight * posOnDisk.x + cameraUp * posOnDisk.y);
 #endif
-		vec4 outColour = getRayColourAndTransmittance(cameraPosition, direction, stepVariation);
+		ColourTransmittance colourTransmittance = getRayColourAndTransmittance(cameraPosition, direction, stepVariation);
+		vec3 colour = colourTransmittance.colour;
+		vec3 transmittance = colourTransmittance.transmittance;
 
-		outColour.a = 1.0 - outColour.a; // Turn transmittance into opacity
-		outColour.rgb *= brightnessMultiplier;
+		vec3 opacity = 1.0 - transmittance;
+		colour *= brightnessMultiplier;
 
 #ifdef INTENSITY_PRECALC
-		// outColour.rgb *= cosines[curLayer] - cosines[curLayer + 1];
-		ivec3 layeredCoord = ivec3(coord, curLayer);
-		// vec4 inColour = imageLoad(resultCanvas, layeredCoord);
+		ivec3 writeCoord = ivec3(coord, curLayer);
 		vec4 inColour = vec4(0.0);
-		vec4 toWrite = vec4(outColour.rgb + inColour.rgb, 0.0);
-		imageStore(resultCanvas, layeredCoord, toWrite);
+		vec4 inOpacity = vec4(0.0);
 #else
-		vec4 inColour = imageLoad(resultCanvas, coord);
-		vec4 toWrite = vec4(outColour + inColour);
-		imageStore(resultCanvas, coord, toWrite);
+		ivec2 writeCoord = coord;
+		vec4 inColour = imageLoad(resultCanvas, writeCoord);
+		vec4 inOpacity = imageLoad(resultOpacityCanvas, writeCoord);
 #endif
+
+		vec4 toWrite = vec4(colour + inColour.rgb, 0.0);
+		imageStore(resultCanvas, writeCoord, toWrite);
+
+		vec4 opacityToWrite = vec4(opacity, 0.0) + inOpacity;
+		imageStore(resultOpacityCanvas, writeCoord, opacityToWrite);
 	// }
 }

@@ -49,9 +49,9 @@ void vertexmain() {
 	vec3 direction = pointDrawable.direction;
 #else
 	vec2 totalTransmittanceCoord = vec2(attenuationTextureCoords.x, 1.0 - attenuationTextureCoords.y);
-	float transmittance =
-		texture(pointAttenuationTexture, attenuationTextureCoords).r *
-		texture(totalTransmittanceCanvas, totalTransmittanceCoord).r;
+	vec3 transmittance =
+		texture(pointAttenuationTexture, attenuationTextureCoords).rgb *
+		texture(totalTransmittanceCanvas, totalTransmittanceCoord).rgb;
 	colour = radiance * transmittance;
 #endif
 

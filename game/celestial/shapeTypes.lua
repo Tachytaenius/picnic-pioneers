@@ -215,7 +215,7 @@ end
 
 local function getAttenuationShaderCode(shapeType)
 	return
-		"#define SHAPE_DENSITY_SAMPLE_TYPE sampleAttenuationShapeDensity\n" ..
+		"#define SHAPE_DENSITY_SAMPLE_TYPE sampleAttenuationShape\n" ..
 		"#define VALUE_NOISE attenuationValueNoise\n" ..
 		"#define PARAM(name) attenuationShape_##name\n" ..
 		getShapeTypeParamUniforms("attenuationShape_", shapeType) ..

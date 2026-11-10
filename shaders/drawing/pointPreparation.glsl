@@ -105,9 +105,9 @@ void computemain() {
 				dist / fadeOutRadius
 			);
 			vec2 totalTransmittanceCoord = vec2(textureSamplePos.x, 1.0 - textureSamplePos.y); // TODO: Why did this (and pointDrawables' version) need to y flip???
-			float transmittance =
-				texture(pointAttenuationTexture, textureSamplePos).r *
-				texture(totalTransmittanceCanvas, totalTransmittanceCoord).r;
+			vec3 transmittance =
+				texture(pointAttenuationTexture, textureSamplePos).rgb *
+				texture(totalTransmittanceCanvas, totalTransmittanceCoord).rgb;
 
 			pointDrawable = PointDrawable (
 				direction,

@@ -5,7 +5,7 @@ uniform mat4 clipToSky;
 uniform vec3 cameraPosition;
 uniform vec3[4] preNormaliseCornerDirs;
 
-uniform layout(r16f) image2D totalTransmittanceCanvas;
+uniform layout(rgba16f) image2D totalTransmittanceCanvas;
 uniform layout(rgba32f) image2D outputCanvas;
 uniform ivec2 size;
 
@@ -41,7 +41,7 @@ void computemain() {
 	vec3 inHitPosRelative = cameraPosition + direction * max(0.0, result.t1) - bodyPosition;
 	vec3 surfaceNormal = normalize(inHitPosRelative); // For sphere. If we change it to an ellipsoid, though...
 
-	vec4 bodySample = sampleBody( // Radiance in RGB and transmittance in A
+	ColourTransmittance bodySample = sampleBody( // Radiance in RGB and transmittance in A
 		cameraPosition - bodyPosition,
 		direction,
 		surfaceNormal,
@@ -50,13 +50,13 @@ void computemain() {
 	);
 
 	// Read
-	float transmittance = imageLoad(totalTransmittanceCanvas, coord).r; // Transmittance between body and camera
+	vec3 transmittance = imageLoad(totalTransmittanceCanvas, coord).rgb; // Transmittance between body and camera
 	vec3 currentOut = imageLoad(outputCanvas, coord).rgb; // Get current colour
-	float transmittanceThisBody = bodySample.a;
+	vec3 transmittanceThisBody = bodySample.transmittance;
 	// Modify
-	vec3 newOut = currentOut * transmittanceThisBody + outputMultiplier * bodySample.rgb;
+	vec3 newOut = currentOut * transmittanceThisBody + outputMultiplier * bodySample.colour;
 	transmittance *= transmittanceThisBody; // Let body contribute to blocking everything that comes after it
 	// Write
-	imageStore(totalTransmittanceCanvas, coord, vec4(transmittance, 0.0, 0.0, 1.0));
+	imageStore(totalTransmittanceCanvas, coord, vec4(transmittance, 1.0));
 	imageStore(outputCanvas, coord, vec4(newOut, 1.0));
 }

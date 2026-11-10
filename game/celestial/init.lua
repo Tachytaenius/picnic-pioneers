@@ -51,17 +51,16 @@ function game:initCelestial(initParams)
 	self.drawVolumetricShader = love.graphics.newShader("shaders/drawing/drawVolumetric.glsl")
 	self.attenuationAccumulationShader = love.graphics.newShader("shaders/drawing/attenuationAccumulation.glsl")
 	self.brightnessMultiplyShader = love.graphics.newShader("shaders/drawing/brightnessMultiply.glsl")
-	self.transmittanceOutputMultiplierShader = love.graphics.newShader("shaders/drawing/transmittanceOutputMultiplier.glsl")
-	self.gammaToLinearShader = love.graphics.newShader("shaders/drawing/gammaToLinear.glsl")
 
 	self.starShader = love.graphics.newComputeShader(
+		"#line 1\n" .. love.filesystem.read("shaders/include/structs.glsl") ..
 		"#line 1\n" .. love.filesystem.read("shaders/include/raycasts.glsl") ..
 		"#line 1\n" .. love.filesystem.read("shaders/drawing/bodies/star.glsl") ..
 		"#line 1\n" .. love.filesystem.read("shaders/drawing/body.glsl")
 	)
 
-	local clearPointAttenuationTexture = love.image.newImageData(1, 1, "r16f")
-	clearPointAttenuationTexture:setPixel(0, 0, 1, 0, 0, 1)
+	local clearPointAttenuationTexture = love.image.newImageData(1, 1, "rgba16f")
+	clearPointAttenuationTexture:setPixel(0, 0, 1, 1, 1, 1)
 	self.clearPointAttenuationTexture = love.graphics.newVolumeImage({clearPointAttenuationTexture}, {
 		linear = true -- Shouldn't make any difference for a value of 1, though
 	})

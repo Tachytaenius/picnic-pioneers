@@ -116,6 +116,8 @@ function game:drawCelestial(POVEntity)
 					local original = love.graphics.getCanvas()
 					love.graphics.setCanvas(pointLayer.volumetricCanvas)
 					love.graphics.clear()
+					love.graphics.setCanvas(pointLayer.volumetricOpacityCanvas)
+					love.graphics.clear()
 					love.graphics.setCanvas(pointLayer.volumetricAddCountCanvas)
 					love.graphics.clear()
 					love.graphics.setCanvas(original)
@@ -150,6 +152,7 @@ function game:drawCelestial(POVEntity)
 			volumetricShader:send("preNormaliseCornerDirs", unpack(cornerDirs))
 			volumetricShader:send("size", {pointLayer.volumetricCanvas:getDimensions()})
 			volumetricShader:send("resultCanvas", pointLayer.volumetricCanvas)
+			volumetricShader:send("resultOpacityCanvas", pointLayer.volumetricOpacityCanvas)
 			volumetricShader:send("additionCountCanvas", pointLayer.volumetricAddCountCanvas)
 			volumetricShader:send("rayStepVariance", 1)
 			volumetricShader:send("raySeed", love.math.random(0, 2 ^ 32 - 1))
@@ -173,8 +176,8 @@ function game:drawCelestial(POVEntity)
 					distanceUnitScale ^ -1 * pointLayer.maxPointDensity * pointLayer.averageRadiantIntensityBPerPoint
 				})
 			end
-			if volumetricShader:hasUniform("baseAttenuation") then
-				volumetricShader:send("baseAttenuation", attenuationMultiplier / distanceUnitScale)
+			if volumetricShader:hasUniform("attenuationMultiplier") then
+				volumetricShader:send("attenuationMultiplier", attenuationMultiplier / distanceUnitScale)
 			end
 			local w, h = volumetricShader:getLocalThreadgroupSize()
 			love.graphics.dispatchThreadgroups(volumetricShader,
@@ -182,11 +185,17 @@ function game:drawCelestial(POVEntity)
 				math.ceil(pointLayer.volumetricCanvas:getHeight() / h)
 			)
 
-			love.graphics.setShader(self.drawVolumetricShader)
-			love.graphics.setBlendMode("alpha", "premultiplied")
+			
 			love.graphics.setColorMask(true, true, true, false)
+			love.graphics.setShader(self.attenuationAccumulationShader)
+			self.attenuationAccumulationShader:send("additionCanvas", pointLayer.volumetricAddCountCanvas)
+			self.attenuationAccumulationShader:send("canvasSize", {pointLayer.volumetricOpacityCanvas:getDimensions()})
+			love.graphics.setBlendMode("multiply", "premultiplied")
+			love.graphics.draw(pointLayer.volumetricOpacityCanvas, 0, 0, 0, 1 / consts.volumetricCanvasScale)
+			love.graphics.setShader(self.drawVolumetricShader)
 			self.drawVolumetricShader:send("additions", pointLayer.volumetricAddCountCanvas)
 			self.drawVolumetricShader:send("scale", consts.volumetricCanvasScale)
+			love.graphics.setBlendMode("add", "premultiplied")
 			love.graphics.draw(pointLayer.volumetricCanvas, 0, 0, 0, 1 / consts.volumetricCanvasScale)
 			love.graphics.setColorMask()
 		else
@@ -212,8 +221,8 @@ function game:drawCelestial(POVEntity)
 				end
 
 				pointAttenuationShader:send("shapeRadii", {mathsies.vec3.components(distanceUnitScale * parentObjectRadii)})
-				if pointAttenuationShader:hasUniform("baseAttenuation") then
-					pointAttenuationShader:send("baseAttenuation", attenuationMultiplier / distanceUnitScale)
+				if pointAttenuationShader:hasUniform("attenuationMultiplier") then
+					pointAttenuationShader:send("attenuationMultiplier", attenuationMultiplier / distanceUnitScale)
 				end
 				pointAttenuationShader:send("rayLength", fullyVolumetricRadiusProperUnits * distanceUnitScale)
 				pointAttenuationShader:send("textureSize", {
@@ -449,10 +458,12 @@ function game:drawCelestial(POVEntity)
 		drawLayer(pointLayer, false)
 	end
 
-	love.graphics.setShader(self.transmittanceOutputMultiplierShader)
+	love.graphics.setShader()
+	love.graphics.setColorMask(true, true, true, false)
 	love.graphics.setBlendMode("multiply", "premultiplied")
 	love.graphics.setCanvas(outputCanvas)
 	love.graphics.draw(self.screenCanvasses.pointTotalTransmittanceCanvas) -- At this point the only thing that will have drawn into this is the entities on the ship
+	love.graphics.setColorMask()
 
 	love.graphics.setCanvas()
 	love.graphics.setShader()
@@ -466,10 +477,10 @@ function game:drawCelestial(POVEntity)
 			drawLayer(pointLayer, true) -- Sets canvas to output canvas
 			love.graphics.setCanvas(self.screenCanvasses.pointTotalTransmittanceCanvas)
 			love.graphics.setBlendMode("multiply", "premultiplied")
-			love.graphics.setShader(self.attenuationAccumulationShader) -- Outputs alpha into red after dividing by additions
+			love.graphics.setShader(self.attenuationAccumulationShader)
 			self.attenuationAccumulationShader:send("additionCanvas", pointLayer.volumetricAddCountCanvas)
 			self.attenuationAccumulationShader:send("canvasSize", {pointLayer.volumetricCanvas:getDimensions()})
-			love.graphics.draw(pointLayer.volumetricCanvas, 0, 0, 0, 1 / consts.volumetricCanvasScale)
+			love.graphics.draw(pointLayer.volumetricOpacityCanvas, 0, 0, 0, 1 / consts.volumetricCanvasScale)
 			love.graphics.setShader()
 		end
 	end

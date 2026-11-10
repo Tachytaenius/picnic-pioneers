@@ -40,7 +40,7 @@ function game:drawPlayerPOV(player)
 		love.graphics.setCanvas(self.screenCanvasses.shipCanvas)
 		love.graphics.clear(0, 0, 0, 0)
 		love.graphics.setCanvas(self.screenCanvasses.pointTotalTransmittanceCanvas)
-		love.graphics.clear(1, 0, 0, 1)
+		love.graphics.clear(1, 1, 1, 1)
 		love.graphics.setCanvas({
 			self.screenCanvasses.shipCanvas,
 			self.screenCanvasses.pointTotalTransmittanceCanvas,

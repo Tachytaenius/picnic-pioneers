@@ -2,15 +2,15 @@ uniform float rayLength;
 uniform ivec3 textureSize;
 uniform mat4 clipToSky;
 uniform vec3 cameraPosition;
-uniform layout(r16f) image3D resultTexture;
+uniform layout(rgba16f) image3D resultTexture;
 
-uniform float baseAttenuation;
+uniform float attenuationMultiplier;
 uniform vec3 shapeRadii;
 
-float sampleAttenuationVolume(vec3 samplePosition) {
+vec3 sampleAttenuationVolume(vec3 samplePosition) {
 	vec3 samplePositionTrueRatio = samplePosition * shapeRadii / max(shapeRadii.x, max(shapeRadii.y, shapeRadii.z));
-	float attenuationDensity = sampleAttenuationShapeDensity(samplePosition, samplePositionTrueRatio);
-	return baseAttenuation * attenuationDensity;
+	vec3 attenuationSample = sampleAttenuationShape(samplePosition, samplePositionTrueRatio);
+	return attenuationMultiplier * attenuationSample;
 }
 
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
@@ -34,13 +34,13 @@ void computemain() {
 	float rayStepSize = rayLength / float(textureSize.z - 1);
 	vec3 rayStepVec = direction * rayStepSize;
 	vec3 currentPosition = cameraPosition;
-	float transmittance = 1.0;
+	vec3 transmittance = vec3(1.0);
 
 	// Ray moves forwards from camera to end
 	for (int rayStep = 0; rayStep < textureSize.z; rayStep++) {
-		imageStore(resultTexture, ivec3(screenPosition.xy, rayStep), vec4(transmittance, 0.0, 0.0, 0.0));
+		imageStore(resultTexture, ivec3(screenPosition.xy, rayStep), vec4(transmittance, 0.0));
 
-		float attenuation = sampleAttenuationVolume(currentPosition);
+		vec3 attenuation = sampleAttenuationVolume(currentPosition);
 
 		transmittance *= exp(-attenuation * rayStepSize);
 		currentPosition += rayStepVec;
