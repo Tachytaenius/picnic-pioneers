@@ -185,7 +185,6 @@ function game:drawCelestial(POVEntity)
 				math.ceil(pointLayer.volumetricCanvas:getHeight() / h)
 			)
 
-			
 			love.graphics.setColorMask(true, true, true, false)
 			love.graphics.setShader(self.attenuationAccumulationShader)
 			self.attenuationAccumulationShader:send("additionCanvas", pointLayer.volumetricAddCountCanvas)

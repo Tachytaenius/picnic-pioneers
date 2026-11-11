@@ -50,7 +50,6 @@ function game:initCelestial(initParams)
 
 	self.drawVolumetricShader = love.graphics.newShader("shaders/drawing/drawVolumetric.glsl")
 	self.attenuationAccumulationShader = love.graphics.newShader("shaders/drawing/attenuationAccumulation.glsl")
-	self.brightnessMultiplyShader = love.graphics.newShader("shaders/drawing/brightnessMultiply.glsl")
 
 	self.starShader = love.graphics.newComputeShader(
 		"#line 1\n" .. love.filesystem.read("shaders/include/structs.glsl") ..

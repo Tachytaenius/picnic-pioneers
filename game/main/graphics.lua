@@ -9,7 +9,11 @@ function game:draw()
 	love.graphics.setCanvas(self.screenCanvasses.outputCanvas)
 	love.graphics.draw(self.screenCanvasses.shipCanvas)
 	love.graphics.setCanvas()
+
+	love.graphics.setShader(self.spectralToRGBShader)
+	self.spectralToRGBShader:send("spectralToXYZ", self.spectralToXYZMatrix)
 	love.graphics.draw(self.screenCanvasses.outputCanvas)
+	love.graphics.setShader()
 end
 
 return game

@@ -13,6 +13,61 @@ function game:newState()
 	return state
 end
 
+function game:loadXYZFromWavelengthData()
+	local xyzFromWavelength = {}
+	for line in love.filesystem.lines("data/CIE_xyz_1931_2deg.csv") do
+		local wavelength, x, y, z = line:match("([^,]*),([^,]*),([^,]*),([^,]*)")
+		xyzFromWavelength[tonumber(wavelength)] = {
+			x = tonumber(x),
+			y = tonumber(y),
+			z = tonumber(z)
+		}
+	end
+	return xyzFromWavelength
+end
+
+function game:initSpectralInfo()
+	-- 3 bins of equal size over the visible wavelength range ("RGB") are used in the physical rendering
+	-- and then converted to CIE XYZ, and then to sRGB. Which is not what the renderer was using.
+
+	-- Wavelengths are in nm here
+
+	local xyzFromWavelength = self:loadXYZFromWavelengthData()
+
+	-- 400 nm to 700 nm
+	local step = 100
+
+	local rStart = 600
+	local rEnd = 700
+
+	local gStart = 500
+	local gEnd = 600
+
+	local bStart = 400
+	local bEnd = 500
+
+	local function bin(start, stop)
+		local sumX, sumY, sumZ = 0, 0, 0
+		for wavelength = start, stop - 1 do
+			local xyz = xyzFromWavelength[wavelength]
+			sumX = sumX + xyz.x
+			sumY = sumY + xyz.y
+			sumZ = sumZ + xyz.z
+		end
+		return sumX / step, sumY / step, sumZ / step
+	end
+
+	local rX, rY, rZ = bin(rStart, rEnd)
+	local gX, gY, gZ = bin(gStart, gEnd)
+	local bX, bY, bZ = bin(bStart, bEnd)
+
+	self.spectralToXYZMatrix = { -- Row-major
+		rX, gX, bX,
+		rY, gY, bY,
+		rZ, gZ, bZ
+	}
+end
+
 function game:initState(initParams)
 	-- Common graphics init
 	self.screenCanvasses = {} -- Canvasses for which the size is supposed to match the game output size. There are also scaled canvasses like those in point layers for their volumetrics or the point attenuation texture
@@ -22,6 +77,9 @@ function game:initState(initParams)
 	self:initShip(initParams)
 	self:initCelestial(initParams)
 	self:resizeGameScreen(self.screenWidth, self.screenHeight, true)
+
+	self:initSpectralInfo()
+	self.spectralToRGBShader = love.graphics.newShader("shaders/drawing/spectralToRGB.glsl")
 end
 
 ---@param width number
