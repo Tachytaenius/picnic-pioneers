@@ -278,7 +278,7 @@ function game:initPointLayers()
 	-- Topmost layer is treated specially
 	-- TODO: Allow it to collapse to a point when sufficiently far away. Since that's just one point there's no need for optimisations like chunks etc. Would definitely be easier if the topmost point layer has a semi-functioning parent point layer for this purpose
 	local topLayer = self:newPointLayer("galaxies", "Galaxies", consts.galaxyLayerChunkSize, consts.maxGalacticDensity, 7, galaxyPointLayerInfo)
-	self:newPointLayer("starSystems", "Star Systems", consts.starLayerChunkSize, consts.maxStellarDensity, 21, starSystemPointLayerInfo)
+	self:newPointLayer("starSystems", "Star Systems", consts.starLayerChunkSize, consts.maxStellarDensity, 11, starSystemPointLayerInfo)
 
 	self.valueNoiseDataReusableForPointLayers = nil -- If no point layers took this then it now no longer will be used
 

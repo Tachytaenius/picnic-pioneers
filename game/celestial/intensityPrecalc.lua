@@ -210,7 +210,7 @@ function game:makePrecalcGraphicsObjects(maxRequiredResultBufferSize)
 	local canvasSize = 2 ^ consts.intensityPrecalcCanvasSizePower -- For nice doubling/halving mipchain
 
 	self.precalcCanvas = love.graphics.newCanvas(canvasSize, canvasSize, {
-		format = "rgba32f",
+		format = "rgba16f",
 		debugname = "Intensity Precalculation Canvas",
 		mipmaps = "manual",
 		type = "array",

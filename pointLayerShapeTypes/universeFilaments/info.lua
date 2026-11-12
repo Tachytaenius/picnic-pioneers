@@ -13,7 +13,7 @@ info.valueNoiseInfo = {
 	}
 }
 
-local outputAmplifier = 6
+local outputAmplifier = 10
 info.constants = {
 	noise1Exponent = 80,
 	noise2Exponent = 80,
