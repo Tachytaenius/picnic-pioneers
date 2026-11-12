@@ -37,14 +37,17 @@ function game:initSpectralInfo()
 	-- 400 nm to 700 nm
 	local step = 100
 
-	local rStart = 600
-	local rEnd = 700
+	self.rSpectrumStart = 600
+	self.rSpectrumEnd = 700
+	self.rSpectrumMiddle = (self.rSpectrumStart + self.rSpectrumEnd) / 2
 
-	local gStart = 500
-	local gEnd = 600
+	self.gSpectrumStart = 500
+	self.gSpectrumEnd = 600
+	self.gSpectrumMiddle = (self.gSpectrumStart + self.gSpectrumEnd) / 2
 
-	local bStart = 400
-	local bEnd = 500
+	self.bSpectrumStart = 400
+	self.bSpectrumEnd = 500
+	self.bSpectrumMiddle = (self.bSpectrumStart + self.bSpectrumEnd) / 2
 
 	local function bin(start, stop)
 		local sumX, sumY, sumZ = 0, 0, 0
@@ -57,14 +60,15 @@ function game:initSpectralInfo()
 		return sumX / step, sumY / step, sumZ / step
 	end
 
-	local rX, rY, rZ = bin(rStart, rEnd)
-	local gX, gY, gZ = bin(gStart, gEnd)
-	local bX, bY, bZ = bin(bStart, bEnd)
+	local rX, rY, rZ = bin(self.rSpectrumStart, self.rSpectrumEnd)
+	local gX, gY, gZ = bin(self.gSpectrumStart, self.gSpectrumEnd)
+	local bX, bY, bZ = bin(self.bSpectrumStart, self.bSpectrumEnd)
 
+	local k = 1e-9 -- Conversion factor from W/sr/m^2/nm to W/sr/m^2/m
 	self.spectralToXYZMatrix = { -- Row-major
-		rX, gX, bX,
-		rY, gY, bY,
-		rZ, gZ, bZ
+		k*rX, k*gX, k*bX,
+		k*rY, k*gY, k*bY,
+		k*rZ, k*gZ, k*bZ
 	}
 end
 
@@ -74,11 +78,12 @@ function game:initState(initParams)
 	self.screenWidth, self.screenHeight = love.graphics.getDimensions()
 	self.dummyTexture = love.graphics.newImage(love.image.newImageData(1, 1))
 
+	self:initSpectralInfo()
+
 	self:initShip(initParams)
 	self:initCelestial(initParams)
 	self:resizeGameScreen(self.screenWidth, self.screenHeight, true)
 
-	self:initSpectralInfo()
 	self.spectralToRGBShader = love.graphics.newShader("shaders/drawing/spectralToRGB.glsl")
 end
 

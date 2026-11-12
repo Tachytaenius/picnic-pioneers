@@ -1,4 +1,5 @@
 local consts = require("consts")
+local util = require("util")
 local mathsies = require("lib.mathsies")
 
 local game = {}
@@ -11,15 +12,15 @@ function game:generateStarSystem(layerObject)
 		if layerObject.starParams[i][1] == consts.invalidStarParam then
 			break
 		end
-		local radius, mass, rFlux = self:generateStar(unpack(layerObject.starParams[i]))
-		local rIntensity = rFlux / (consts.tau * 2)
+		local radius, mass, radiantFluxR, radiantFluxG, radiantFluxB = self:generateStar(unpack(layerObject.starParams[i]))
+		local radiantFlux = mathsies.vec3(radiantFluxR, radiantFluxG, radiantFluxB)
 		massSum = massSum + mass
 		local star = {
 			type = "star",
 			mass = mass,
 			radius = radius,
-			radiantFlux = mathsies.vec3(rFlux, rFlux, rFlux),
-			radiantIntensity = mathsies.vec3(rIntensity, rIntensity, rIntensity),
+			radiantFlux = radiantFlux,
+			radiantIntensity = radiantFlux / (consts.tau * 2),
 			position = mathsies.vec3((i - 1) * 1.5e9, 0, 0) -- TODO: Kepler orbits
 		}
 		table.insert(bodies, star)
@@ -37,19 +38,23 @@ local solarMass = 2e30
 local solarRadius = 6.957e8
 local solarVolume = 2 / 3 * consts.tau * solarRadius ^ 3
 local solarDensity = solarMass / solarVolume
-local tau = math.pi * 2
-local starMassParamWeight = 0.75
-local starMassParamExponent = 5
-local starMassExponentRangeLow = 29
+local tau = consts.tau
+local starMassParamWeight = 0.85
+local starMassParamExponent = 120
+local starMassExponentRangeLow = 28
 local starMassExponentRangeHigh = 30.5
 local starMassMultiplier = 1
+local max = math.max
 local function massLuminosityRelationDwarf(mass)
 	local mass = mass / solarMass
-	return solarLuminosity * (0.372324 * mass ^ 4 - 0.0152364 * mass ^ 3 + 0.068376 * mass ^ 2 + 0.00682457 * mass - 0.000314545) -- Desmos fit to Wikipedia data
+	return max(0, solarLuminosity * (0.372324 * mass ^ 4 - 0.0152364 * mass ^ 3 + 0.068376 * mass ^ 2 + 0.00682457 * mass - 0.000314545)) -- Desmos fit to Wikipedia data
 end
 local function massRadiusRelationDwarf(mass)
 	local mass = mass / solarMass
-	return solarRadius * (0.891494 * mass ^ 0.8412) -- Desmos fit to Wikipedia data
+	-- 1 kilometre is arbitrary but zero radius would be bad!
+	-- The parameters above shouldn't allow anywhere near this, though.
+	-- This is just safety in case they're changed.
+	return max(1000, solarRadius * (0.891494 * mass ^ 0.8412)) -- Desmos fit to Wikipedia data
 end
 local function massLuminosityRelation(mass)
 	local mass = mass / solarMass -- Change units
@@ -83,8 +88,8 @@ function game:generateStar(param1, param2)--, param3)
 
 	local dwarf = starMass <= 0.6 * solarMass
 
-	local fluxMulLow = 0.75
-	local fluxMulHigh = 1.25
+	local fluxMulLow = 0.9
+	local fluxMulHigh = 1.1
 	local fluxMul = fluxMulLow + (fluxMulHigh - fluxMulLow) * param2
 
 	local radius = (dwarf and massRadiusRelationDwarf or massRadiusRelation)(starMass)
@@ -93,7 +98,19 @@ function game:generateStar(param1, param2)--, param3)
 
 	local starEffectiveTemperature = (radiantFlux / (area * consts.stefanBoltzmannConstant)) ^ (1 / 4)
 
-	return radius, starMass, radiantFlux
+	-- 1e-9 because nm to m
+	-- This would be better if integrated over the range of the bins but that would get computationally expensive
+	local radianceR = util.planckLaw(self.rSpectrumMiddle * 1e-9, starEffectiveTemperature)
+	local radianceG = util.planckLaw(self.gSpectrumMiddle * 1e-9, starEffectiveTemperature)
+	local radianceB = util.planckLaw(self.bSpectrumMiddle * 1e-9, starEffectiveTemperature)
+
+	-- Surface radiance is flux / area / pi steradians
+	-- So flux from surface radiance is surface radiance * area * pi steradians
+	local radiantFluxR = radianceR * area * (tau / 2)
+	local radiantFluxG = radianceG * area * (tau / 2)
+	local radiantFluxB = radianceB * area * (tau / 2)
+
+	return radius, starMass, radiantFluxR, radiantFluxG, radiantFluxB
 end
 
 return game

@@ -389,6 +389,7 @@ function game:loadShapeTypes()
 
 			shapeType.needsTrueRatio = info.needsTrueRatio
 			shapeType.attenuation = info.attenuation
+			shapeType.averageAttenuationSpectrumForPrecalc = info.averageAttenuationSpectrumForPrecalc
 
 			if not shapeType.attenuation then
 				shapeType.getDensity = info.getDensity
@@ -649,7 +650,8 @@ function game:loadShapeTypes()
 				{
 					debugname = "Int.Precalc. Shader for Emi. " .. shapeType.name .. ", Att. " .. otherShapeType.name,
 					defines = {
-						INTENSITY_PRECALC = true
+						INTENSITY_PRECALC = true,
+						AVG_ATT_SPECTRUM_FOR_PRECALC = otherShapeType.averageAttenuationSpectrumForPrecalc
 					}
 				}
 			}

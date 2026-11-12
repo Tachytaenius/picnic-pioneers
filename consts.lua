@@ -92,9 +92,10 @@ function consts.loadAll()
 	consts.iconScale = 16
 	consts.windowIconImageData = util.getScaledImageData(consts.iconPath, consts.iconScale)
 
-	-- Determinism! Being silly about the precision. Taken from OEIS.
-	consts.tau = 6.28318530717958647692528676655900576839433879875021164194988918461563281257241799725606965068423413
+	-- Determinism! Being silly about the precision
+	consts.tau = 6.28318530717958647692528676655900576839433879875021164194988918461563281257241799725606965068423413 -- OEIS
 	consts.pi = consts.tau / 2
+	consts.e = 2.7182818284590452353602874713526624977572470936999595749669676277 -- WolframAlpha
 
 	consts.maxDeltaTime = 0.1
 	consts.initMaxTickLength = 0.2
@@ -175,9 +176,10 @@ function consts.loadAll()
 	-- Simulation/graphics parameters
 
 	consts.gravitationalConstant = 6.6743e-11
-	consts.planckConstant = 6.6261e-34
+	consts.planckConstant = 6.62607015e-34
 	consts.speedOfLight = 299792458
-	consts.stefanBoltzmannConstant = 5.67037442e-8
+	consts.stefanBoltzmannConstant = 5.670374419e-8
+	consts.boltzmannConstant = 1.380649e-23
 
 	consts.starLayerChunkSize = 4e17
 	consts.maxStellarDensity = 4.72e-51 -- Stellar density near the sun

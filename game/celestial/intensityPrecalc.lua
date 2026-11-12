@@ -312,7 +312,7 @@ function game:countIntensitiesToMeasure()
 					attShapeType.sampleCount *
 					attenuationSamplesThis
 				local hasNoise = shapeType.noiseInfo or attShapeType.noiseInfo
-				local averagingIterationCount = hasNoise and 3 or 1
+				local averagingIterationCount = hasNoise and 2 or 1
 				local resultBufferSizeThis = virtualObjectsThisInfo * directionSamples
 				maxRequiredResultBufferSize = math.max(maxRequiredResultBufferSize, resultBufferSizeThis)
 				intensitiesToMeasure = intensitiesToMeasure + virtualObjectsThisInfo * averagingIterationCount
@@ -446,6 +446,7 @@ function game:saveUnscaledIntensities(pointLayer)
 			shapeSampleCount = unscaledIntensities.shapeSampleCount,
 			attenuationShapeSampleCount = unscaledIntensities.attenuationShapeSampleCount,
 			attenuationSamples = unscaledIntensities.attenuationSamples,
+			averagingIterationCount = shapeTypeInfo.averagingIterationCount,
 
 			infoCode = shapeType.code,
 			shaderCode = love.filesystem.read(shapeType.shaderPath),
@@ -498,6 +499,7 @@ function game:handleShapeTypeInfoPrecalc(pointLayer, shapeTypeInfo, layerCountSe
 	end
 
 	local averagingIterationCount = layerCountSet.averagingIterationsFromInfos[shapeTypeInfo]
+	shapeTypeInfo.averagingIterationCount = averagingIterationCount -- HACK...?
 	local extraInfoPerVirtualObject
 	if not decodedIntensities then
 		for averagingIteration = 0, averagingIterationCount - 1 do
@@ -505,7 +507,7 @@ function game:handleShapeTypeInfoPrecalc(pointLayer, shapeTypeInfo, layerCountSe
 			extraInfoPerVirtualObject = self:doIntensityPrecalcShapeTypeInfoAveragingIteration(pointLayer, shapeTypeInfo, volumetricShader, layerCountSet)
 		end
 	else
-		extraInfoPerVirtualObject = self:doIntensityPrecalcShapeTypeInfoAveragingIteration(pointLayer, shapeTypeInfo, nil,layerCountSet, true)
+		extraInfoPerVirtualObject = self:doIntensityPrecalcShapeTypeInfoAveragingIteration(pointLayer, shapeTypeInfo, nil, layerCountSet, true)
 	end
 
 	if not decodedIntensities then
@@ -596,6 +598,7 @@ function game:handleLayerPrecalcCache(pointLayer, layerCountSet)
 			shapeSampleCount = shapeType.sampleCount,
 			attenuationShapeSampleCount = attShapeType.sampleCount,
 			attenuationSamples = layerCountSet.attenuationSamplesFromInfos[shapeTypeInfo],
+			averagingIterationCount = layerCountSet.averagingIterationsFromInfos[shapeTypeInfo],
 
 			infoCode = shapeType.code,
 			shaderCode = love.filesystem.read(shapeType.shaderPath),

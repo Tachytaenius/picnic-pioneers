@@ -194,7 +194,6 @@ function love.draw()
 		"x: " .. tostring(state.ship.position.x) .. "\n" ..
 		"y: " .. tostring(state.ship.position.y) .. "\n" ..
 		"z: " .. tostring(state.ship.position.z) .. "\n" ..
-		"factor: " .. state:getGravityWellSlowdownFactor() .. "\n" ..
 		"base max speed: " .. state:getMaxMovementSpeed() .. "\n" ..
 		"radiance multiplier order: " .. math.floor(math.log10(consts.celestialRadianceMultiplier)) .. "\n" ..
 		"radiance multiplier: " .. consts.celestialRadianceMultiplier

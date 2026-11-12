@@ -243,11 +243,11 @@ function starSystemPointLayerInfo:generateChunk(realX, realY, realZ, chunkId, ch
 				starParamInfo[consts.maxStarsPerSystem * consts.starParamCount * i + (starIndex - 1) * consts.starParamCount + paramIndex - 1] = param
 			end
 
-			local radius, mass, radiantFlux = self.gameObject:generateStar(unpack(starParamsScratch))
+			local radius, mass, radiantFluxR, radiantFluxG, radiantFluxB = self.gameObject:generateStar(unpack(starParamsScratch))
 			massSum = massSum + mass
-			rSum = rSum + radiantFlux / (consts.tau * 2)
-			gSum = gSum + radiantFlux / (consts.tau * 2)
-			bSum = bSum + radiantFlux / (consts.tau * 2)
+			rSum = rSum + radiantFluxR / (consts.tau * 2)
+			gSum = gSum + radiantFluxG / (consts.tau * 2)
+			bSum = bSum + radiantFluxB / (consts.tau * 2)
 		end
 		if starsThisSystem < consts.maxStarsPerSystem then
 			starParamInfo[consts.maxStarsPerSystem * consts.starParamCount * i + starsThisSystem * consts.starParamCount] = consts.invalidStarParam
@@ -278,7 +278,7 @@ function game:initPointLayers()
 	-- Topmost layer is treated specially
 	-- TODO: Allow it to collapse to a point when sufficiently far away. Since that's just one point there's no need for optimisations like chunks etc. Would definitely be easier if the topmost point layer has a semi-functioning parent point layer for this purpose
 	local topLayer = self:newPointLayer("galaxies", "Galaxies", consts.galaxyLayerChunkSize, consts.maxGalacticDensity, 7, galaxyPointLayerInfo)
-	self:newPointLayer("starSystems", "Star Systems", consts.starLayerChunkSize, consts.maxStellarDensity, 13, starSystemPointLayerInfo)
+	self:newPointLayer("starSystems", "Star Systems", consts.starLayerChunkSize, consts.maxStellarDensity, 21, starSystemPointLayerInfo)
 
 	self.valueNoiseDataReusableForPointLayers = nil -- If no point layers took this then it now no longer will be used
 
@@ -361,11 +361,11 @@ function game:initPointLayers()
 			-- for k = 1, axisSamples do
 			-- 	local param3 = (k - 0.5) / axisSamples
 
-				local radius, mass, radiantFlux = self:generateStar(param1, param2)--, param3)
+				local radius, mass, radiantFluxR, radiantFluxG, radiantFluxB = self:generateStar(param1, param2)--, param3)
 				sumMass = sumMass + mass
-				sumFluxR = sumFluxR + radiantFlux
-				sumFluxG = sumFluxG + radiantFlux
-				sumFluxB = sumFluxB + radiantFlux
+				sumFluxR = sumFluxR + radiantFluxR
+				sumFluxG = sumFluxG + radiantFluxG
+				sumFluxB = sumFluxB + radiantFluxB
 
 				count = count + 1
 			-- end

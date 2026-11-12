@@ -1,5 +1,13 @@
 local info = {}
 
+-- Attenuation shape density functions can return values greater than 1.
+-- The only reason emission shapes can't is that there is a maximum expected number of points per chunk (corresponding to a return value of 1).
+
+info.needsTrueRatio = true
+
+info.averageAttenuationSpectrumForPrecalc = true -- Use less averaging iterations to get the right average spectral radiances going through this attenuation shape type
+-- Only set averageAttenuationSpectrumForPrecalc if the average values of an attenuation shape type are equal for the whole spectrum
+
 info.attenuation = true
 
 info.parameters = {
@@ -56,10 +64,5 @@ info.valueNoiseInfo = {
 		countZ = 5
 	}
 }
-
--- Attenuation shape density functions can return values greater than 1.
--- The only reason emission shapes can't is that there is a maximum expected number of points per chunk (corresponding to a return value of 1).
-
-info.needsTrueRatio = true
 
 return info

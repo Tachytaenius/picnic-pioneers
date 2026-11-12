@@ -11,7 +11,7 @@ vec3 SHAPE_DENSITY_SAMPLE_TYPE(vec3 samplePosition, vec3 samplePositionTrueRatio
 				PARAM(nebulaExponent)
 			)
 		)
-	) * vec3(
+	) * vec3( // Should we double this too for the same reason?
 		VALUE_NOISE(5, samplePositionTrueRatio),
 		VALUE_NOISE(6, samplePositionTrueRatio),
 		VALUE_NOISE(7, samplePositionTrueRatio)

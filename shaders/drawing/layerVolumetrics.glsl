@@ -40,6 +40,11 @@ VolumetricSample sampleVolumetrics(vec3 samplePosition) {
 	vec3 samplePositionTrueRatio = samplePosition * shapeRadii / max(shapeRadii.x, max(shapeRadii.y, shapeRadii.z));
 	float emissionDensity = sampleEmissionShapeDensity(samplePosition, samplePositionTrueRatio);
 	vec3 attenuationSample = sampleAttenuationShape(samplePosition, samplePositionTrueRatio);
+#ifdef INTENSITY_PRECALC
+#ifdef AVG_ATT_SPECTRUM_FOR_PRECALC
+	attenuationSample = vec3((attenuationSample.r + attenuationSample.g + attenuationSample.b) / 3.0);
+#endif
+#endif
 	return VolumetricSample (
 		attenuationMultiplier * attenuationSample,
 		baseEmission * emissionDensity
