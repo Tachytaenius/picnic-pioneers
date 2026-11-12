@@ -52,12 +52,14 @@ local coreFullProportion = 0.35
 local armVerticalTaperPower = 1.5
 local noiseOffsetSize = 0.03
 local averageZRatio = average
+local outputAmplifier = 4
 info.constants = { -- For GPU mostly
 	coreProportion = coreProportion,
 	coreFullProportion = coreFullProportion,
 	armVerticalTaperPower = armVerticalTaperPower,
 	noiseOffsetSize = noiseOffsetSize,
-	averageZRatio = averageZRatio
+	averageZRatio = averageZRatio,
+	outputAmplifier = outputAmplifier
 }
 
 local sqrt = math.sqrt
@@ -109,7 +111,8 @@ function info.getDensity(x, y, z, densityExponent, armCount, armEndRotation)
 	) ^ (3.3 * length2D)
 	local baseDensity = armFactor * (1 - galaxyCoreFactor) + 1 * galaxyCoreFactor
 
-	return max(0, baseDensity * (1 - originalLength3D)) ^ densityExponent
+	local baseOutput = max(0, baseDensity * (1 - originalLength3D)) ^ densityExponent
+	return min(1, outputAmplifier * baseOutput)
 end
 
 return info

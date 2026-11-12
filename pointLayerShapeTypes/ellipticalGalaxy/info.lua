@@ -23,17 +23,22 @@ info.zScaleRatioSamples = 8
 info.needsTrueRatio = true -- Will be passed coordinates that depend on shape object ratios, and the (no longer necessarily linear) effect that scaling has on the total mass of the object will be precomputed for varying scales and interpolated between for real scales
 
 local noiseFlatness = 0.25
+local outputAmplifier = 2
 info.constants = {
-	noiseFlatness = noiseFlatness
+	noiseFlatness = noiseFlatness,
+	outputAmplifier = outputAmplifier
 }
 
 local max = math.max
+local min = math.min
 local sqrt = math.sqrt
 
 function info.getDensity(x, y, z, xTrueRatio, yTrueRatio, zTrueRatio, densityExponent)
-	return
+	return min(1,
+		outputAmplifier *
 		(noiseFlatness + (1 - noiseFlatness) * valueNoise(1, xTrueRatio, yTrueRatio, zTrueRatio)) *
 		max(0, 1 - sqrt(x^2+y^2+z^2)) ^ densityExponent
+	)
 end
 
 return info

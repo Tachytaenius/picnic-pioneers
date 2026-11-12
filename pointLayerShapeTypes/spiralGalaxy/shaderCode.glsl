@@ -48,8 +48,10 @@ float SHAPE_DENSITY_SAMPLE_TYPE(vec3 samplePosition, vec3 samplePositionTrueRati
 		galaxyCoreFactor
 	);
 
-	return pow(
+	float baseOutput = pow(
 		max(0.0, baseDensity * (1.0 - originalLength3D)),
 		PARAM(densityExponent)
 	);
+
+	return min(1.0, PARAM(outputAmplifier) * baseOutput);
 }

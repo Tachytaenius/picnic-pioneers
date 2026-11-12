@@ -13,11 +13,15 @@ info.valueNoiseInfo = {
 	}
 }
 
+local outputAmplifier = 6
 info.constants = {
 	noise1Exponent = 80,
 	noise2Exponent = 80,
-	distExponent = 1
+	distExponent = 1,
+	outputAmplifier = outputAmplifier
 }
+
+local min = math.min
 
 -- valueNoise is given by setfenv elsewhere in the codebase
 function info.getDensity(x, y, z)
@@ -28,7 +32,7 @@ function info.getDensity(x, y, z)
 
 	local densityMultiplier = math.max(0, 1 - len) ^ info.constants.distExponent
 
-	return densityMultiplier * noise1Value * noise2Value
+	return min(1, outputAmplifier * densityMultiplier * noise1Value * noise2Value)
 end
 
 return info
