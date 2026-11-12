@@ -181,7 +181,7 @@ function consts.loadAll()
 	consts.stefanBoltzmannConstant = 5.670374419e-8
 	consts.boltzmannConstant = 1.380649e-23
 
-	consts.starLayerChunkSize = 4e17
+	consts.starLayerChunkSize = 6e17
 	consts.maxStellarDensity = 4.72e-51 -- Stellar density near the sun
 	consts.galaxyLayerChunkSize = 1e25
 	consts.maxGalacticDensity = 1e-73
@@ -213,9 +213,6 @@ function consts.loadAll()
 	consts.POVNearDistance = 0.01
 
 	consts.celestialRadianceMultiplier = 1e13
-
-	-- TODO: Move some of these out as they're not really simulation or graphics parameters in the sense that I meant.
-	consts.pointPreparationThreadgroupSize = 512
 
 	consts.pointLayerShapeTypeAmountIntegralMaxThreads = 7
 	consts.shapeIntegralThreadTimeout = 1

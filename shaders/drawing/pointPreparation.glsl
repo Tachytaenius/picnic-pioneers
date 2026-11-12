@@ -1,7 +1,6 @@
 readonly buffer ChunkPointCounts {
 	int chunkPointCounts[];
 };
-uniform int maxPointsPerChunk;
 
 struct PointDrawable {
 	vec3 direction;
@@ -39,6 +38,8 @@ uniform float minDot;
 
 shared uint writeCount;
 shared uint writeOffset;
+shared int chunkIndex;
+shared int chunkPointCount;
 
 vec3 perspectiveDivide(vec4 v) {
 	return v.xyz / v.w;
@@ -52,18 +53,19 @@ ivec3 bvecToIvec(bvec3 v) {
 	);
 }
 
-layout(local_size_x = THREADGROUP_SIZE, local_size_y = 1, local_size_z = 1) in;
+layout(local_size_x = MAX_POINTS_PER_CHUNK, local_size_y = 1, local_size_z = 1) in;
 void computemain() {
 	bool isFirst = love_LocalThreadID.x == 0;
 	if (isFirst) {
 		writeCount = 0;
+		chunkIndex = int(gl_WorkGroupID.x);
+		chunkPointCount = chunkPointCounts[chunkIndex];
 	}
 	barrier();
 
 	uint i = love_GlobalThreadID.x;
 	bool isSkip = i == skipIndex;
-	int chunkIndex = int(i) / maxPointsPerChunk;
-	bool isPastChunkEnd = int(i) % maxPointsPerChunk >= chunkPointCounts[chunkIndex]; 
+	bool isPastChunkEnd = love_LocalThreadID.x >= chunkPointCount;
 	bool isPastAllEnd = i >= POINT_COUNT;
 
 	// Can't use early return syntax since the first thread has work to do after point drawables are acquired

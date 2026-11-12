@@ -850,7 +850,7 @@ function game:newPointLayer(name, debugName, chunkSize, maxPointDensity, chunkBu
 	-- Add features to the following two tables
 	new.pointBufferFormat = {}
 	local defines = {
-		THREADGROUP_SIZE = consts.pointPreparationThreadgroupSize,
+		MAX_POINTS_PER_CHUNK = new.maxPointsPerChunk,
 		POINT_COUNT = new.maxPoints
 	}
 	local unsentFeatureNames = {}
