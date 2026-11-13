@@ -12,9 +12,6 @@ ColourTransmittance sampleBody(vec3 cameraPosition, vec3 direction, vec3 surface
 	}
 	averageLimbFactor *= 2.0;
 
-	// TODO: Compensate for change in output radiance correctly. Do I just divide by averageLimbFactor like so?
-	vec3 centralRadiance = surfaceRadiance / averageLimbFactor;
-
 	float angle = acos(clamp(dot(normalize(cameraPosition - surfaceEnterPos), surfaceNormal), -1.0, 1.0));
 
 	float limbFactor = 0.0;
@@ -22,6 +19,6 @@ ColourTransmittance sampleBody(vec3 cameraPosition, vec3 direction, vec3 surface
 		limbFactor += limbCoefficients[k] * pow(cos(angle), float(k));
 	}
 
-	vec3 colour = centralRadiance * limbFactor;
+	vec3 colour = surfaceRadiance * limbFactor / averageLimbFactor; // The average value of limbFactor / averageLimbFactor is 1, so the average output value is still surfaceRadiance
 	return ColourTransmittance (colour, vec3(0.0));
 }
