@@ -688,6 +688,20 @@ function game:getPointLayerIntensities()
 		end
 	end
 
+	-- for _, pointLayer in ipairs(self.pointLayers) do
+	-- 	local max = math.max(
+	-- 		pointLayer.averageRadiantIntensityRPerPoint,
+	-- 		pointLayer.averageRadiantIntensityGPerPoint,
+	-- 		pointLayer.averageRadiantIntensityBPerPoint
+	-- 	)
+	-- 	print(
+	-- 		pointLayer.name,
+	-- 		pointLayer.averageRadiantIntensityRPerPoint / max,
+	-- 		pointLayer.averageRadiantIntensityGPerPoint / max,
+	-- 		pointLayer.averageRadiantIntensityBPerPoint / max
+	-- 	)
+	-- end
+
 	self.loadInfo.intensitiesMeasured = nil
 	self.loadInfo.intensitiesToMeasure = nil
 	coroutine.yield()

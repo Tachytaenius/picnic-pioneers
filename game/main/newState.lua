@@ -30,24 +30,25 @@ function game:initSpectralInfo()
 	-- 3 bins of equal size over the visible wavelength range ("RGB") are used in the physical rendering
 	-- and then converted to CIE XYZ, and then to sRGB. Which is not what the renderer was using.
 
-	-- Wavelengths are in nm here
+	-- Wavelengths are in nm here for interpreting the data
+	-- They are then converted to m
 
 	local xyzFromWavelength = self:loadXYZFromWavelengthData()
 
 	-- 400 nm to 700 nm in 3 bins
 	local range = 100
 
-	self.rSpectrumStart = 600
-	self.rSpectrumEnd = 700
-	self.rSpectrumMiddle = (self.rSpectrumStart + self.rSpectrumEnd) / 2
+	local rSpectrumStart = 600
+	local rSpectrumEnd = 700
+	local rSpectrumMiddle = (rSpectrumStart + rSpectrumEnd) / 2
 
-	self.gSpectrumStart = 500
-	self.gSpectrumEnd = 600
-	self.gSpectrumMiddle = (self.gSpectrumStart + self.gSpectrumEnd) / 2
+	local gSpectrumStart = 500
+	local gSpectrumEnd = 600
+	local gSpectrumMiddle = (gSpectrumStart + gSpectrumEnd) / 2
 
-	self.bSpectrumStart = 400
-	self.bSpectrumEnd = 500
-	self.bSpectrumMiddle = (self.bSpectrumStart + self.bSpectrumEnd) / 2
+	local bSpectrumStart = 400
+	local bSpectrumEnd = 500
+	local bSpectrumMiddle = (bSpectrumStart + bSpectrumEnd) / 2
 
 	local function bin(start, stop)
 		local sumX, sumY, sumZ = 0, 0, 0
@@ -62,17 +63,32 @@ function game:initSpectralInfo()
 		return sumX / count, sumY / count, sumZ / count -- Average values of X, Y, and Z across the bin
 	end
 
-	local rX, rY, rZ = bin(self.rSpectrumStart, self.rSpectrumEnd)
-	local gX, gY, gZ = bin(self.gSpectrumStart, self.gSpectrumEnd)
-	local bX, bY, bZ = bin(self.bSpectrumStart, self.bSpectrumEnd)
+	local rX, rY, rZ = bin(rSpectrumStart, rSpectrumEnd)
+	local gX, gY, gZ = bin(gSpectrumStart, gSpectrumEnd)
+	local bX, bY, bZ = bin(bSpectrumStart, bSpectrumEnd)
 
 	local f = 1e-9 -- Conversion factor from nm^-1 to m^-1
+
 	local b = f * range -- Width of a bin in m
 	self.spectralToXYZMatrix = { -- Row-major
 		b*rX, b*gX, b*bX,
 		b*rY, b*gY, b*bY,
 		b*rZ, b*gZ, b*bZ
 	}
+
+	self.spectralBinRange = b
+
+	self.rSpectrumStart = rSpectrumStart * f
+	self.rSpectrumEnd = rSpectrumEnd * f
+	self.rSpectrumMiddle = rSpectrumMiddle * f
+
+	self.gSpectrumStart = gSpectrumStart * f
+	self.gSpectrumEnd = gSpectrumEnd * f
+	self.gSpectrumMiddle = gSpectrumMiddle * f
+
+	self.bSpectrumStart = bSpectrumStart * f
+	self.bSpectrumEnd = bSpectrumEnd * f
+	self.bSpectrumMiddle = bSpectrumMiddle * f
 end
 
 function game:initState(initParams)

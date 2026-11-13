@@ -175,6 +175,8 @@ function consts.loadAll()
 
 	-- Simulation/graphics parameters
 
+	consts.starPlanckLawSamplesPerBin = 3
+
 	consts.gravitationalConstant = 6.6743e-11
 	consts.planckConstant = 6.62607015e-34
 	consts.speedOfLight = 299792458
@@ -241,7 +243,7 @@ function consts.loadAll()
 	consts.starParamCount = 2
 	consts.maxStarsPerSystem = 4
 	consts.invalidStarParam = -1
-	consts.starAxisSamples = 5000
+	consts.starAxisSamples = 2500
 
 	consts.intensityPrecalcThetaSamples = 4
 	consts.intensityPrecalcPhiSamples = 4

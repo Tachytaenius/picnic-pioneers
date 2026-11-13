@@ -80,7 +80,29 @@ local function massRadiusRelation(mass)
 	end
 	return solarRadius * temp
 end
+local stefanBoltzmannConstant
+local binRange
+local rStart
+local gStart
+local bStart
+local starPlanckLawSamplesPerBin
+local planckLaw = util.planckLaw
+local function bin(wavelengthStart, temperature)
+	local sum = 0
+	for i = 0, starPlanckLawSamplesPerBin - 1 do
+		sum = sum + planckLaw(wavelengthStart + binRange * (i + 0.5) / starPlanckLawSamplesPerBin, temperature)
+	end
+	return sum / starPlanckLawSamplesPerBin
+end
 function game:generateStar(param1, param2)--, param3)
+	-- TODO: Code cleanup...
+	stefanBoltzmannConstant = stefanBoltzmannConstant or consts.stefanBoltzmannConstant
+	binRange = binRange or self.spectralBinRange
+	rStart = rStart or self.rSpectrumStart
+	gStart = gStart or self.gSpectrumStart
+	bStart = bStart or self.bSpectrumStart
+	starPlanckLawSamplesPerBin = starPlanckLawSamplesPerBin or consts.starPlanckLawSamplesPerBin
+
 	-- Nonlinear relationship between mass param and actual mass
 	local exponentT = starMassParamWeight * param1 ^ starMassParamExponent + (1 - starMassParamWeight) * param1
 	local exponent = starMassExponentRangeLow + exponentT * (starMassExponentRangeHigh - starMassExponentRangeLow)
@@ -96,13 +118,12 @@ function game:generateStar(param1, param2)--, param3)
 	local area = 2 * tau * radius ^ 2
 	local radiantFlux = fluxMul * (dwarf and massLuminosityRelationDwarf or massLuminosityRelation)(starMass)
 
-	local starEffectiveTemperature = (radiantFlux / (area * consts.stefanBoltzmannConstant)) ^ (1 / 4)
+	local starEffectiveTemperature = (radiantFlux / (area * stefanBoltzmannConstant)) ^ (1 / 4)
 
-	-- 1e-9 because nm to m
 	-- This would be better if averaged over the range of the bins with more than one sample but that would get computationally expensive
-	local radianceR = util.planckLaw(self.rSpectrumMiddle * 1e-9, starEffectiveTemperature)
-	local radianceG = util.planckLaw(self.gSpectrumMiddle * 1e-9, starEffectiveTemperature)
-	local radianceB = util.planckLaw(self.bSpectrumMiddle * 1e-9, starEffectiveTemperature)
+	local radianceR = bin(rStart, starEffectiveTemperature)
+	local radianceG = bin(gStart, starEffectiveTemperature)
+	local radianceB = bin(bStart, starEffectiveTemperature)
 
 	-- Surface radiance is flux / area / pi steradians
 	-- So flux from surface radiance is surface radiance * area * pi steradians
