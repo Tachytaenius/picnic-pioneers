@@ -1,0 +1,5 @@
+When handling the light rays reaching the camera, there are three bins storing average spectral radiance over three 100nm wavelength ranges in the visible spectrum. The units of these values are W/sr/m^2/m (per m, not per nm!).
+These are called red/green/blue but aren't the same as the output sRGB colours. To get those, the average spectral radiances are passed through a matrix that multiplies them by the bin width (1e-7 m (which is 100 nm)) then converts to CIE XYZ. This is then converted to linear sRGB (and finally by LÖVE to what the display expects).
+There is also an overall radiance multiplier. It's easy to imagine this as the windows of the ship multiplying up the incoming light. Or perhaps just as exposure?
+
+The important note is that the values in those bins when raymarching, attenuating, etc are average spectral radiance in units of W/sr/m^2/m. These are intended to be the result of integrating spectral radiance over the bin's wavelength range but then dividing by said range.

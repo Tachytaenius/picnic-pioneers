@@ -34,8 +34,8 @@ function game:initSpectralInfo()
 
 	local xyzFromWavelength = self:loadXYZFromWavelengthData()
 
-	-- 400 nm to 700 nm
-	local step = 100
+	-- 400 nm to 700 nm in 3 bins
+	local range = 100
 
 	self.rSpectrumStart = 600
 	self.rSpectrumEnd = 700
@@ -51,24 +51,27 @@ function game:initSpectralInfo()
 
 	local function bin(start, stop)
 		local sumX, sumY, sumZ = 0, 0, 0
+		local count = 0
 		for wavelength = start, stop - 1 do
 			local xyz = xyzFromWavelength[wavelength]
 			sumX = sumX + xyz.x
 			sumY = sumY + xyz.y
 			sumZ = sumZ + xyz.z
+			count = count + 1
 		end
-		return sumX / step, sumY / step, sumZ / step
+		return sumX / count, sumY / count, sumZ / count -- Average values of X, Y, and Z across the bin
 	end
 
 	local rX, rY, rZ = bin(self.rSpectrumStart, self.rSpectrumEnd)
 	local gX, gY, gZ = bin(self.gSpectrumStart, self.gSpectrumEnd)
 	local bX, bY, bZ = bin(self.bSpectrumStart, self.bSpectrumEnd)
 
-	local k = 1e-9 -- Conversion factor from W/sr/m^2/nm to W/sr/m^2/m
+	local f = 1e-9 -- Conversion factor from nm^-1 to m^-1
+	local b = f * range -- Width of a bin in m
 	self.spectralToXYZMatrix = { -- Row-major
-		k*rX, k*gX, k*bX,
-		k*rY, k*gY, k*bY,
-		k*rZ, k*gZ, k*bZ
+		b*rX, b*gX, b*bX,
+		b*rY, b*gY, b*bY,
+		b*rZ, b*gZ, b*bZ
 	}
 end
 

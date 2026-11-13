@@ -99,7 +99,7 @@ function game:generateStar(param1, param2)--, param3)
 	local starEffectiveTemperature = (radiantFlux / (area * consts.stefanBoltzmannConstant)) ^ (1 / 4)
 
 	-- 1e-9 because nm to m
-	-- This would be better if integrated over the range of the bins but that would get computationally expensive
+	-- This would be better if averaged over the range of the bins with more than one sample but that would get computationally expensive
 	local radianceR = util.planckLaw(self.rSpectrumMiddle * 1e-9, starEffectiveTemperature)
 	local radianceG = util.planckLaw(self.gSpectrumMiddle * 1e-9, starEffectiveTemperature)
 	local radianceB = util.planckLaw(self.bSpectrumMiddle * 1e-9, starEffectiveTemperature)
