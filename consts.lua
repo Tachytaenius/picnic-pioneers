@@ -175,6 +175,8 @@ function consts.loadAll()
 
 	-- Simulation/graphics parameters
 
+	consts.starLUTDepthSamples = 1 -- TODO: Increase when the LUTs aren't just constant values.
+
 	consts.starPlanckLawSamplesPerBin = 3
 
 	consts.gravitationalConstant = 6.6743e-11

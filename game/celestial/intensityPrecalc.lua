@@ -3,6 +3,8 @@ local json = require("lib.json")
 local mathsies = require("lib.mathsies")
 local consts = require("consts")
 local util = require("util")
+-- This file does not use dmath because the radiant intensity results aren't deterministic anyway
+-- Only stars are supposed to have deterministic radiant intensities
 
 local game = {}
 

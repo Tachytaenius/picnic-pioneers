@@ -1,3 +1,4 @@
+local consts = require("consts")
 local mathsies = require("lib.mathsies")
 
 local util = require("util")
@@ -15,7 +16,7 @@ function game:initShip()
 		position = mathsies.vec3(),
 		cameraOffset = mathsies.vec3(0, 2, 1),
 		orientation = mathsies.quat(),
-		verticalFOV = math.rad(70),
+		verticalFOV = 70 * consts.tau / 360,
 		mesh = util.loadObj("art/mrTestFace/mesh.obj"),
 		texture = love.graphics.newImage("art/mrTestFace/texture.png")
 	}
@@ -25,7 +26,7 @@ function game:initShip()
 	-- 	position = mathsies.vec3(0.5, 0, 9),
 	-- 	cameraOffset = mathsies.vec3(0, 1, 0.5),
 	-- 	orientation = mathsies.quat.fromAxisAngle(mathsies.vec3(0, 4, 0)),
-	-- 	verticalFOV = math.rad(70),
+	-- 	verticalFOV = 70 * consts.tau / 360,
 	-- 	mesh = util.loadObj("art/mrTestFace/mesh.obj"),
 	-- 	texture = love.graphics.newImage("art/mrTestFace/texture.png")
 	-- })

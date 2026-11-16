@@ -1,6 +1,7 @@
 local consts = require("consts")
 local util = require("util")
 local mathsies = require("lib.mathsies")
+local dmath = require("lib.dmath")
 
 local game = {}
 
@@ -14,16 +15,35 @@ function game:generateStarSystem(layerObject)
 		end
 		local radius, mass, radiantFluxR, radiantFluxG, radiantFluxB = self:generateStar(unpack(layerObject.starParams[i]))
 		local radiantFlux = mathsies.vec3(radiantFluxR, radiantFluxG, radiantFluxB)
+		local radiantIntensity = radiantFlux / (consts.tau * 2)
 		massSum = massSum + mass
+
+		local attenuationSpectralRatio = mathsies.vec3(
+			self:celestialRandomRange(0.5, 1.5),
+			self:celestialRandomRange(0.5, 1.5),
+			self:celestialRandomRange(0.5, 1.5)
+		)
+		local constantAttenuationCoefficient = attenuationSpectralRatio * self:celestialRandomRange(0.001, 0.1) / radius
+		local constantEmissionCoefficient = mathsies.vec3(
+			self:getStarConstEmissionCoeff(radius, radiantIntensity.x, constantAttenuationCoefficient.x),
+			self:getStarConstEmissionCoeff(radius, radiantIntensity.y, constantAttenuationCoefficient.y),
+			self:getStarConstEmissionCoeff(radius, radiantIntensity.z, constantAttenuationCoefficient.z)
+		)
+
 		local star = {
 			type = "star",
+			systemStarNumber = i,
 			mass = mass,
 			radius = radius,
 			radiantFlux = radiantFlux,
-			radiantIntensity = radiantFlux / (consts.tau * 2),
-			position = mathsies.vec3((i - 1) * 1.5e9, 0, 0) -- TODO: Kepler orbits
+			radiantIntensity = radiantIntensity,
+			position = mathsies.vec3((i - 1) * 5e9, 0, 0), -- TODO: Kepler orbits
+			constantAttenuationCoefficient = constantAttenuationCoefficient,
+			constantEmissionCoefficient = constantEmissionCoefficient
 		}
 		table.insert(bodies, star)
+		self:generateStarLookupTables(star)
+		self:writeToStarLookupTextures(star)
 	end
 
 	local remainingMass = math.max(0, layerObject.mass - massSum)
@@ -132,6 +152,105 @@ function game:generateStar(param1, param2)--, param3)
 	local radiantFluxB = radianceB * area * (tau / 2)
 
 	return radius, starMass, radiantFluxR, radiantFluxG, radiantFluxB
+end
+
+function game:generateStarLookupTables(body)
+	local radiantIntensity = body.radiantIntensity
+	local starVolume = 2 / 3 * consts.tau * body.radius ^ 3
+
+	local set = self.starSystemLookupInfoSet[body.systemStarNumber]
+	local temperature = set.temperature
+	local density = set.density
+	local scattering = set.scattering
+	local absorption = set.absorption
+	local emission = set.emission
+
+	local constantAttenuationCoefficient = body.constantAttenuationCoefficient
+	local constantEmissionCoefficient = body.constantEmissionCoefficient
+
+	for i = 1, consts.starLUTDepthSamples do
+		-- Has no effect
+		temperature[i] = 0
+		density[i] = 0
+
+		-- Constant for now
+		scattering[i][1], scattering[i][2], scattering[i][3] = 0, 0, 0
+		absorption[i][1], absorption[i][2], absorption[i][3] = mathsies.vec3.components(constantAttenuationCoefficient)
+		emission[i][1], emission[i][2], emission[i][3] = mathsies.vec3.components(constantEmissionCoefficient)
+	end
+end
+
+function game:writeToStarLookupTextures(body)
+	local set = self.starSystemLookupInfoSet[body.systemStarNumber]
+	local function write(name, scaleFactor)
+		local data = set[name]
+		local imageData = set[name .. "LUTImageData"]
+		local canvas = set[name .. "LUTCanvas"]
+		for i = 1, consts.starLUTDepthSamples do
+			imageData:setPixel(i - 1, 0,
+				data[i][1] * scaleFactor,
+				data[i][2] * scaleFactor,
+				data[i][3] * scaleFactor
+			)
+		end
+		canvas:replacePixels(imageData)
+	end
+	-- No scale factor is needed (yet?) since distances, radiances etc are unscaled when rendering bodies (unlike when rendering whole galaxies etc)
+	write("scattering", 1)
+	write("absorption", 1)
+	write("emission", 1)
+end
+
+function game:makeStarLookupInfo(noGraphical)
+	local info = {noGraphical = noGraphical}
+
+	-- CPU-side
+	info.temperature = {}
+	info.density = {}
+	local function newSpectral()
+		local ret = {}
+		for i = 1, consts.starLUTDepthSamples do
+			ret[i] = {}
+		end
+		return ret
+	end
+	info.scattering = newSpectral()
+	info.absorption = newSpectral()
+	info.emission = newSpectral()
+
+	if not noGraphical then
+		-- GPU-side
+		local function new(name)
+			local w, h = consts.starLUTDepthSamples, 1
+			local format = "rgba32f"
+			info[name .. "LUTImageData"] = love.image.newImageData(w, h, format) -- Stored here in units appropriate for the GPU
+			local canvas = love.graphics.newCanvas(w, h, {format = format})
+			canvas:setFilter("linear")
+			canvas:setWrap("clamp")
+			info[name .. "LUTCanvas"] = canvas
+		end
+		new("scattering")
+		new("absorption")
+		new("emission")
+	end
+
+	return info
+end
+
+function game:makeStarSystemLookupInfoSet()
+	local infoSet = {}
+	for i = 1, consts.maxStarsPerSystem do
+		infoSet[i] = self:makeStarLookupInfo()
+	end
+	return infoSet
+end
+
+function game:getStarConstEmissionCoeff(R, i, s)
+	-- https://www.desmos.com/calculator/dv6dlqkmny
+	if s == 0 then
+		return 3 * i / (2 * consts.tau * R ^ 3)
+	end
+	return (i * 4 * s ^ 3) / (consts.tau * (2 * R ^ 2 * s ^ 2 + dmath.exp(-2 * R * s) * (2 * R * s + 1) - 1))
 end
 
 return game

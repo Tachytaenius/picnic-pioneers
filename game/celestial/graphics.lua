@@ -400,10 +400,10 @@ function game:drawCelestial(POVEntity)
 			local bodyShader
 			if body.type == "star" then
 				bodyShader = self.starShader
-				local surfaceArea = 2 * consts.tau * body.radius ^ 2
-				local surfaceRadiantExitance = body.radiantFlux / surfaceArea
-				local surfaceRadiance = surfaceRadiantExitance / (consts.tau / 2)
-				bodyShader:send("surfaceRadiance", {mathsies.vec3.components(surfaceRadiance)})
+				local set = self.starSystemLookupInfoSet[body.systemStarNumber]
+				bodyShader:send("absorptionLUT", set.absorptionLUTCanvas)
+				bodyShader:send("scatteringLUT", set.scatteringLUTCanvas)
+				bodyShader:send("emissionLUT", set.emissionLUTCanvas)
 			end
 			love.graphics.setShader(bodyShader)
 			bodyShader:send("preNormaliseCornerDirs", unpack(cornerDirs))

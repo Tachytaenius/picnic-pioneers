@@ -1,6 +1,5 @@
 uniform float outputMultiplier;
 uniform vec3 bodyPosition;
-uniform float bodyRadius; // TODO: Atmosphere too?
 uniform mat4 clipToSky;
 uniform vec3 cameraPosition;
 uniform vec3[4] preNormaliseCornerDirs;
@@ -38,14 +37,14 @@ void computemain() {
 	// 	discard;
 	// }
 
-	vec3 inHitPosRelative = cameraPosition + direction * max(0.0, result.t1) - bodyPosition;
-	vec3 surfaceNormal = normalize(inHitPosRelative); // For sphere. If we change it to an ellipsoid, though...
+	vec3 startHitPosRelative = cameraPosition + direction * max(0.0, result.t1) - bodyPosition;
+	vec3 surfaceNormal = normalize(startHitPosRelative); // For sphere. If we change it to an ellipsoid, though...
 
 	ColourTransmittance bodySample = sampleBody( // Radiance in RGB and transmittance in A
 		cameraPosition - bodyPosition,
 		direction,
 		surfaceNormal,
-		inHitPosRelative,
+		startHitPosRelative,
 		cameraPosition + direction * result.t2 - bodyPosition
 	);
 

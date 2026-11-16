@@ -36,6 +36,7 @@ function game:initCelestial(initParams)
 	coroutine.yield()
 	self:initPointLayers()
 	coroutine.yield()
+	self.starSystemLookupInfoSet = self:makeStarSystemLookupInfoSet()
 
 	-- Graphics init
 
@@ -54,7 +55,8 @@ function game:initCelestial(initParams)
 	self.starShader = love.graphics.newComputeShader(
 		"#line 1\n" .. love.filesystem.read("shaders/include/structs.glsl") ..
 		"#line 1\n" .. love.filesystem.read("shaders/include/raycasts.glsl") ..
-		"#line 1\n" .. love.filesystem.read("shaders/drawing/bodies/star.glsl") ..
+		"#line 1\n" .. love.filesystem.read("shaders/include/bodyBasics.glsl") ..
+		"#line 1\n" .. love.filesystem.read("shaders/include/bodies/star.glsl") ..
 		"#line 1\n" .. love.filesystem.read("shaders/drawing/body.glsl")
 	)
 
@@ -70,7 +72,6 @@ function game:initCelestial(initParams)
 	self.ship = {
 		position = initParams.shipPosition or bm.vec3(0, 0, 0), -- Arbitrary precision, used to define position with enough information at each size scale
 		orientation = mathsies.quat(),
-		verticalFOV = math.rad(80)
 	}
 
 	-- Initial handlePointLayers call to get everything consistent, including pointLayerGravityWellSlowdownFactor for first handleShipMovement call
