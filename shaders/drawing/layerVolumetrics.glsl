@@ -10,7 +10,7 @@ uniform ivec2 size;
 
 #ifndef INTENSITY_PRECALC
 uniform layout(RESULT_CANVAS_FORMAT) image2D resultCanvas;
-uniform layout(rgba16f) image2D resultOpacityCanvas;
+uniform layout(rgba16f) image2D resultTransmittanceCanvas;
 
 uniform vec3 cameraPosition;
 
@@ -26,7 +26,7 @@ uniform float fadeOutRadius;
 uniform float fadeExponent;
 #else
 uniform layout(RESULT_CANVAS_FORMAT) image2DArray resultCanvas;
-uniform layout(rgba16f) image2DArray resultOpacityCanvas;
+uniform layout(rgba16f) image2DArray resultTransmittanceCanvas;
 uniform int directionGroup;
 uniform float samplingDiskRadius;
 
@@ -167,23 +167,22 @@ void computemain() {
 		vec3 colour = colourTransmittance.colour;
 		vec3 transmittance = colourTransmittance.transmittance;
 
-		vec3 opacity = 1.0 - transmittance;
 		colour *= brightnessMultiplier;
 
 #ifdef INTENSITY_PRECALC
 		ivec3 writeCoord = ivec3(coord, curLayer);
 		vec4 inColour = vec4(0.0);
-		vec4 inOpacity = vec4(0.0);
+		vec4 inTransmittance = vec4(0.0); // Assume 0 initially
 #else
 		ivec2 writeCoord = coord;
 		vec4 inColour = imageLoad(resultCanvas, writeCoord);
-		vec4 inOpacity = imageLoad(resultOpacityCanvas, writeCoord);
+		vec4 inTransmittance = imageLoad(resultTransmittanceCanvas, writeCoord);
 #endif
 
 		vec4 toWrite = vec4(colour + inColour.rgb, 0.0);
 		imageStore(resultCanvas, writeCoord, toWrite);
 
-		vec4 opacityToWrite = vec4(opacity, 0.0) + inOpacity;
-		imageStore(resultOpacityCanvas, writeCoord, opacityToWrite);
+		vec4 transmittanceToWrite = vec4(transmittance, 1.0) + inTransmittance;
+		imageStore(resultTransmittanceCanvas, writeCoord, transmittanceToWrite);
 	// }
 }

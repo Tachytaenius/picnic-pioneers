@@ -109,7 +109,9 @@ function consts.loadAll()
 	consts.bytesPerGPUVar = 4
 
 	consts.pointMinDistanceInChunk = 0.03125 -- Use of this during generation is TODO!!!!
-	consts.pointAsyncSetupDistanceMultiplier = 1.2 -- Generate point info before reaching the point's resolvability distance
+	consts.pointAsyncSetupDistanceMultiplier = 1.24 -- Generate point info before reaching the distance where points need to be generated. Must be >= 1
+	consts.bodyToPointLerpEnd = 1.2 -- Must be <= pointAsyncSetupDistanceMultiplier.
+	consts.bodyToPointLerpStart = 0.9
 
 	consts.idObjectTypes = util.makeBidirectional({
 		[0] = "special", -- E.g. shape type integral noise seed
@@ -245,7 +247,7 @@ function consts.loadAll()
 	consts.starParamCount = 2
 	consts.maxStarsPerSystem = 4
 	consts.invalidStarParam = -1
-	consts.starAxisSamples = 2500
+	consts.starAxisSamples = 1500
 
 	consts.intensityPrecalcThetaSamples = 4
 	consts.intensityPrecalcPhiSamples = 4
@@ -254,6 +256,8 @@ function consts.loadAll()
 
 	consts.shapeTypeAmountIntegralResultVersion = "1"
 	consts.intensityPrecalcResultVersion = "1"
+
+	consts.maxMiscPointDrawables = 256
 end
 
 return consts

@@ -20,9 +20,13 @@ buffer IndirectDrawBuffer {
 	IndirectDrawArgs indirectDrawBuffer[];
 };
 
-uniform uint skipIndex;
+uniform uint currentIndex;
+uniform bool skipCurrent;
+uniform vec3 currentDirection;
+
 uniform vec3 cameraPosition;
-uniform mat4 skyToClip;
+uniform mat3 worldToCameraDirection;
+uniform mat4 cameraToClip;
 uniform sampler3D pointAttenuationTexture; // Only considering the current layer and only up to the point end distance.
 uniform sampler2D totalTransmittanceCanvas; // Same as above. Has no depth information. Is multiplied down by closer nebulae from layers smaller than the current one. Essentially the "starting point" for the above texture.
 uniform int chunkBufferSideLength;
@@ -64,7 +68,7 @@ void computemain() {
 	barrier();
 
 	uint i = love_GlobalThreadID.x;
-	bool isSkip = i == skipIndex;
+	bool isCurrent = i == currentIndex;
 	bool isPastChunkEnd = love_LocalThreadID.x >= chunkPointCount;
 	bool isPastAllEnd = i >= POINT_COUNT;
 
@@ -72,7 +76,7 @@ void computemain() {
 	bool write = false;
 	uint indexThisThreadgroup;
 	PointDrawable pointDrawable;
-	if (!isSkip && !isPastChunkEnd && !isPastAllEnd) {
+	if (!(isCurrent && skipCurrent) && !isPastChunkEnd && !isPastAllEnd) {
 		ivec3 chunkBufferPos = ivec3(
 			chunkIndex % chunkBufferSideLength,
 			(chunkIndex / chunkBufferSideLength) % chunkBufferSideLength,
@@ -85,7 +89,7 @@ void computemain() {
 		vec3 difference = pointPosition - cameraPosition;
 
 		float dist = length(difference);
-		vec3 direction = difference / dist;
+		vec3 direction = worldToCameraDirection * (isCurrent ? currentDirection : (difference / dist));
 
 		float dotResult = dot(cameraForwards, direction);
 		bool outsideFOV = dotResult < minDot;
@@ -101,7 +105,7 @@ void computemain() {
 			// We imagine the irradiance to blur out into a region on a spherical surface around the camera (specifically, it blurs out into a spherical cap) and then direct all its light straight into the centre of the camera sphere.
 			// The average radiance from the perspective of the centre of the camera sphere is then equal to the irradiance divided by the solid angle of the spherical cap.
 
-			vec3 clipSpacePos = perspectiveDivide(skyToClip * vec4(direction, 1.0));
+			vec3 clipSpacePos = perspectiveDivide(cameraToClip * vec4(direction, 1.0));
 			vec3 textureSamplePos = vec3(
 				clipSpacePos.xy * 0.5 + 0.5,
 				dist / fadeOutRadius

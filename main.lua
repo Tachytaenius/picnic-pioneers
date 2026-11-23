@@ -17,7 +17,7 @@ local state
 
 local initCoroutine
 local shouldResize
-local skipOneUpdate
+local skipUpdateCount
 
 local function clearCache()
 	print("Clearing cache...")
@@ -91,7 +91,7 @@ function love.update(dt)
 		repeat
 			if coroutine.status(initCoroutine) == "dead" then
 				state.loadInfo = nil
-				skipOneUpdate = true -- Skipped actual game update
+				skipUpdateCount = 1
 				if state.quitAfterInit then
 					love.event.quit()
 					return
@@ -116,9 +116,9 @@ function love.update(dt)
 		state:resizeGameScreen(love.graphics.getDimensions())
 	end
 
-	if skipOneUpdate then
-		-- Avoid large initial dt
-		skipOneUpdate = false
+	if skipUpdateCount > 0 then
+		-- Avoid large initial dt updates. Probably a better way
+		skipUpdateCount = skipUpdateCount - 1
 		return
 	end
 

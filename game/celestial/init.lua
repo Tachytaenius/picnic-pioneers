@@ -6,8 +6,8 @@ local consts = require("consts")
 local util = require("util")
 
 ---@class ScreenCanvasses
----@field public outputCanvas love.Canvas
----@field public pointTotalTransmittanceCanvas love.Canvas
+---@field public lightCanvas love.Canvas
+---@field public transmittanceCanvas love.Canvas
 
 ---@class Gamestate
 ---@field public screenCanvasses ScreenCanvasses
@@ -50,7 +50,6 @@ function game:initCelestial(initParams)
 	self.individualPointShader = love.graphics.newShader("shaders/drawing/pointDrawables.glsl")
 
 	self.drawVolumetricShader = love.graphics.newShader("shaders/drawing/drawVolumetric.glsl")
-	self.attenuationAccumulationShader = love.graphics.newShader("shaders/drawing/attenuationAccumulation.glsl")
 
 	self.starShader = love.graphics.newComputeShader(
 		"#line 1\n" .. love.filesystem.read("shaders/include/structs.glsl") ..
@@ -68,10 +67,16 @@ function game:initCelestial(initParams)
 	self.clearPointAttenuationTexture:setFilter("nearest") -- No need to increase sampling cost (if linear even does for a 1x1x1 texture clamped on all axes)
 	self.clearPointAttenuationTexture:setWrap("clamp", "clamp", "clamp")
 
+	self.miscPointAddShader = love.graphics.newComputeShader("shaders/drawing/miscPointAdd.glsl")
+
+	self.applyTempTransmittanceShader = love.graphics.newComputeShader("shaders/drawing/applyTempTransmittance.glsl")
+
+	self.opaqueFromDepthShader = love.graphics.newShader("shaders/drawing/opaqueFromDepth.glsl")
+
 	-- Place ship
 	self.ship = {
 		position = initParams.shipPosition or bm.vec3(0, 0, 0), -- Arbitrary precision, used to define position with enough information at each size scale
-		orientation = mathsies.quat(),
+		orientation = mathsies.quat()
 	}
 
 	-- Initial handlePointLayers call to get everything consistent, including pointLayerGravityWellSlowdownFactor for first handleShipMovement call

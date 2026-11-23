@@ -1,35 +1,23 @@
-#ifdef VERTEX
-
-uniform mat4 modelToClip;
-
-layout (location = 0) in vec3 VertexPosition;
-layout (location = 1) in vec2 VertexTexCoord;
-layout (location = 2) in vec3 VertexNormal;
-
-out vec2 fragmentTexCoord;
-out vec3 fragmentNormal;
-
-void vertexmain() {
-	fragmentTexCoord = VertexTexCoord;
-	fragmentNormal = VertexNormal;
-	gl_Position = modelToClip * vec4(VertexPosition, 1.0);
-}
-
-#endif
-
 #ifdef PIXEL
 
 uniform sampler2D entityTexture;
 
+uniform sampler2D transmittanceCanvas;
+
 in vec2 fragmentTexCoord;
 in vec3 fragmentNormal;
+in vec3 fragmentPosition;
 
-layout(location = 0) out vec4 fragmentColour;
-layout(location = 1) out vec4 transmittanceWrite;
+out vec4 fragmentColourWrite;
 
 void pixelmain() {
-	fragmentColour = texture(entityTexture, fragmentTexCoord);
-	transmittanceWrite = vec4(0.0, 0.0, 0.0, 1.0);
+	vec3 albedo = texture(entityTexture, fragmentTexCoord).rgb;
+	// float dist = distance(lightPos, fragmentPosition);
+	// float dist2 = dist * dist;
+	// float cosTheta = max(0.0, dot(normalize(fragmentNormal), lightPos - fragmentPosition));
+	// vec3 fragmentColour = albedo * lightRadiantIntensity / dist2 * cosTheta;
+	vec3 fragmentColour = albedo * 1e6;
+	fragmentColourWrite = vec4(fragmentColour, 0.0);
 }
 
 #endif

@@ -1,11 +1,10 @@
 uniform float outputMultiplier;
 uniform vec3 bodyPosition;
-uniform mat4 clipToSky;
 uniform vec3 cameraPosition;
 uniform vec3[4] preNormaliseCornerDirs;
 
-uniform layout(rgba16f) image2D totalTransmittanceCanvas;
-uniform layout(rgba32f) image2D outputCanvas;
+uniform layout(rgba16f) image2D transmittanceCanvas;
+uniform layout(rgba32f) image2D lightCanvas;
 uniform ivec2 size;
 
 layout (local_size_x = 16, local_size_y = 16) in;
@@ -34,7 +33,7 @@ void computemain() {
 	}
 	// if (result.t1 <= 0.0) {
 	// 	// Inside body
-	// 	discard;
+	// 	return;
 	// }
 
 	vec3 startHitPosRelative = cameraPosition + direction * max(0.0, result.t1) - bodyPosition;
@@ -48,14 +47,18 @@ void computemain() {
 		cameraPosition + direction * result.t2 - bodyPosition
 	);
 
+	vec4 transmittanceThisBody = vec4(bodySample.transmittance, 1.0);
+	vec4 radianceThisBody = vec4(bodySample.colour, 0.0) * outputMultiplier;
+
 	// Read
-	vec3 transmittance = imageLoad(totalTransmittanceCanvas, coord).rgb; // Transmittance between body and camera
-	vec3 currentOut = imageLoad(outputCanvas, coord).rgb; // Get current colour
-	vec3 transmittanceThisBody = bodySample.transmittance;
+	vec4 transmittanceBeforeBody = imageLoad(transmittanceCanvas, coord); // From camera up to but excluding body
+	vec4 currentRadiance = imageLoad(lightCanvas, coord); // Radiance currently reaching the camera
+
 	// Modify
-	vec3 newOut = currentOut * transmittanceThisBody + outputMultiplier * bodySample.colour;
-	transmittance *= transmittanceThisBody; // Let body contribute to blocking everything that comes after it
+	vec4 newRadiance = currentRadiance + radianceThisBody * transmittanceBeforeBody;
+	vec4 transmittanceIncludingBody = transmittanceThisBody * transmittanceBeforeBody;
+
 	// Write
-	imageStore(totalTransmittanceCanvas, coord, vec4(transmittance, 1.0));
-	imageStore(outputCanvas, coord, vec4(newOut, 1.0));
+	imageStore(transmittanceCanvas, coord, transmittanceIncludingBody);
+	imageStore(lightCanvas, coord, newRadiance);
 }

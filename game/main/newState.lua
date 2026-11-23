@@ -126,18 +126,33 @@ function game:resizeGameScreen(width, height, forceRecreate)
 	self.volumetricCanvasWidth = math.ceil(consts.volumetricCanvasScale * self.screenWidth)
 	self.volumetricCanvasHeight = math.ceil(consts.volumetricCanvasScale * self.screenHeight)
 
-	self.screenCanvasses.pointTotalTransmittanceCanvas = love.graphics.newCanvas(width, height, { -- Gets multiplied down as the camera progresses out from the smallest layer to the largest. Distinct from the point attenuation texture because that is recalculated per-layer
+	self.screenCanvasses.transmittanceCanvas = love.graphics.newCanvas(width, height, { -- Gets multiplied down as the camera progresses out from the smallest/"closest" layer to the largest. Distinct from the point attenuation texture because that is recalculated per-layer
 		format = "rgba16f",
-		debugname = "Point Total Transmittance Canvas",
+		debugname = "Transmittance Canvas",
 		computewrite = true
 	})
-	self.screenCanvasses.outputCanvas = love.graphics.newCanvas(width, height, {
+	self.screenCanvasses.tempOpacityCanvas = love.graphics.newCanvas(width, height, {
+		format = "rgba16f",
+		debugname = "Temporary Opacity Canvas",
+		computewrite = true
+	})
+	self.screenCanvasses.lightCanvas = love.graphics.newCanvas(width, height, {
 		format = "rgba32f",
-		debugname = "Output Canvas",
+		debugname = "Light Canvas",
 		computewrite = true
 	})
+	self.screenCanvasses.opaqueObjectLightCanvas = love.graphics.newCanvas(width, height, {
+		format = "rgba32f",
+		debugname = "Opaque Object Light Canvas"
+	})
+	self.screenCanvasses.shipDepthCanvas = love.graphics.newCanvas(width, height, {
+		format = "depth24",
+		readable = true,
+		debugname = "Ship Depth Canvas"
+	})
+
 	self.screenCanvasses.shipCanvas = love.graphics.newCanvas(width, height, {
-		format = "rgba8",
+		format = "rgba32f",
 		debugname = "Ship Canvas"
 	})
 
@@ -165,12 +180,12 @@ function game:resizeGameScreen(width, height, forceRecreate)
 
 		-- pointLayer.volumetricCanvasCameraInfo = nil -- Not needed since the new canvas is ready for new rays to add in
 		pointLayer.volumetricCanvas = love.graphics.newCanvas(self.volumetricCanvasWidth, self.volumetricCanvasHeight, {
-			debugname = pointLayer.debugName .. " Volumetric Canvas",
+			debugname = pointLayer.debugName .. " Volumetric Radiance Canvas",
 			format = "rgba32f", -- 32 bits to maintain precision when adding up. When drawing the value of the point total transmittance canvas, it was shown to become imprecise (banding and other artifacts) after a while with 16 bits.
 			computewrite = true
 		})
-		pointLayer.volumetricOpacityCanvas = love.graphics.newCanvas(self.volumetricCanvasWidth, self.volumetricCanvasHeight, {
-			debugname = pointLayer.debugName .. " Volumetric Opacity Canvas",
+		pointLayer.volumetricTransmittanceCanvas = love.graphics.newCanvas(self.volumetricCanvasWidth, self.volumetricCanvasHeight, {
+			debugname = pointLayer.debugName .. " Volumetric Transmittance Canvas",
 			format = "rgba16f",
 			computewrite = true
 		})

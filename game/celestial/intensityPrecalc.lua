@@ -28,7 +28,7 @@ end
 
 function game:clearPrecalc()
 	self.precalcClearShader:send("canvas", self.precalcCanvas)
-	self.precalcClearShader:send("opacityCanvas", self.precalcOpacityCanvas)
+	self.precalcClearShader:send("transmittanceCanvas", self.precalcTransmittanceCanvas)
 	local w, h, d = self.precalcClearShader:getLocalThreadgroupSize()
 	love.graphics.dispatchThreadgroups(self.precalcClearShader,
 		math.ceil(self.precalcCanvas:getWidth() / w),
@@ -51,7 +51,7 @@ function game:setupPrecalcShader(shapeType, attShapeType)
 	volumetricShader:send("brightnessMultiplier", 1)
 	volumetricShader:send("size", {self.precalcCanvas:getDimensions()})
 	volumetricShader:send("resultCanvas", self.precalcCanvas)
-	volumetricShader:send("resultOpacityCanvas", self.precalcOpacityCanvas)
+	volumetricShader:send("resultTransmittanceCanvas", self.precalcTransmittanceCanvas)
 	volumetricShader:send("maxRaySteps", consts.intensityPrecalcMaxRaySteps)
 
 	return volumetricShader
@@ -220,9 +220,9 @@ function game:makePrecalcGraphicsObjects(maxRequiredResultBufferSize)
 		computewrite = true
 	})
 
-	self.precalcOpacityCanvas = love.graphics.newCanvas(canvasSize, canvasSize, {
+	self.precalcTransmittanceCanvas = love.graphics.newCanvas(canvasSize, canvasSize, {
 		format = "rgba16f",
-		debugname = "Intensity Precalculation Opacity Canvas",
+		debugname = "Intensity Precalculation Transmittance Canvas",
 		mipmaps = "manual",
 		type = "array",
 		layers = directionSamples,

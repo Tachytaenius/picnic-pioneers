@@ -34,7 +34,7 @@ uniform vec3 attenuationTextureCoords;
 
 uniform vec3 cameraUp;
 uniform vec3 cameraRight;
-uniform mat4 skyToClip;
+uniform mat4 cameraToClip;
 
 layout (location = 0) in vec2 VertexPosition;
 layout (location = 1) in float VertexFade;
@@ -66,7 +66,7 @@ void vertexmain() {
 	vec3 centre = direction * (1.0 - diskDistanceToSphere);
 	float effectiveScale = colour == vec3(0.0) ? 0.0 : scale; // Draw no fragments if no brightness
 	vec3 celestialSpherePos = centre + effectiveScale * (billboardRight * VertexPosition.x + billboardUp * VertexPosition.y);
-	gl_Position = skyToClip * vec4(celestialSpherePos, 1.0);
+	gl_Position = cameraToClip * vec4(celestialSpherePos, 1.0);
 }
 
 #endif

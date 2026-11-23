@@ -289,17 +289,16 @@ function game:initPointLayers()
 	topLayer:handleThreadedShapeInit("prepare")
 	topLayer:handleThreadedShapeInit("expect")
 
-	local highestMaxPoints
+	local totalMaxPoints = 0
 	for _, pointLayer in ipairs(self.pointLayers) do
 		self.pointLayers[pointLayer.name] = pointLayer
-		highestMaxPoints = highestMaxPoints and math.max(highestMaxPoints, pointLayer.maxPoints) or pointLayer.maxPoints
+		totalMaxPoints = totalMaxPoints + pointLayer.maxPoints
 	end
-	if highestMaxPoints then
-		self.pointDrawableBuffer = love.graphics.newBuffer(consts.pointDrawableBufferFormat, highestMaxPoints, {
-			shaderstorage = true,
-			debugname = "Point Drawable Buffer"
-		})
-	end
+	totalMaxPoints = math.max(1, totalMaxPoints + consts.maxMiscPointDrawables)
+	self.pointDrawableBuffer = love.graphics.newBuffer(consts.pointDrawableBufferFormat, totalMaxPoints, {
+		shaderstorage = true,
+		debugname = "Point Drawable Buffer (Layer)"
+	})
 
 	-- Checks
 
@@ -383,7 +382,7 @@ function game:initPointLayers()
 	loadInfo.starPrecalcSamplesDone = nil
 	coroutine.yield()
 
-	-- Radiant fluxes here ignore attenuation
+	-- Radiant intensities here ignore attenuation
 	for i = #self.pointLayers, 1, -1 do
 		local pointLayer = self.pointLayers[i]
 		if i == #self.pointLayers then
@@ -1164,6 +1163,14 @@ function game:handlePointLayers()
 				attenuationShapeTypeName = self.pointLayerShapeTypes[attenuationShapeTypeId].name
 			end
 
+			local x, y, z = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "position", "float", 3)
+			local objectPosition = parentOrigin + pointLayer.chunkSize * bm.vec3(mathsies.vec3.components(
+				mathsies.vec3.rotate(
+					mathsies.vec3(closestChunkX + x, closestChunkY + y, closestChunkZ + z),
+					mathsies.quat.inverse(parentOrientation)
+				)
+			))
+
 			if pointLayer.childPointLayer then
 				if
 					pointLayer.currentPotentialObject and
@@ -1190,7 +1197,9 @@ function game:handlePointLayers()
 					radii = xRadius and mathsies.vec3(xRadius, yRadius, zRadius) or nil,
 
 					attenuationShapeTypeName = attenuationShapeTypeName,
-					attenuationShapeSubtypeId = attenuationShapeSubtypeId
+					attenuationShapeSubtypeId = attenuationShapeSubtypeId,
+
+					position = objectPosition
 				}
 				self:seedCelestialRNG(self:getGlobalCelestialObjectIdNumbers(
 					pointLayer:getGlobalCelestialObjectIdParameters(consts.objectGenerationStages.noiseValues, pointLayer.currentPotentialObject)
@@ -1198,9 +1207,9 @@ function game:handlePointLayers()
 				pointLayer.childPointLayer:handleThreadedShapeInit("prepare")
 			end
 
-			local resolvable
+			local inRange
 			if not pointLayer.features.radii then
-				resolvable = true
+				inRange = true
 			else
 				if pointLayer.features.radii == "sent" then
 					xRadius, yRadius, zRadius = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "radii", "float", 3)
@@ -1212,10 +1221,10 @@ function game:handlePointLayers()
 				assert(xRadius and yRadius and zRadius, "Missing radii")
 				local maxRadius = math.max(xRadius, yRadius, zRadius)
 				local trueDistance = pointLayer.chunkSize * closestDistance
-				resolvable = trueDistance <= self:getSphereResolvableDistance(maxRadius)
+				inRange = trueDistance <= self:getSphereResolvableDistance(maxRadius) * consts.bodyToPointLerpEnd
 			end
 
-			if not resolvable then
+			if not inRange then
 				self:finishHandlingPointLayers(pointLayer)
 				break
 			end
@@ -1230,6 +1239,8 @@ function game:handlePointLayers()
 				end
 
 				pointLayer.currentObject = {
+					position = objectPosition,
+
 					chunkId = chunkId,
 					chunkBufferIndex = chunkBufferIndex, -- Won't change for the same object
 					pointId = closestIdInChunk,
@@ -1240,14 +1251,6 @@ function game:handlePointLayers()
 				}
 				local currentObject = pointLayer.currentObject
 				-- Features with consistent ways of calculating
-				local x, y, z = pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "position", "float", 3)
-				local objectPosition = parentOrigin + pointLayer.chunkSize * bm.vec3(mathsies.vec3.components(
-					mathsies.vec3.rotate(
-						mathsies.vec3(closestChunkX + x, closestChunkY + y, closestChunkZ + z),
-						mathsies.quat.inverse(parentOrientation)
-					)
-				))
-				currentObject.position = objectPosition
 				if pointLayer.features.shapeTypeSubtypeIds then
 					currentObject.shapeTypeName = self.pointLayerShapeTypes[shapeTypeId].name
 					currentObject.shapeSubtypeId = shapeSubtypeId
@@ -1287,6 +1290,9 @@ function game:handlePointLayers()
 					end
 					currentObject.attenuationMultiplier = attenuationMultiplier
 				end
+
+				currentObject.radiantIntensity = mathsies.vec3(pointLayer:getPointVars(chunkBufferIndex, closestIdInChunk, "radiantIntensity", "float", 3)) * pointLayer.chunkSize ^ 2
+
 				if pointLayer.features.starParams then
 					currentObject.starParams = {}
 					local offset = closestIdInChunk * consts.maxStarsPerSystem * consts.starParamCount
