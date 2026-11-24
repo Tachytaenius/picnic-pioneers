@@ -71,8 +71,6 @@ function game:initCelestial(initParams)
 
 	self.applyTempTransmittanceShader = love.graphics.newComputeShader("shaders/drawing/applyTempTransmittance.glsl")
 
-	self.opaqueFromDepthShader = love.graphics.newShader("shaders/drawing/opaqueFromDepth.glsl")
-
 	-- Place ship
 	self.ship = {
 		position = initParams.shipPosition or bm.vec3(0, 0, 0), -- Arbitrary precision, used to define position with enough information at each size scale

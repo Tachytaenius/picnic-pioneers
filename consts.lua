@@ -215,8 +215,13 @@ function consts.loadAll()
 	-- This fade is across the disk of a point:
 	consts.pointDiskFadeExponent = 2.5
 
-	consts.POVFarDistance = 10000
+	consts.POVFarDistance = 1000
 	consts.POVNearDistance = 0.01
+
+	consts.maxPointLights = 16
+	consts.shadowCubemapNearDistance = 0.01
+	consts.shadowCubemapSideLength = 192
+	consts.pointLightCutoffRadiance = 1e4
 
 	consts.celestialRadianceMultiplier = 1e13
 
@@ -258,6 +263,23 @@ function consts.loadAll()
 	consts.intensityPrecalcResultVersion = "1"
 
 	consts.maxMiscPointDrawables = 256
+
+	consts.cubemapOrientations = {
+		mathsies.quat.fromAxisAngle(consts.upVector * consts.tau * 0.25),
+		mathsies.quat.fromAxisAngle(consts.upVector * consts.tau * -0.25),
+		mathsies.quat.fromAxisAngle(consts.rightVector * consts.tau * 0.25),
+		mathsies.quat.fromAxisAngle(consts.rightVector * consts.tau * -0.25),
+		mathsies.quat(),
+		mathsies.quat.fromAxisAngle(consts.upVector * consts.tau * 0.5)
+	}
+	consts.cubemapOrientationsYFlip = {
+		consts.cubemapOrientations[1],
+		consts.cubemapOrientations[2],
+		consts.cubemapOrientations[4],
+		consts.cubemapOrientations[3],
+		consts.cubemapOrientations[5],
+		consts.cubemapOrientations[6]
+	}
 end
 
 return consts

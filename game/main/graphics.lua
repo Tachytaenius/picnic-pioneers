@@ -247,7 +247,7 @@ function game:drawCelestialAndShip(POVEntity)
 			local dist = bm.mapm.tonumber(bm.vec3.length(cameraPositionFullRelative))
 			local pointMul = 1 - layerMul
 			local radiance = {mathsies.vec3.components(currentObject.radiantIntensity / dist ^ 2 * pointRadianceCalcConst * consts.celestialRadianceMultiplier * pointMul)}
-			local direction = mathsies.vec3.rotate(mathsies.vec3.normalise(-bm.vec3.toMathsiesVec3(cameraPositionFullRelative)), cameraOrientation)
+			local direction = mathsies.vec3.rotate(mathsies.vec3.normalise(-bm.vec3.toMathsiesVec3(cameraPositionFullRelative)), mathsies.quat.inverse(cameraOrientation))
 			self:addMiscPointWithCurrentTransmittanceCanvas(direction, radiance, cameraToClip)
 		end
 
@@ -378,17 +378,95 @@ function game:drawCelestialAndShip(POVEntity)
 
 		-- TODO: Derive common functionality between entityShader and windowShader from one source file when adding lighting calculations or whatever
 
+		love.graphics.setFrontFaceWinding("ccw")
+		love.graphics.setMeshCullMode("back")
+
+		-- Point lights with shadows
+		-- TODO: Shadows through translucent objects
+		love.graphics.setShader(self.shadowDepthShader)
+		local pointLightsToDraw = {}
+		for _, light in ipairs(windowsAndPointLights) do
+			if not light.pointLightInfo then
+				goto continue
+			end
+
+			table.insert(pointLightsToDraw, light)
+			local pointLightIndex = #pointLightsToDraw
+			love.graphics.setCanvas({
+				depthstencil = self.shadowCubemaps[pointLightIndex],
+				shaderlayer = true
+			})
+			love.graphics.clear(false, false, true) -- Clear depth
+			love.graphics.setDepthMode("lequal", true)
+			local lightRadius = self:getPointLightRadius(light.pointLightInfo.radiantIntensity)
+			local lightToClip = mathsies.mat4.perspectiveLeftHanded(
+				1,
+				consts.tau / 4,
+				lightRadius,
+				consts.shadowCubemapNearDistance
+			)
+			self.shadowDepthShader:send("lightRadius", lightRadius)
+			self.shadowDepthShader:send("lightPosition", {mathsies.vec3.components(light.position)})
+
+			local worldToClipArray = {}
+			for i, cubemapOrientation in ipairs(consts.cubemapOrientationsYFlip) do -- TODO: Why was y-flipping needed...?
+				local worldToLight = mathsies.mat4.camera(light.position, cubemapOrientation)
+				local worldToClip = lightToClip * worldToLight
+				worldToClipArray[i] = {mathsies.mat4.components(worldToClip)}
+			end
+			self.shadowDepthShader:send("worldToClipCubemap", unpack(worldToClipArray))
+
+			for _, entity in ipairs(opaqueEntities) do
+				if not entity.mesh then
+					goto continue
+				end
+
+				local modelToWorld = mathsies.mat4.transform(
+					entity.position,
+					entity.orientation,
+					entity.scale
+				)
+				self.shadowDepthShader:send("modelToWorld", {mathsies.mat4.components(modelToWorld)})
+
+				love.graphics.drawInstanced(entity.mesh, 6)
+
+			    ::continue::
+			end
+			if #pointLightsToDraw >= consts.maxPointLights then
+				break
+			end
+
+			::continue::
+		end
+
 		-- Draw opaque objects to light canvas and depth canvas
 		love.graphics.setCanvas({self.screenCanvasses.opaqueObjectLightCanvas, depthstencil = self.screenCanvasses.shipDepthCanvas})
-		love.graphics.clear({0, 0, 0, 0}, false, true) -- Clear opaque object light and depth
 		love.graphics.setDepthMode("lequal", true)
+		love.graphics.clear({0, 0, 0, 0}, false, true) -- Clear opaque object light and depth
 		love.graphics.setBlendMode("replace", "premultiplied") -- dst.rgba = src.rgba
 		love.graphics.setShader(self.entityShader)
+		self.entityShader:send("pointLightCount", #pointLightsToDraw)
+		local intensities, radii, positions = {}, {}, {}
+		for i = 1, consts.maxPointLights do
+			local light = pointLightsToDraw[i]
+			if not light then
+				goto continue
+			end
+			intensities[i] = {mathsies.vec3.components(light.pointLightInfo.radiantIntensity)}
+			radii[i] = self:getPointLightRadius(light.pointLightInfo.radiantIntensity)
+			positions[i] = {mathsies.vec3.components(light.position)}
+			::continue::
+		end
+		self.entityShader:send("lightRadiantIntensities", unpack(intensities))
+		self.entityShader:send("lightRadii", unpack(radii))
+		self.entityShader:send("lightPositions", unpack(positions))
+		self.entityShader:send("shadowMaps", unpack(self.shadowCubemaps))
 		for _, entity in ipairs(opaqueEntities) do
 			if entity.mesh then
 				local modelToWorld = mathsies.mat4.transform(
 					entity.position,
-					entity.orientation
+					entity.orientation,
+					entity.scale
 				)
 				local modelToClip = worldToClip * modelToWorld
 				self.entityShader:send("modelToClip", {mathsies.mat4.components(modelToClip)})
@@ -399,6 +477,8 @@ function game:drawCelestialAndShip(POVEntity)
 			end
 		end
 
+		-- Draw translucent objects
+		love.graphics.setMeshCullMode("none")
 		love.graphics.setBlendState("add", "one", "one") -- dst.rgba = src.rgba + dst.rgba
 		love.graphics.setCanvas({lightCanvas, tempOpacityCanvas, depthstencil = self.screenCanvasses.shipDepthCanvas})
 		love.graphics.setDepthMode("lequal", false)
@@ -647,6 +727,14 @@ function game:getLerpFromBodyToPoint(distance, radius)
 		))
 	end
 	return lerpFromBodyToPoint
+end
+
+function game:getPointLightRadius(radiantIntensity)
+	return math.max(
+		math.sqrt(radiantIntensity.x / consts.pointLightCutoffRadiance),
+		math.sqrt(radiantIntensity.y / consts.pointLightCutoffRadiance),
+		math.sqrt(radiantIntensity.z / consts.pointLightCutoffRadiance)
+	)
 end
 
 return game
