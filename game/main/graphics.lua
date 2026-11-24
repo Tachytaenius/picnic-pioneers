@@ -371,10 +371,12 @@ function game:drawCelestialAndShip(POVEntity)
 				table.insert(opaqueEntities, entity)
 			end
 		end
-		table.sort(opaqueEntities, function(a, b)
-			-- Closer is drawn first
-			return mathsies.vec3.distance(POVEntity.position, a.position) < mathsies.vec3.distance(POVEntity.position, b.position)
-		end)
+		for _, list in ipairs({opaqueEntities, windowsAndPointLights}) do
+			table.sort(list, function(a, b)
+				-- Closer is drawn first
+				return mathsies.vec3.distance(POVEntity.position, a.position) < mathsies.vec3.distance(POVEntity.position, b.position)
+			end)
+		end
 
 		-- TODO: Derive common functionality between entityShader and windowShader from one source file when adding lighting calculations or whatever
 
