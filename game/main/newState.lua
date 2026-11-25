@@ -35,20 +35,20 @@ function game:initSpectralInfo()
 
 	local xyzFromWavelength = self:loadXYZFromWavelengthData()
 
-	-- 400 nm to 700 nm in 3 bins
-	local range = 100
-
-	local rSpectrumStart = 600
-	local rSpectrumEnd = 700
+	local rSpectrumStart = 626
+	local rSpectrumEnd = 750
 	local rSpectrumMiddle = (rSpectrumStart + rSpectrumEnd) / 2
 
-	local gSpectrumStart = 500
-	local gSpectrumEnd = 600
+	local gSpectrumStart = 503
+	local gSpectrumEnd = 626
 	local gSpectrumMiddle = (gSpectrumStart + gSpectrumEnd) / 2
 
-	local bSpectrumStart = 400
-	local bSpectrumEnd = 500
+	local bSpectrumStart = 380
+	local bSpectrumEnd = 503
 	local bSpectrumMiddle = (bSpectrumStart + bSpectrumEnd) / 2
+
+	-- 400 nm to 700 nm in 3 bins
+	local range = (rSpectrumEnd - bSpectrumStart) / 3
 
 	local function bin(start, stop)
 		local sumX, sumY, sumZ = 0, 0, 0

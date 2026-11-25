@@ -583,10 +583,12 @@ function game:drawCelestialAndShip(POVEntity)
 				local bodyShader
 				if body.type == "star" then
 					bodyShader = self.starShader
-					local set = self.starSystemLookupInfoSet[body.systemStarNumber]
-					bodyShader:send("absorptionLUT", set.absorptionLUTCanvas)
-					bodyShader:send("scatteringLUT", set.scatteringLUTCanvas)
-					bodyShader:send("emissionLUT", set.emissionLUTCanvas)
+					-- TODO: Ensure the overall radiant intensity of stars is correct across all size scales still
+					bodyShader:send("surfaceRadiance", {mathsies.vec3.components(body.radiantFlux / (4 * consts.pi * body.radius ^ 2) / consts.pi)})
+					-- local set = self.starSystemLookupInfoSet[body.systemStarNumber]
+					-- bodyShader:send("absorptionLUT", set.absorptionLUTCanvas)
+					-- bodyShader:send("scatteringLUT", set.scatteringLUTCanvas)
+					-- bodyShader:send("emissionLUT", set.emissionLUTCanvas)
 				end
 				bodyShader:send("preNormaliseCornerDirs", unpack(cornerDirs))
 				bodyShader:send("size", {lightCanvas:getDimensions()})
