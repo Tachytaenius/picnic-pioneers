@@ -1,3 +1,7 @@
+#ifndef QUANTISE_LIGHTING
+#define QUANTISE_LIGHTING 0
+#endif
+
 #ifdef PIXEL
 
 uniform sampler2D entityTexture;
@@ -14,7 +18,16 @@ uniform int pointLightCount;
 uniform vec3[MAX_POINT_LIGHTS] lightRadiantIntensities;
 uniform vec3[MAX_POINT_LIGHTS] lightPositions;
 uniform float[MAX_POINT_LIGHTS] lightRadii;
-uniform samplerCube[MAX_POINT_LIGHTS] shadowMaps;
+uniform samplerCube[MAX_POINT_LIGHTS] shadowColourMaps;
+uniform uint randomSeed;
+
+ivec3 bvecToIvec(bvec3 v) {
+	return ivec3(
+		v.x ? 1 : 0,
+		v.y ? 1 : 0,
+		v.z ? 1 : 0
+	);
+}
 
 void pixelmain() {
 	vec3 albedo = texture(entityTexture, fragmentTexCoord).rgb;
@@ -23,7 +36,11 @@ void pixelmain() {
 
 	vec2 texScreenDelta = screen_delta(fragmentTexCoord, entityTexture);
 
+#if QUANTISE_LIGHTING
 	vec3 fragmentPositionQuantised = texel_snap(fragmentPosition, texScreenDelta);
+#else
+	vec3 fragmentPositionQuantised = fragmentPosition;
+#endif
 
 	for (int i = 0; i < pointLightCount; i++) {
 		vec3 lightToFragment = lightPositions[i] - fragmentPositionQuantised;
@@ -32,15 +49,17 @@ void pixelmain() {
 		float bias = max(0.01 * (1.0 - cosTheta), 0.001);
 
 		// Percentage-closer filtering
-		float shadow = 0.0;		
-		float offset = 0.05;
+		vec3 shadow = vec3(0.0);
 		ivec3 samples = ivec3(PCF_SAMPLES);
+		int sampleId = 0;
 		for (int xi = 0; xi < samples.x; xi++) {
 			for (int yi = 0; yi < samples.y; yi++) {
 				for (int zi = 0; zi < samples.z; zi++) {
-					vec3 offset = (vec3(xi, yi, zi) * 2.0 - 1.0) * offset;
-					float depthSample = texture(shadowMaps[i], -lightToFragment + offset).r;
-					shadow += (depthSample + bias) * lightRadii[i] >= dist ? 1.0 : 0.0;
+					vec3 jitter = hash33(uvec3(love_PixelCoord.xy, sampleId ^ randomSeed));
+					vec3 offset = ((vec3(xi, yi, zi) + jitter) * 2.0 - 1.0) * PCF_OFFSET;
+					vec3 depthSample = texture(shadowColourMaps[i], -lightToFragment + offset).rgb;
+					shadow += vec3(bvecToIvec(greaterThan((depthSample + bias) * lightRadii[i], vec3(dist))));
+					sampleId += 1;
 				}
 			}
 		}

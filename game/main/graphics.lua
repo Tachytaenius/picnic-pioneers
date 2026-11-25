@@ -371,21 +371,23 @@ function game:drawCelestialAndShip(POVEntity)
 				table.insert(opaqueEntities, entity)
 			end
 		end
-		for _, list in ipairs({opaqueEntities, windowsAndPointLights}) do
-			table.sort(list, function(a, b)
-				-- Closer is drawn first
-				return mathsies.vec3.distance(POVEntity.position, a.position) < mathsies.vec3.distance(POVEntity.position, b.position)
-			end)
+		local function dist(e)
+			if not e.windowInfo then
+				return mathsies.vec3.distance(e.position, POVEntity.position)
+			else
+				local eToPlayer = POVEntity.position - e.position
+				local norm = mathsies.vec3.rotate(consts.forwardVector, e.orientation)
+				return math.abs(mathsies.vec3.dot(norm, eToPlayer))
+			end
 		end
+		table.sort(windowsAndPointLights, function(a, b)
+			-- Closer is drawn first
+			return dist(a) < dist(b)
+		end)
 
 		-- TODO: Derive common functionality between entityShader and windowShader from one source file when adding lighting calculations or whatever
 
-		love.graphics.setFrontFaceWinding("ccw")
-		love.graphics.setMeshCullMode("back")
-
 		-- Point lights with shadows
-		-- TODO: Shadows through translucent objects
-		love.graphics.setShader(self.shadowDepthShader)
 		local pointLightsToDraw = {}
 		for _, light in ipairs(windowsAndPointLights) do
 			if not light.pointLightInfo then
@@ -394,13 +396,14 @@ function game:drawCelestialAndShip(POVEntity)
 
 			table.insert(pointLightsToDraw, light)
 			local pointLightIndex = #pointLightsToDraw
+
+			local lightRadius = self:getPointLightRadius(light.pointLightInfo.radiantIntensity)
 			love.graphics.setCanvas({
-				depthstencil = self.shadowCubemaps[pointLightIndex],
+				self.shadowColourCubemaps[pointLightIndex],
+				depthstencil = self.shadowCubemap,
 				shaderlayer = true
 			})
-			love.graphics.clear(false, false, true) -- Clear depth
-			love.graphics.setDepthMode("lequal", true)
-			local lightRadius = self:getPointLightRadius(light.pointLightInfo.radiantIntensity)
+			love.graphics.clear({1, 1, 1, 1}, false, true) -- Clear colour and depth
 			local lightToClip = mathsies.mat4.perspectiveLeftHanded(
 				1,
 				consts.tau / 4,
@@ -411,13 +414,23 @@ function game:drawCelestialAndShip(POVEntity)
 			self.shadowDepthShader:send("lightPosition", {mathsies.vec3.components(light.position)})
 
 			local worldToClipArray = {}
+			local clipToSkyArray = {}
 			for i, cubemapOrientation in ipairs(consts.cubemapOrientationsYFlip) do -- TODO: Why was y-flipping needed...?
 				local worldToLight = mathsies.mat4.camera(light.position, cubemapOrientation)
 				local worldToClip = lightToClip * worldToLight
 				worldToClipArray[i] = {mathsies.mat4.components(worldToClip)}
+
+				local clipToSky = mathsies.mat4.inverse(lightToClip * mathsies.mat4.camera(mathsies.vec3(), cubemapOrientation))
+				clipToSkyArray[i] = {mathsies.mat4.components(clipToSky)}
 			end
 			self.shadowDepthShader:send("worldToClipCubemap", unpack(worldToClipArray))
+			self.shadowDepthToColourShader:send("clipToSkyCubemap", unpack(clipToSkyArray))
 
+			love.graphics.setColorMask(false, false, false, false)
+			love.graphics.setDepthMode("lequal", true)
+			love.graphics.setFrontFaceWinding("ccw")
+			love.graphics.setMeshCullMode("back")
+			love.graphics.setShader(self.shadowDepthShader)
 			for _, entity in ipairs(opaqueEntities) do
 				if not entity.mesh then
 					goto continue
@@ -434,6 +447,56 @@ function game:drawCelestialAndShip(POVEntity)
 
 			    ::continue::
 			end
+
+			-- self.shadowDepthToColourShader:send("shadowCubemap", self.shadowCubemap)
+			-- self.shadowDepthToColourShader:send("shadowColourCubemap", self.shadowColourCubemaps[pointLightIndex])
+			-- local w, h, d = self.shadowDepthToColourShader:getLocalThreadgroupSize()
+			-- love.graphics.dispatchThreadgroups(self.shadowDepthToColourShader,
+			-- 	math.ceil(consts.shadowCubemapSideLength / w),
+			-- 	math.ceil(consts.shadowCubemapSideLength / h),
+			-- 	math.ceil(6 / d)
+			-- )
+
+			love.graphics.setCanvas({
+				self.shadowColourCubemaps[pointLightIndex],
+				shaderlayer = true
+			})
+			love.graphics.setColorMask()
+			love.graphics.setDepthMode("always", false)
+			love.graphics.setMeshCullMode("none")
+			love.graphics.setBlendMode("replace", "premultiplied")
+			love.graphics.setShader(self.shadowDepthToColourShader)
+			self.shadowDepthToColourShader:send("shadowCubemap", self.shadowCubemap)
+			love.graphics.drawInstanced(self.dummyMesh, 6)
+
+			love.graphics.setCanvas({
+				self.shadowColourCubemaps[pointLightIndex],
+				depthstencil = self.shadowCubemap,
+				shaderlayer = true
+			})
+			love.graphics.setDepthMode("lequal", false)
+			love.graphics.setBlendState("min", "one", "one")
+			love.graphics.setShader(self.shadowDepthShader)
+			for _, entity in ipairs(windowsAndPointLights) do
+				if not entity.windowInfo then
+					goto continue
+				end
+
+				local meshWidth, meshHeight = 2, 2
+				local modelToWorld = mathsies.mat4.transform(
+					entity.position,
+					entity.orientation,
+					mathsies.vec3(entity.windowInfo.width / meshWidth, entity.windowInfo.height / meshHeight, 1)
+				)
+				self.shadowDepthShader:send("modelToWorld", {mathsies.mat4.components(modelToWorld)})
+				self.shadowDepthShader:send("randomSeed", love.math.random(0, 2 ^ 32 - 1))
+				self.shadowDepthShader:send("windowTransmittanceTexture", entity.windowInfo.transmittanceTexture)
+
+				love.graphics.drawInstanced(self.windowMesh, 6)
+
+				::continue::
+			end
+
 			if #pointLightsToDraw >= consts.maxPointLights then
 				break
 			end
@@ -447,22 +510,26 @@ function game:drawCelestialAndShip(POVEntity)
 		love.graphics.clear({0, 0, 0, 0}, false, true) -- Clear opaque object light and depth
 		love.graphics.setBlendMode("replace", "premultiplied") -- dst.rgba = src.rgba
 		love.graphics.setShader(self.entityShader)
+		love.graphics.setMeshCullMode("back")
+		self.entityShader:send("randomSeed", love.math.random(0, 2 ^ 32 - 1))
 		self.entityShader:send("pointLightCount", #pointLightsToDraw)
-		local intensities, radii, positions = {}, {}, {}
-		for i = 1, consts.maxPointLights do
-			local light = pointLightsToDraw[i]
-			if not light then
-				goto continue
+		if #pointLightsToDraw > 0 then
+			local intensities, radii, positions = {}, {}, {}
+			for i = 1, consts.maxPointLights do
+				local light = pointLightsToDraw[i]
+				if not light then
+					goto continue
+				end
+				intensities[i] = {mathsies.vec3.components(light.pointLightInfo.radiantIntensity)}
+				radii[i] = self:getPointLightRadius(light.pointLightInfo.radiantIntensity)
+				positions[i] = {mathsies.vec3.components(light.position)}
+				::continue::
 			end
-			intensities[i] = {mathsies.vec3.components(light.pointLightInfo.radiantIntensity)}
-			radii[i] = self:getPointLightRadius(light.pointLightInfo.radiantIntensity)
-			positions[i] = {mathsies.vec3.components(light.position)}
-			::continue::
+			self.entityShader:send("lightRadiantIntensities", unpack(intensities))
+			self.entityShader:send("lightRadii", unpack(radii))
+			self.entityShader:send("lightPositions", unpack(positions))
+			self.entityShader:send("shadowColourMaps", unpack(self.shadowColourCubemaps))
 		end
-		self.entityShader:send("lightRadiantIntensities", unpack(intensities))
-		self.entityShader:send("lightRadii", unpack(radii))
-		self.entityShader:send("lightPositions", unpack(positions))
-		self.entityShader:send("shadowMaps", unpack(self.shadowCubemaps))
 		for _, entity in ipairs(opaqueEntities) do
 			if entity.mesh then
 				local modelToWorld = mathsies.mat4.transform(

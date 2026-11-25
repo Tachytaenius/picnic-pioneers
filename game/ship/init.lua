@@ -53,15 +53,16 @@ function game:initShip()
 		texture = love.graphics.newImage("art/the2/texture.png")
 	})
 
-	-- table.insert(self.entities, {
-	-- 	position = mathsies.vec3(0, 0, 8.25),
-	-- 	orientation = mathsies.quat(),
-	-- 	windowInfo = {
-	-- 		width = 9,
-	-- 		height = 3,
-	-- 		transmittanceTexture = love.graphics.newImage("art/windowTransmittance.png")
-	-- 	}
-	-- })
+	table.insert(self.entities, {
+		position = mathsies.vec3(0, 15, 12.2),
+		orientation = mathsies.quat(),
+		windowInfo = {
+			-- width = 24,
+			width = 10,
+			height = 18,
+			transmittanceTexture = love.graphics.newImage("art/windowTransmittance.png")
+		}
+	})
 	-- table.insert(self.entities, {
 	-- 	position = mathsies.vec3(1.5, -1, 9),
 	-- 	orientation = mathsies.quat(),
@@ -83,59 +84,94 @@ function game:initShip()
 	table.insert(self.entities, {
 		position = mathsies.vec3(2, 1.5, 0),
 		pointLightInfo = {
-			radiantIntensity = mathsies.vec3(3e7, 3e7, 3e7)
+			radiantIntensity = mathsies.vec3(1e9, 1e9, 1e9)
+		}
+	})
+	-- table.insert(self.entities, {
+	-- 	position = mathsies.vec3(),
+	-- 	pointLightInfo = {
+	-- 		radiantIntensity = mathsies.vec3(3e9, 0, 0)
+	-- 	}
+	-- })
+	-- table.insert(self.entities, {
+	-- 	position = mathsies.vec3(),
+	-- 	pointLightInfo = {
+	-- 		radiantIntensity = mathsies.vec3(0, 1e8, 0)
+	-- 	}
+	-- })
+	-- table.insert(self.entities, {
+	-- 	position = mathsies.vec3(),
+	-- 	pointLightInfo = {
+	-- 		radiantIntensity = mathsies.vec3(0, 0, 1e8)
+	-- 	}
+	-- })
+
+	table.insert(self.entities, {
+		position = mathsies.vec3(-2, 3, 3),
+		orientation = mathsies.quat.fromAxisAngle(mathsies.vec3(0, 1.5, 0)),
+		windowInfo = {
+			width = 5,
+			height = 5,
+			transmittanceTexture = love.graphics.newImage("art/windowTransmittance2.png")
 		}
 	})
 	table.insert(self.entities, {
-		position = mathsies.vec3(),
-		pointLightInfo = {
-			radiantIntensity = mathsies.vec3(1e8, 0, 0)
-		}
-	})
-	table.insert(self.entities, {
-		position = mathsies.vec3(),
-		pointLightInfo = {
-			radiantIntensity = mathsies.vec3(0, 1e8, 0)
-		}
-	})
-	table.insert(self.entities, {
-		position = mathsies.vec3(),
-		pointLightInfo = {
-			radiantIntensity = mathsies.vec3(0, 0, 1e8)
+		position = mathsies.vec3(-4, 3, 3),
+		orientation = mathsies.quat.fromAxisAngle(mathsies.vec3(0, 1.5, 0)) * mathsies.quat.fromAxisAngle(mathsies.vec3(0, 0, 1.5)),
+		windowInfo = {
+			width = 5,
+			height = 5,
+			transmittanceTexture = love.graphics.newImage("art/windowTransmittance2.png")
 		}
 	})
 
 	-- Graphics init
 
-	self.shadowCubemaps = {}
 	local sideLength = consts.shadowCubemapSideLength
+	self.shadowCubemap = love.graphics.newCanvas(sideLength, sideLength, {
+		type = "cube",
+		format = "depth32f",
+		readable = true,
+		debugname = "Shadow Cubemap"
+	})
+	self.shadowColourCubemaps = {}
 	for i = 1, consts.maxPointLights do
-		self.shadowCubemaps[i] = love.graphics.newCanvas(sideLength, sideLength, {
+		self.shadowColourCubemaps[i] = love.graphics.newCanvas(sideLength, sideLength, {
 			type = "cube",
-			format = "depth32f",
-			readable = true,
-			debugname = "Shadow Cubemap " .. i
+			format = consts.shadowColourCubemapFormat,
+			computewrite = true,
+			debugname = "Shadow Colour Cubemap " .. i
 		})
 	end
 
 	self.entityShader = love.graphics.newShader(
 		"#pragma language glsl4\n" ..
+		"#line 1\n" .. love.filesystem.read("shaders/include/lib/random.glsl") ..
 		"#line 1\n" .. love.filesystem.read("shaders/include/lib/texelSpaceQuantisation.glsl") ..
 		"#line 1\n" .. love.filesystem.read("shaders/include/entityVertex.glsl") ..
 		"#line 1\n" .. love.filesystem.read("shaders/drawing/entity.glsl"),
 		{defines = {
 			MAX_POINT_LIGHTS = consts.maxPointLights,
-			PCF_SAMPLES = 3
+			QUANTISE_LIGHTING = false,
+			PCF_SAMPLES = 3,
+			PCF_OFFSET = 0.15
 		}}
 	)
 	self.windowShader = love.graphics.newShader(
 		"#line 1\n" .. love.filesystem.read("shaders/include/entityVertex.glsl") ..
 		"#line 1\n" .. love.filesystem.read("shaders/drawing/window.glsl")
 	)
-	self.shadowDepthShader = love.graphics.newShader("shaders/drawing/shadowDepth.glsl", {defines = {
-		OMNIDIRECTIONAL = true
-	}})
+	self.shadowDepthShader = love.graphics.newShader(
+		"#pragma language glsl4\n" ..
+		"#line 1\n" .. love.filesystem.read("shaders/include/lib/random.glsl") ..
+		"#line 1\n" .. love.filesystem.read("shaders/drawing/shadowDepth.glsl"),
+		{defines = {
+			OMNIDIRECTIONAL = true
+		}
+	})
 	self.opaqueFromDepthShader = love.graphics.newShader("shaders/drawing/opaqueFromDepth.glsl")
+
+	self.shadowDepthToColourShader = love.graphics.newShader("shaders/drawing/shadowDepthToColour.glsl") -- Should also add code for omnidirectional
 
 	self.windowMesh = util.loadObj("art/windowMesh.obj")
 end

@@ -220,7 +220,8 @@ function consts.loadAll()
 
 	consts.maxPointLights = 16
 	consts.shadowCubemapNearDistance = 0.01
-	consts.shadowCubemapSideLength = 192
+	consts.shadowCubemapSideLength = 512
+	consts.shadowColourCubemapFormat = "rgba16f"
 	consts.pointLightCutoffRadiance = 1e4
 
 	consts.celestialRadianceMultiplier = 1e13

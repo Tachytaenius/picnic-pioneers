@@ -95,7 +95,14 @@ function game:initState(initParams)
 	-- Common graphics init
 	self.screenCanvasses = {} -- Canvasses for which the size is supposed to match the game output size. There are also scaled canvasses like those in point layers for their volumetrics or the point attenuation texture
 	self.screenWidth, self.screenHeight = love.graphics.getDimensions()
-	self.dummyTexture = love.graphics.newImage(love.image.newImageData(1, 1))
+	local vertices = {
+		{-1, -1}, {-1, 1}, {1, -1},
+		{-1, 1}, {1, 1}, {1, -1}
+	}
+	local format = {
+		{name = "VertexPosition", location = 0, format = "floatvec2"}
+	}
+	self.dummyMesh = love.graphics.newMesh(format, vertices, "triangles")
 
 	self:initSpectralInfo()
 

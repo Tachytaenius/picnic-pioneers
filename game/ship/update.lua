@@ -5,7 +5,7 @@ local game = {}
 function game:updateShip(dt)
 	self:handlePlayerMovement(dt)
 
-	for i = 6, #self.entities do
+	for i = 1, #self.entities do
 		local e = self.entities[i]
 		if e.windowInfo then
 			goto continue
