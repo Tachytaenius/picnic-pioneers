@@ -11,7 +11,7 @@ function game:draw()
 
 	love.graphics.setCanvas()
 	love.graphics.setShader(self.spectralToRGBShader)
-	self.spectralToRGBShader:send("spectralToXYZ", self.spectralToXYZMatrix)
+	self.spectralToRGBShader:send("spectralToRGB", self.spectralToRGBMatrix3x3)
 	love.graphics.draw(self.screenCanvasses.lightCanvas)
 	love.graphics.setShader()
 end
@@ -385,8 +385,6 @@ function game:drawCelestialAndShip(POVEntity)
 			return dist(a) < dist(b)
 		end)
 
-		-- TODO: Derive common functionality between entityShader and windowShader from one source file when adding lighting calculations or whatever
-
 		-- Point lights with shadows
 		local pointLightsToDraw = {}
 		for _, light in ipairs(windowsAndPointLights) do
@@ -429,7 +427,7 @@ function game:drawCelestialAndShip(POVEntity)
 			love.graphics.setColorMask(false, false, false, false)
 			love.graphics.setDepthMode("lequal", true)
 			love.graphics.setFrontFaceWinding("ccw")
-			love.graphics.setMeshCullMode("back")
+			love.graphics.setMeshCullMode("front")
 			love.graphics.setShader(self.shadowDepthShader)
 			for _, entity in ipairs(opaqueEntities) do
 				if not entity.mesh then
@@ -489,7 +487,9 @@ function game:drawCelestialAndShip(POVEntity)
 					mathsies.vec3(entity.windowInfo.width / meshWidth, entity.windowInfo.height / meshHeight, 1)
 				)
 				self.shadowDepthShader:send("modelToWorld", {mathsies.mat4.components(modelToWorld)})
+				-- self.shadowDepthShader:send("modelToWorldNormal", {util.normalMatrix(modelToWorld)})
 				self.shadowDepthShader:send("randomSeed", love.math.random(0, 2 ^ 32 - 1))
+				self.shadowDepthShader:send("windowAlbedoTexture", entity.albedo)
 				self.shadowDepthShader:send("windowTransmittanceTexture", entity.windowInfo.transmittanceTexture)
 
 				love.graphics.drawInstanced(self.windowMesh, 6)
@@ -512,7 +512,11 @@ function game:drawCelestialAndShip(POVEntity)
 		love.graphics.setShader(self.entityShader)
 		love.graphics.setMeshCullMode("back")
 		self.entityShader:send("randomSeed", love.math.random(0, 2 ^ 32 - 1))
-		self.entityShader:send("pointLightCount", #pointLightsToDraw)
+		local function sendToShaders(var, ...)
+			self.entityShader:send(var, ...)
+			self.windowShader:send(var, ...)
+		end
+		sendToShaders("pointLightCount", #pointLightsToDraw)
 		if #pointLightsToDraw > 0 then
 			local intensities, radii, positions = {}, {}, {}
 			for i = 1, consts.maxPointLights do
@@ -525,10 +529,10 @@ function game:drawCelestialAndShip(POVEntity)
 				positions[i] = {mathsies.vec3.components(light.position)}
 				::continue::
 			end
-			self.entityShader:send("lightRadiantIntensities", unpack(intensities))
-			self.entityShader:send("lightRadii", unpack(radii))
-			self.entityShader:send("lightPositions", unpack(positions))
-			self.entityShader:send("shadowColourMaps", unpack(self.shadowColourCubemaps))
+			sendToShaders("lightRadiantIntensities", unpack(intensities))
+			sendToShaders("lightRadii", unpack(radii))
+			sendToShaders("lightPositions", unpack(positions))
+			sendToShaders("shadowColourMaps", unpack(self.shadowColourCubemaps))
 		end
 		for _, entity in ipairs(opaqueEntities) do
 			if entity.mesh then
@@ -541,7 +545,7 @@ function game:drawCelestialAndShip(POVEntity)
 				self.entityShader:send("modelToClip", {mathsies.mat4.components(modelToClip)})
 				self.entityShader:send("modelToWorld", {mathsies.mat4.components(modelToWorld)})
 				self.entityShader:send("modelToWorldNormal", {util.normalMatrix(modelToWorld)})
-				self.entityShader:send("entityTexture", entity.texture)
+				self.entityShader:send("entityAlbedo", entity.albedo)
 				love.graphics.draw(entity.mesh)
 			end
 		end
@@ -553,6 +557,7 @@ function game:drawCelestialAndShip(POVEntity)
 		love.graphics.setDepthMode("lequal", false)
 		love.graphics.setShader(self.windowShader)
 		self.windowShader:send("transmittanceCanvas", transmittanceCanvas)
+		self.windowShader:send("cameraPosition", {mathsies.vec3.components(POVEntity.position)})
 		for _, entity in ipairs(windowsAndPointLights) do
 			if entity.pointLightInfo then
 				local difference = worldToCamera * entity.position
@@ -573,7 +578,8 @@ function game:drawCelestialAndShip(POVEntity)
 				self.windowShader:send("modelToClip", {mathsies.mat4.components(modelToClip)})
 				self.windowShader:send("modelToWorld", {mathsies.mat4.components(modelToWorld)})
 				self.windowShader:send("modelToWorldNormal", {util.normalMatrix(modelToWorld)})
-				self.windowShader:send("windowTransmittanceTexture", entity.windowInfo.transmittanceTexture)
+				self.windowShader:send("entityTransmittance", entity.windowInfo.transmittanceTexture)
+				self.windowShader:send("entityAlbedo", entity.albedo)
 				love.graphics.draw(self.windowMesh)
 				self:handleObjectTransmittance()
 			end
@@ -804,6 +810,39 @@ function game:getPointLightRadius(radiantIntensity)
 		math.sqrt(radiantIntensity.y / consts.pointLightCutoffRadiance),
 		math.sqrt(radiantIntensity.z / consts.pointLightCutoffRadiance)
 	)
+end
+
+function game:newSpectralImageFromRGB(path)
+	local currentColour = mathsies.vec3()
+	local whiteSpectral = self:rgbToSpectralRadiance(mathsies.vec3(1, 1, 1))
+	local data = love.image.newImageData(path)
+	data:mapPixel(function(x, y, r, g, b, a)
+		-- TODO: Opacity data
+		currentColour.x = r
+		currentColour.y = g
+		currentColour.z = b
+		local binR, binG, binB = mathsies.vec3.components(self:rgbToSpectralRadiance(currentColour) / whiteSpectral)
+		return binR, binG, binB, 0
+	end)
+	return love.graphics.newImage(data, {linear = true})
+end
+
+function game:rgbToSpectralRadiance(rgb)
+	local bins = self.rgbToSpectralMatrix * rgb
+	-- Disallow negatives. Negatives can happen due to stimulus responses overlapping within spectral bins.
+	-- Eg if you wanted to convert pure RGB green to the 3 spectral bins (reddish, greenish, and blueish),
+	-- then the reddish bin is made negative to compensate for the perceptual red that comes from the
+	-- greenish bin. Except, negative spectral radiances are impossible, so... we clamp them out. This
+	-- means that pure RGB green is unattainable in this bins-based renderer, despite being a perfectly
+	-- physically-representable colour.
+	bins.x = math.max(0, bins.x)
+	bins.y = math.max(0, bins.y)
+	bins.z = math.max(0, bins.z)
+	return bins
+end
+
+function game:lightIntensityFromRGBAtDist(rgb, dist)
+	return self:rgbToSpectralRadiance(rgb) * dist ^ 2
 end
 
 return game

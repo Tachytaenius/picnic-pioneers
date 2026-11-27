@@ -1,6 +1,6 @@
--- Mathsies provides deterministic (if your machine is compliant with IEEE-754) versions of generic mathematical functions for LuaJIT, as well as quaternions, 2 and 3-dimensional vectors and 4x4 matrices.
--- By Tachytaenius.
--- Version 12
+-- Mathsies provides deterministic (if your machine is compliant with IEEE-754) versions of generic mathematical functions for LuaJIT, as well as quaternions, 2 and 3-dimensional vectors and 4x4 matrices. Finding other solutions to determinism is encouraged.
+-- By Tachytaenius
+-- Version 13
 
 local ffi = require("ffi")
 
@@ -822,29 +822,59 @@ do -- mat4
 		return rawnew(m._00,m._01,m._02,m._03, m._10,m._11,m._12,m._13, m._20,m._21,m._22,m._23, m._30,m._31,m._32,m._33)
 	end
 
-	local function inverse(m)
-		return rawnew(
-			 m._11 * m._22 * m._33 - m._11 * m._23 * m._32 - m._21 * m._12 * m._33 + m._21 * m._13 * m._32 + m._31 * m._12 * m._23 - m._31 * m._13 * m._22,
-			-m._01 * m._22 * m._33 + m._01 * m._23 * m._32 + m._21 * m._02 * m._33 - m._21 * m._03 * m._32 - m._31 * m._02 * m._23 + m._31 * m._03 * m._22,
-			 m._01 * m._12 * m._33 - m._01 * m._13 * m._32 - m._11 * m._02 * m._33 + m._11 * m._03 * m._32 + m._31 * m._02 * m._13 - m._31 * m._03 * m._12,
-			-m._01 * m._12 * m._23 + m._01 * m._13 * m._22 + m._11 * m._02 * m._23 - m._11 * m._03 * m._22 - m._21 * m._02 * m._13 + m._21 * m._03 * m._12,
-			-m._10 * m._22 * m._33 + m._10 * m._23 * m._32 + m._20 * m._12 * m._33 - m._20 * m._13 * m._32 - m._30 * m._12 * m._23 + m._30 * m._13 * m._22,
-			 m._00 * m._22 * m._33 - m._00 * m._23 * m._32 - m._20 * m._02 * m._33 + m._20 * m._03 * m._32 + m._30 * m._02 * m._23 - m._30 * m._03 * m._22,
-			-m._00 * m._12 * m._33 + m._00 * m._13 * m._32 + m._10 * m._02 * m._33 - m._10 * m._03 * m._32 - m._30 * m._02 * m._13 + m._30 * m._03 * m._12,
-			 m._00 * m._12 * m._23 - m._00 * m._13 * m._22 - m._10 * m._02 * m._23 + m._10 * m._03 * m._22 + m._20 * m._02 * m._13 - m._20 * m._03 * m._12,
-			 m._10 * m._21 * m._33 - m._10 * m._23 * m._31 - m._20 * m._11 * m._33 + m._20 * m._13 * m._31 + m._30 * m._11 * m._23 - m._30 * m._13 * m._21,
-			-m._00 * m._21 * m._33 + m._00 * m._23 * m._31 + m._20 * m._01 * m._33 - m._20 * m._03 * m._31 - m._30 * m._01 * m._23 + m._30 * m._03 * m._21,
-			 m._00 * m._11 * m._33 - m._00 * m._13 * m._31 - m._10 * m._01 * m._33 + m._10 * m._03 * m._31 + m._30 * m._01 * m._13 - m._30 * m._03 * m._11,
-			-m._00 * m._11 * m._23 + m._00 * m._13 * m._21 + m._10 * m._01 * m._23 - m._10 * m._03 * m._21 - m._20 * m._01 * m._13 + m._20 * m._03 * m._11,
-			-m._10 * m._21 * m._32 + m._10 * m._22 * m._31 + m._20 * m._11 * m._32 - m._20 * m._12 * m._31 - m._30 * m._11 * m._22 + m._30 * m._12 * m._21,
-			 m._00 * m._21 * m._32 - m._00 * m._22 * m._31 - m._20 * m._01 * m._32 + m._20 * m._02 * m._31 + m._30 * m._01 * m._22 - m._30 * m._02 * m._21,
-			-m._00 * m._11 * m._32 + m._00 * m._12 * m._31 + m._10 * m._01 * m._32 - m._10 * m._02 * m._31 - m._30 * m._01 * m._12 + m._30 * m._02 * m._11,
-			 m._00 * m._11 * m._22 - m._00 * m._12 * m._21 - m._10 * m._01 * m._22 + m._10 * m._02 * m._21 + m._20 * m._01 * m._12 - m._20 * m._02 * m._11
-		)
-	end
-
 	local function transpose(m)
 		return rawnew(m._00,m._10,m._20,m._30, m._01,m._11,m._21,m._31, m._02,m._12,m._22,m._32, m._03,m._13,m._23,m._33)
+	end
+
+	local function inverse(m)
+		-- https://stackoverflow.com/a/44446912
+		-- TEMP: Just transposing to match other standard for now
+
+		local m = transpose(m)
+
+		local A2323 = m._22 * m._33 - m._23 * m._32
+		local A1323 = m._21 * m._33 - m._23 * m._31
+		local A1223 = m._21 * m._32 - m._22 * m._31
+		local A0323 = m._20 * m._33 - m._23 * m._30
+		local A0223 = m._20 * m._32 - m._22 * m._30
+		local A0123 = m._20 * m._31 - m._21 * m._30
+		local A2313 = m._12 * m._33 - m._13 * m._32
+		local A1313 = m._11 * m._33 - m._13 * m._31
+		local A1213 = m._11 * m._32 - m._12 * m._31
+		local A2312 = m._12 * m._23 - m._13 * m._22
+		local A1312 = m._11 * m._23 - m._13 * m._21
+		local A1212 = m._11 * m._22 - m._12 * m._21
+		local A0313 = m._10 * m._33 - m._13 * m._30
+		local A0213 = m._10 * m._32 - m._12 * m._30
+		local A0312 = m._10 * m._23 - m._13 * m._20
+		local A0212 = m._10 * m._22 - m._12 * m._20
+		local A0113 = m._10 * m._31 - m._11 * m._30
+		local A0112 = m._10 * m._21 - m._11 * m._20
+
+		local det = m._00 * ( m._11 * A2323 - m._12 * A1323 + m._13 * A1223 ) 
+			- m._01 * ( m._10 * A2323 - m._12 * A0323 + m._13 * A0223 ) 
+			+ m._02 * ( m._10 * A1323 - m._11 * A0323 + m._13 * A0123 ) 
+			- m._03 * ( m._10 * A1223 - m._11 * A0223 + m._12 * A0123 ) ;
+		local idet = 1 / det;
+
+		return transpose(rawnew(
+			idet *   ( m._11 * A2323 - m._12 * A1323 + m._13 * A1223 ),
+			idet * - ( m._01 * A2323 - m._02 * A1323 + m._03 * A1223 ),
+			idet *   ( m._01 * A2313 - m._02 * A1313 + m._03 * A1213 ),
+			idet * - ( m._01 * A2312 - m._02 * A1312 + m._03 * A1212 ),
+			idet * - ( m._10 * A2323 - m._12 * A0323 + m._13 * A0223 ),
+			idet *   ( m._00 * A2323 - m._02 * A0323 + m._03 * A0223 ),
+			idet * - ( m._00 * A2313 - m._02 * A0313 + m._03 * A0213 ),
+			idet *   ( m._00 * A2312 - m._02 * A0312 + m._03 * A0212 ),
+			idet *   ( m._10 * A1323 - m._11 * A0323 + m._13 * A0123 ),
+			idet * - ( m._00 * A1323 - m._01 * A0323 + m._03 * A0123 ),
+			idet *   ( m._00 * A1313 - m._01 * A0313 + m._03 * A0113 ),
+			idet * - ( m._00 * A1312 - m._01 * A0312 + m._03 * A0112 ),
+			idet * - ( m._10 * A1223 - m._11 * A0223 + m._12 * A0123 ),
+			idet *   ( m._00 * A1223 - m._01 * A0223 + m._02 * A0123 ),
+			idet * - ( m._00 * A1213 - m._01 * A0213 + m._02 * A0113 ),
+			idet *   ( m._00 * A1212 - m._01 * A0212 + m._02 * A0112 )
+		))
 	end
 
 	ffi.metatype("mat4", {

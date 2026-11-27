@@ -1,5 +1,5 @@
 local consts = require("consts")
-local util = require("util")
+local mathsies = require("lib.mathsies")
 
 local game = {}
 
@@ -70,11 +70,35 @@ function game:initSpectralInfo()
 	local f = 1e-9 -- Conversion factor from nm^-1 to m^-1
 
 	local b = f * range -- Width of a bin in m
-	self.spectralToXYZMatrix = { -- Row-major
-		b*rX, b*gX, b*bX,
-		b*rY, b*gY, b*bY,
-		b*rZ, b*gZ, b*bZ
+
+	self.spectralToXYZMatrix = mathsies.mat4( -- Row-major
+		b*rX, b*gX, b*bX, 0,
+		b*rY, b*gY, b*bY, 0,
+		b*rZ, b*gZ, b*bZ, 0,
+		0, 0, 0, 1
+	)
+	self.xyzToRGBMatrix = mathsies.mat4(
+		3.2406255, -1.5372080, -0.4986286, 0,
+		-0.9689307, 1.8757561, 0.0415175, 0,
+		0.0557101, -0.2040211, 1.0569959, 0,
+		0, 0, 0, 1
+	)
+	self.spectralToRGBMatrix = self.xyzToRGBMatrix * self.spectralToXYZMatrix
+	local m = self.spectralToRGBMatrix
+	self.spectralToRGBMatrix3x3 = {
+		m._00, m._01, m._02,
+		m._10, m._11, m._12,
+		m._20, m._21, m._22
 	}
+
+	self.xyzToSpectralMatrix = mathsies.mat4.inverse(self.spectralToXYZMatrix)
+	self.rgbToXYZMatrix = mathsies.mat4(
+		0.4124, 0.3576, 0.1805, 0,
+		0.2126, 0.7152, 0.0722, 0,
+		0.0193, 0.1192, 0.9505, 0,
+		0, 0, 0, 1
+	)
+	self.rgbToSpectralMatrix = self.xyzToSpectralMatrix * self.rgbToXYZMatrix -- Not to be used directly as it can cause negative spectral radiances. See the function rgbToSpectralRadiance
 
 	self.spectralBinRange = b
 

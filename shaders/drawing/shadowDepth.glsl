@@ -35,6 +35,7 @@ uniform float lightRadius;
 uniform vec3 lightPosition;
 
 uniform uint randomSeed;
+uniform sampler2D windowAlbedoTexture;
 uniform sampler2D windowTransmittanceTexture;
 
 out vec4 fragmentColour;
@@ -51,11 +52,15 @@ ivec4 bvecToIvec(bvec4 v) {
 void pixelmain() {
 	float depth = distance(fragmentPosition, lightPosition) / lightRadius;
 
-	vec4 surfaceTransmittance = vec4(texture(windowTransmittanceTexture, fragmentTexCoord).rgb, 1.0);
+	vec3 albedo = texture(windowAlbedoTexture, fragmentTexCoord).rgb;
+	vec3 surfaceTransmittance = texture(windowTransmittanceTexture, fragmentTexCoord).rgb;
+	vec3 sum = surfaceTransmittance + albedo;
+	surfaceTransmittance -= max(vec3(0.0), sum - 1.0);
+
 	ivec2 coord = ivec2(love_PixelCoord.xy);
 	vec4 rand = hash43(uvec3(coord, randomSeed)); // Has colour noise
 	// vec4 rand = vec4(hash13(uvec3(coord, randomSeed)));
-	fragmentColour = max(vec4(depth), vec4(bvecToIvec(lessThan(rand, surfaceTransmittance))));
+	fragmentColour = max(vec4(depth), vec4(bvecToIvec(lessThan(rand, vec4(surfaceTransmittance, 1.0)))));
 
 	gl_FragDepth = depth;
 }
