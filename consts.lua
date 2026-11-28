@@ -177,9 +177,9 @@ function consts.loadAll()
 
 	-- Simulation/graphics parameters
 
-	consts.starLUTDepthSamples = 1 -- TODO: Increase when the LUTs aren't just constant values.
+	consts.starLUTDepthSamples = 1 -- TODO: Increase when (if?) the LUTs aren't just constant values.
 
-	consts.starPlanckLawSamplesPerBin = 16
+	consts.starPlanckLawSamplesPerBin = 6
 
 	consts.gravitationalConstant = 6.6743e-11
 	consts.planckConstant = 6.62607015e-34
@@ -246,14 +246,18 @@ function consts.loadAll()
 	end
 	consts.shapeSlowdownIntegralDataCount = currentStart
 
-	consts.volumetricMaxRaySteps = 8
 	consts.volumetricCanvasScale = 1
-	consts.volumetricMaxPixelAdditions = 240 -- Shouldn't go above 255
+	consts.volumetricMaxPixelAdditions = 255 -- Shouldn't go above 255
+	consts.volumetricPixelAdditionsToGetMinSteps = 4
+	consts.volumetricMinSteps = 8
+	consts.volumetricMaxSteps = 16
+	consts.volCamRotReprojAdditionsMul = 0.95
+	consts.volCamRotReprojMinAdditions = 16
 
 	consts.starParamCount = 2
 	consts.maxStarsPerSystem = 4
 	consts.invalidStarParam = -1
-	consts.starAxisSamples = 1500
+	consts.starAxisSamples = 1250
 
 	consts.intensityPrecalcThetaSamples = 4
 	consts.intensityPrecalcPhiSamples = 4

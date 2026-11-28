@@ -52,7 +52,7 @@ function game:setupPrecalcShader(shapeType, attShapeType)
 	volumetricShader:send("size", {self.precalcCanvas:getDimensions()})
 	volumetricShader:send("resultCanvas", self.precalcCanvas)
 	volumetricShader:send("resultTransmittanceCanvas", self.precalcTransmittanceCanvas)
-	volumetricShader:send("maxRaySteps", consts.intensityPrecalcMaxRaySteps)
+	volumetricShader:send("maxSteps", consts.intensityPrecalcMaxRaySteps)
 
 	return volumetricShader
 end

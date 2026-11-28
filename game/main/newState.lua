@@ -35,16 +35,16 @@ function game:initSpectralInfo()
 
 	local xyzFromWavelength = self:loadXYZFromWavelengthData()
 
-	local rSpectrumStart = 626
-	local rSpectrumEnd = 750
+	local rSpectrumStart = 600
+	local rSpectrumEnd = 700
 	local rSpectrumMiddle = (rSpectrumStart + rSpectrumEnd) / 2
 
-	local gSpectrumStart = 503
-	local gSpectrumEnd = 626
+	local gSpectrumStart = 500
+	local gSpectrumEnd = 600
 	local gSpectrumMiddle = (gSpectrumStart + gSpectrumEnd) / 2
 
-	local bSpectrumStart = 380
-	local bSpectrumEnd = 503
+	local bSpectrumStart = 400
+	local bSpectrumEnd = 500
 	local bSpectrumMiddle = (bSpectrumStart + bSpectrumEnd) / 2
 
 	-- 400 nm to 700 nm in 3 bins
@@ -182,11 +182,6 @@ function game:resizeGameScreen(width, height, forceRecreate)
 		debugname = "Ship Depth Canvas"
 	})
 
-	self.screenCanvasses.shipCanvas = love.graphics.newCanvas(width, height, {
-		format = "rgba32f",
-		debugname = "Ship Canvas"
-	})
-
 	self.pointAttenuationTexture = love.graphics.newCanvas(
 		math.ceil(width * consts.pointAttenuationTextureScale),
 		math.ceil(height * consts.pointAttenuationTextureScale),
@@ -201,6 +196,23 @@ function game:resizeGameScreen(width, height, forceRecreate)
 	self.pointAttenuationTexture:setFilter("linear")
 	self.pointAttenuationTexture:setWrap("clamp", "clamp", "clamp")
 
+	local radianceFormat = "rgba32f" -- 32 bits to maintain precision when adding up. When drawing the value of the point total transmittance canvas, it was shown to become imprecise (banding and other artifacts) after a while with 16 bits.
+	local transmittanceFormat = "rgba16f"
+	self.screenCanvasses.tempVolumetricRadianceCanvas = love.graphics.newCanvas(self.volumetricCanvasWidth, self.volumetricCanvasHeight, {
+		debugname = "Temporary Volumetric Radiance Canvas",
+		format = radianceFormat,
+		computewrite = true
+	})
+	self.screenCanvasses.tempVolumetricTransmittanceCanvas = love.graphics.newCanvas(self.volumetricCanvasWidth, self.volumetricCanvasHeight, {
+		debugname = "Temporary Volumetric Transmittance Canvas",
+		format = transmittanceFormat,
+		computewrite = true
+	})
+	self.screenCanvasses.tempVolumetricAddCountCanvas = love.graphics.newCanvas(self.volumetricCanvasWidth, self.volumetricCanvasHeight, {
+	debugname = "Temporary Volumetric Addition Count Canvas",
+		format = "r8ui",
+		computewrite = true
+	})
 	for _, pointLayer in ipairs(self.pointLayers) do
 		if pointLayer.volumetricCanvas then
 			pointLayer.volumetricCanvas:release()
@@ -212,12 +224,12 @@ function game:resizeGameScreen(width, height, forceRecreate)
 		-- pointLayer.volumetricCanvasCameraInfo = nil -- Not needed since the new canvas is ready for new rays to add in
 		pointLayer.volumetricCanvas = love.graphics.newCanvas(self.volumetricCanvasWidth, self.volumetricCanvasHeight, {
 			debugname = pointLayer.debugName .. " Volumetric Radiance Canvas",
-			format = "rgba32f", -- 32 bits to maintain precision when adding up. When drawing the value of the point total transmittance canvas, it was shown to become imprecise (banding and other artifacts) after a while with 16 bits.
+			format = radianceFormat,
 			computewrite = true
 		})
 		pointLayer.volumetricTransmittanceCanvas = love.graphics.newCanvas(self.volumetricCanvasWidth, self.volumetricCanvasHeight, {
 			debugname = pointLayer.debugName .. " Volumetric Transmittance Canvas",
-			format = "rgba16f",
+			format = transmittanceFormat,
 			computewrite = true
 		})
 		pointLayer.volumetricAddCountCanvas = love.graphics.newCanvas(self.volumetricCanvasWidth, self.volumetricCanvasHeight, {

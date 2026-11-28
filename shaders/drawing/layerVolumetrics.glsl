@@ -1,4 +1,10 @@
-uniform uint maxRaySteps;
+#ifndef INTENSITY_PRECALC
+uniform uint rayStepsNoAdditions;
+uniform uint rayStepsMin;
+uniform uint additionCountToGetMin;
+#else
+uniform uint maxSteps;
+#endif
 
 uniform vec3 baseEmission;
 uniform float attenuationMultiplier;
@@ -51,7 +57,7 @@ VolumetricSample sampleVolumetrics(vec3 samplePosition) {
 	);
 }
 
-ColourTransmittance getRayColourAndTransmittance(vec3 rayPosition, vec3 rayDirection, float sampleLerp) {
+ColourTransmittance getRayColourAndTransmittance(vec3 rayPosition, vec3 rayDirection, float sampleLerp, uint maxRaySteps) {
 	vec3 totalRayRadiance = vec3(0.0);
 	vec3 totalTransmittance = vec3(1.0);
 	// Ray moves backwards from end to camera
@@ -137,6 +143,9 @@ void computemain() {
 	if (currentCount >= MAX_ADDITIONS) {
 		return;
 	}
+	float lerp = min(1.0, float(currentCount) / float(additionCountToGetMin));
+	uint maxSteps = uint(mix(rayStepsNoAdditions, rayStepsMin, lerp));
+	maxSteps = clamp(maxSteps, rayStepsMin, rayStepsNoAdditions); // Probably wholly unnecessary
 	imageStore(additionCountCanvas, ivec2(coord), uvec4(currentCount + 1, 0, 0, 1));
 
 	int x = coord.x;
@@ -163,7 +172,7 @@ void computemain() {
 		vec3 direction = cameraForwards;
 		vec3 cameraPosition = samplingDiskRadius * (-cameraForwards + cameraRight * posOnDisk.x + cameraUp * posOnDisk.y);
 #endif
-		ColourTransmittance colourTransmittance = getRayColourAndTransmittance(cameraPosition, direction, stepVariation);
+		ColourTransmittance colourTransmittance = getRayColourAndTransmittance(cameraPosition, direction, stepVariation, maxSteps);
 		vec3 colour = colourTransmittance.colour;
 		vec3 transmittance = colourTransmittance.transmittance;
 

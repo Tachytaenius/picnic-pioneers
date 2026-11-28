@@ -36,7 +36,7 @@ function game:initCelestial(initParams)
 	coroutine.yield()
 	self:initPointLayers()
 	coroutine.yield()
-	self.starSystemLookupInfoSet = self:makeStarSystemLookupInfoSet()
+	-- self.starSystemLookupInfoSet = self:makeStarSystemLookupInfoSet()
 
 	-- Graphics init
 
@@ -68,7 +68,8 @@ function game:initCelestial(initParams)
 	self.clearPointAttenuationTexture:setWrap("clamp", "clamp", "clamp")
 
 	self.miscPointAddShader = love.graphics.newComputeShader("shaders/drawing/miscPointAdd.glsl")
-
+	self.rotationReprojectionShader = love.graphics.newComputeShader("shaders/drawing/rotationReprojection.glsl")
+	self.reprojectionCopyShader = love.graphics.newComputeShader("shaders/drawing/reprojectionCopy.glsl")
 	self.applyTempTransmittanceShader = love.graphics.newComputeShader("shaders/drawing/applyTempTransmittance.glsl")
 
 	-- Place ship

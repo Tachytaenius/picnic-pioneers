@@ -161,27 +161,64 @@ function game:drawCelestialAndShip(POVEntity)
 		if pointLayer.volumetricCanvasCameraInfo then
 			if
 				pointLayer.volumetricCanvasCameraInfo.position ~= cameraPositionFull or
-				pointLayer.volumetricCanvasCameraInfo.orientation ~= cameraOrientation or
+				-- pointLayer.volumetricCanvasCameraInfo.orientation ~= cameraOrientation or
 				pointLayer.volumetricCanvasCameraInfo.verticalFOV ~= cameraVerticalFOV or
 				pointLayer.volumetricCanvasCameraInfo.brightnessMultiplier ~= consts.celestialRadianceMultiplier
 			then
-				-- TODO: Reprojection
+				-- TODO: Figure out what to do when translating
 				local original = love.graphics.getCanvas()
 				love.graphics.setCanvas(pointLayer.volumetricCanvas)
-				-- TEMP values
 				love.graphics.clear(0, 0, 0, 0)
 				love.graphics.setCanvas(pointLayer.volumetricTransmittanceCanvas)
 				love.graphics.clear(0, 0, 0, 0) -- Start at 0 for averaging since there are no additions yet
 				love.graphics.setCanvas(pointLayer.volumetricAddCountCanvas)
 				love.graphics.clear(0, 0, 0, 0)
 				love.graphics.setCanvas(original)
+			else
+				if pointLayer.volumetricCanvasCameraInfo.orientation ~= cameraOrientation then
+					self.reprojectionCopyShader:send("radianceIn", pointLayer.volumetricCanvas)
+					self.reprojectionCopyShader:send("transmittanceIn", pointLayer.volumetricTransmittanceCanvas)
+					self.reprojectionCopyShader:send("additionsIn", pointLayer.volumetricAddCountCanvas)
+					self.reprojectionCopyShader:send("radianceOut", self.screenCanvasses.tempVolumetricRadianceCanvas)
+					self.reprojectionCopyShader:send("transmittanceOut", self.screenCanvasses.tempVolumetricTransmittanceCanvas)
+					self.reprojectionCopyShader:send("additionsOut", self.screenCanvasses.tempVolumetricAddCountCanvas)
+					self.reprojectionCopyShader:send("size", {self.volumetricCanvasWidth, self.volumetricCanvasHeight})
+					local w, h = self.reprojectionCopyShader:getLocalThreadgroupSize()
+					love.graphics.dispatchThreadgroups(self.reprojectionCopyShader,
+						math.ceil(self.volumetricCanvasWidth / w),
+						math.ceil(self.volumetricCanvasHeight / h)
+					)
+
+					local first = mathsies.mat4.transform(mathsies.vec3(), mathsies.quat(), mathsies.vec3(1, -1, 1)) -- Why is this needed...
+					local reproject = mathsies.mat4.inverse(first) * pointLayer.volumetricCanvasCameraInfo.skyToClip * clipToSky * first
+					self.rotationReprojectionShader:send("reproject", {mathsies.mat4.components(reproject)})
+					self.rotationReprojectionShader:send("maxAdditions", consts.volumetricMaxPixelAdditions)
+					self.rotationReprojectionShader:send("additionsMultiplier", consts.volCamRotReprojAdditionsMul)
+					self.rotationReprojectionShader:send("minMultipliedAdditions", consts.volCamRotReprojMinAdditions)
+
+					self.rotationReprojectionShader:send("radianceIn", self.screenCanvasses.tempVolumetricRadianceCanvas)
+					self.rotationReprojectionShader:send("transmittanceIn", self.screenCanvasses.tempVolumetricTransmittanceCanvas)
+					self.rotationReprojectionShader:send("additionsIn", self.screenCanvasses.tempVolumetricAddCountCanvas)
+					self.rotationReprojectionShader:send("radianceOut", pointLayer.volumetricCanvas)
+					self.rotationReprojectionShader:send("transmittanceOut", pointLayer.volumetricTransmittanceCanvas)
+					self.rotationReprojectionShader:send("additionsOut", pointLayer.volumetricAddCountCanvas)
+					self.rotationReprojectionShader:send("size", {self.volumetricCanvasWidth, self.volumetricCanvasHeight})
+					local w, h = self.rotationReprojectionShader:getLocalThreadgroupSize()
+					love.graphics.dispatchThreadgroups(self.rotationReprojectionShader,
+						math.ceil(self.volumetricCanvasWidth / w),
+						math.ceil(self.volumetricCanvasHeight / h)
+					)
+				end
 			end
 		end
 		pointLayer.volumetricCanvasCameraInfo = {
 			position = bm.vec3.clone(cameraPositionFull),
 			orientation = mathsies.quat.clone(cameraOrientation),
 			verticalFOV = cameraVerticalFOV,
-			brightnessMultiplier = consts.celestialRadianceMultiplier
+			brightnessMultiplier = consts.celestialRadianceMultiplier,
+
+			skyToClip = skyToClip,
+			clipToSky = clipToSky
 		}
 
 		-- Send shape params for point density (aka emission)
@@ -221,7 +258,9 @@ function game:drawCelestialAndShip(POVEntity)
 				parentOrientation
 			)
 		)})
-		volumetricShader:send("maxRaySteps", consts.volumetricMaxRaySteps)
+		volumetricShader:send("additionCountToGetMin", consts.volumetricPixelAdditionsToGetMinSteps)
+		volumetricShader:send("rayStepsMin", consts.volumetricMinSteps)
+		volumetricShader:send("rayStepsNoAdditions", consts.volumetricMaxSteps)
 		volumetricShader:send("shapeRadii", {mathsies.vec3.components(distanceUnitScale * parentObjectRadii)})
 		if volumetricShader:hasUniform("baseEmission") then
 			volumetricShader:send("baseEmission", {
@@ -375,9 +414,13 @@ function game:drawCelestialAndShip(POVEntity)
 			if not e.windowInfo then
 				return mathsies.vec3.distance(e.position, POVEntity.position)
 			else
-				local eToPlayer = POVEntity.position - e.position
-				local norm = mathsies.vec3.rotate(consts.forwardVector, e.orientation)
-				return math.abs(mathsies.vec3.dot(norm, eToPlayer))
+				local entityToCameraLocal = mathsies.vec3.rotate(POVEntity.position - e.position, mathsies.quat.inverse(e.orientation))
+				local planeX = math.max(-e.windowInfo.width / 2, math.min(e.windowInfo.width / 2, entityToCameraLocal.x))
+				local planeY = math.max(-e.windowInfo.height / 2, math.min(e.windowInfo.height / 2, entityToCameraLocal.y))
+				local windowRight = mathsies.vec3.rotate(consts.rightVector, e.orientation)
+				local windowUp = mathsies.vec3.rotate(consts.upVector, e.orientation)
+				local newClosest = e.position + planeX * windowRight + planeY * windowUp
+				return mathsies.vec3.distance(POVEntity.position, newClosest)
 			end
 		end
 		table.sort(windowsAndPointLights, function(a, b)
